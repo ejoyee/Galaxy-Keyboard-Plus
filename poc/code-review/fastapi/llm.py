@@ -4,7 +4,11 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+if not OPENAI_API_KEY:
+    raise EnvironmentError("❌ OPENAI_API_KEY 환경변수가 설정되어 있지 않습니다.")
+
+client = AsyncOpenAI(api_key=OPENAI_API_KEY)
 
 MAX_TOKENS_PER_CHUNK = 3000  # 토큰 단위 기준 (프롬프트 + 응답 포함)
 

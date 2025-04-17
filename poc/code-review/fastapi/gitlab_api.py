@@ -7,6 +7,9 @@ GITLAB_API_URL = "https://lab.ssafy.com/api/v4"
 load_dotenv()
 TOKEN = os.getenv("GITLAB_TOKEN")
 
+if not TOKEN:
+    raise EnvironmentError("❌ GITLAB_TOKEN 환경변수가 설정되어 있지 않습니다.")
+
 
 async def get_merge_request_changes(project_id, mr_iid):
     url = f"{GITLAB_API_URL}/projects/{project_id}/merge_requests/{mr_iid}/changes"
