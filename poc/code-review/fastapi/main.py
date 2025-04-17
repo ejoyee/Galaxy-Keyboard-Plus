@@ -1,3 +1,4 @@
+import os
 from fastapi import FastAPI, Request
 from pydantic import BaseModel
 from dotenv import load_dotenv
@@ -5,11 +6,10 @@ from review import handle_merge_request
 from typing import Dict, Any
 
 load_dotenv()
-
+print("🔐 GITLAB_TOKEN:", os.getenv("GITLAB_TOKEN"))  # 👉 확인용
 app = FastAPI()
 
 
-# Pydantic 모델 추가: Swagger에서 요청 본문 입력 가능하게 함
 class GitLabWebhookPayload(BaseModel):
     object_kind: str
     project: Dict[str, Any]
@@ -18,8 +18,8 @@ class GitLabWebhookPayload(BaseModel):
 
 @app.post("/gitlab/webhook")
 async def gitlab_webhook(payload: GitLabWebhookPayload):
-    # Pydantic 모델로 변환된 payload를 dict로 변환하여 사용
     event = payload.model_dump()
+    print(f"🚀 [Webhook] Webhook 수신: object_kind={event.get('object_kind')}")
     if event.get("object_kind") == "merge_request":
         await handle_merge_request(event)
     return {"status": "ok"}
