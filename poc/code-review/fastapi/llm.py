@@ -29,7 +29,7 @@ async def generate_review_prompt_chunked(mr_desc, full_diff_text):
 이 변경사항을 기반으로 코드 품질, 보안, 성능, 리팩토링 측면에서 리뷰어처럼 리뷰해줘.
 """
         res = await client.chat.completions.create(
-            model="gpt-4",
+            model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": "당신은 숙련된 코드 리뷰어입니다."},
                 {"role": "user", "content": prompt},
