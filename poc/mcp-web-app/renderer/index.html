@@ -1,0 +1,64 @@
+<textarea
+  id="input"
+  rows="6"
+  cols="80"
+  placeholder="명령어를 입력하세요..."
+></textarea>
+<br />
+<input
+  type="text"
+  id="projectPath"
+  readonly
+  placeholder="탐색할 프로젝트 경로"
+  style="width: 500px"
+/>
+<button onclick="selectFolder()">폴더 선택</button>
+<button onclick="run()">실행</button>
+<pre id="output"></pre>
+
+<script>
+  async function selectFolder() {
+    const selected = await window.api.selectProjectFolder();
+    if (selected) {
+      document.getElementById('projectPath').value = selected;
+    }
+  }
+  let logLines = [];
+
+  window.api.onProgress((msg) => {
+    logLines.push(msg);
+    document.getElementById('output').textContent = logLines.join('\n');
+  });
+
+  async function run() {
+    logLines = ['🚀 Running...'];
+    document.getElementById('output').textContent = logLines.join('\n');
+
+    const input = document.getElementById('input').value;
+    const path = document.getElementById('projectPath').value;
+    if (!path) {
+      alert('Please select a project path first.');
+      return;
+    }
+
+    const result = await window.api.sendCommand({
+      command: input,
+      projectPath: path,
+    });
+
+    if (result.error) {
+      logLines.push('❌ Error: ' + result.error);
+    } else if (result.result) {
+      logLines.push('✅ Result:');
+      logLines.push(
+        typeof result.result === 'object'
+          ? JSON.stringify(result.result, null, 2)
+          : String(result.result)
+      );
+    } else {
+      logLines.push('ℹ️ No result returned.');
+    }
+
+    document.getElementById('output').textContent = logLines.join('\n');
+  }
+</script>
