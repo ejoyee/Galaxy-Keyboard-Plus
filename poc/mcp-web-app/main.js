@@ -1,39 +1,39 @@
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
-const path = require('path');
-const { fork } = require('child_process');
-const axios = require('axios');
-require('dotenv').config();
+const { app, BrowserWindow, ipcMain, dialog } = require("electron");
+const path = require("path");
+const { fork } = require("child_process");
+const axios = require("axios");
+require("dotenv").config();
 
 let serverProcess = null;
 let mainWindow;
 
-console.log('✅ main.js started');
+console.log("✅ main.js started");
 
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1000,
     height: 700,
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
+      preload: path.join(__dirname, "preload.js"),
     },
   });
-  mainWindow.loadFile('renderer/index.html');
+  mainWindow.loadFile("renderer/index.html");
 }
 
 function startMCPServer() {
   try {
-    const serverPath = path.join(__dirname, 'mcp-server.js');
-    console.log('[MCP] server path:', serverPath);
+    const serverPath = path.join(__dirname, "mcp-server.js");
+    console.log("[MCP] server path:", serverPath);
     serverProcess = fork(serverPath);
-    serverProcess.on('error', (err) =>
-      console.error('[MCP] server failed to start:', err)
+    serverProcess.on("error", (err) =>
+      console.error("[MCP] server failed to start:", err)
     );
-    serverProcess.on('exit', (code, signal) =>
+    serverProcess.on("exit", (code, signal) =>
       console.warn(`[MCP] server exited (code: ${code}, signal: ${signal})`)
     );
-    console.log('[MCP] server started as child process');
+    console.log("[MCP] server started as child process");
   } catch (e) {
-    console.error('[MCP] launch error:', e);
+    console.error("[MCP] launch error:", e);
   }
 }
 
@@ -80,30 +80,30 @@ Return exactly ONE valid JSON object. No extra text. No Markdown.
 `;
 
   const response = await axios.post(
-    'https://api.anthropic.com/v1/messages',
+    "https://api.anthropic.com/v1/messages",
     {
-      model: 'claude-3-opus-20240229',
+      model: "claude-3-opus-20240229",
       max_tokens: 1024,
-      messages: [{ role: 'user', content: prompt }],
+      messages: [{ role: "user", content: prompt }],
     },
     {
       headers: {
-        'x-api-key': process.env.CLAUDE_API_KEY,
-        'anthropic-version': '2023-06-01',
-        'Content-Type': 'application/json',
+        "x-api-key": process.env.CLAUDE_API_KEY,
+        "anthropic-version": "2023-06-01",
+        "Content-Type": "application/json",
       },
     }
   );
 
   const contentRaw = response.data.content;
   const content = Array.isArray(contentRaw)
-    ? contentRaw.map((c) => c.text || '').join('')
+    ? contentRaw.map((c) => c.text || "").join("")
     : contentRaw;
 
-  console.log('[Claude raw response]', content);
+  console.log("[Claude raw response]", content);
 
-  const start = content.indexOf('{');
-  const end = content.lastIndexOf('}');
+  const start = content.indexOf("{");
+  const end = content.lastIndexOf("}");
   const jsonText = content.slice(start, end + 1);
   return JSON.parse(jsonText);
 }
@@ -111,7 +111,7 @@ Return exactly ONE valid JSON object. No extra text. No Markdown.
 async function askLLMWithFileContext(userCommand, files, projectPath) {
   const filePreview = files
     .map((f) => `${f.path}\n${f.content.slice(0, 10000)}...`)
-    .join('\n\n');
+    .join("\n\n");
 
   const prompt = `
 [User Command]
@@ -141,8 +141,8 @@ Respond ONLY with one valid JSON object. No extra text. No Markdown.
 `;
 
   const llmRes = await axios.post(`${process.env.MCP_SERVER}/rpc`, {
-    method: 'ask_llm',
-    params: { prompt, llm: 'claude' },
+    method: "ask_llm",
+    params: { prompt, llm: "claude" },
   });
 
   const raw = llmRes.data.result;
@@ -151,39 +151,39 @@ Respond ONLY with one valid JSON object. No extra text. No Markdown.
   const fullText = Array.isArray(raw)
     ? raw
         .map((obj) => obj.text)
-        .join('')
+        .join("")
         .trim()
     : String(raw).trim();
 
-  console.log('[Claude Raw Response]', fullText);
+  console.log("[Claude Raw Response]", fullText);
 
   try {
-    const start = fullText.indexOf('{');
-    const end = fullText.lastIndexOf('}');
+    const start = fullText.indexOf("{");
+    const end = fullText.lastIndexOf("}");
     const jsonText = fullText.slice(start, end + 1);
     const parsed = JSON.parse(jsonText);
-    console.log('[Parsed JSON]', parsed);
+    console.log("[Parsed JSON]", parsed);
     return parsed;
   } catch (e) {
-    console.warn('[JSON 파싱 실패]', e.message);
+    console.warn("[JSON 파싱 실패]", e.message);
     return {
-      method: 'default',
+      method: "default",
       response: fullText,
     };
   }
 }
 
-ipcMain.handle('run-command', async (event, command) => {
+ipcMain.handle("run-command", async (event, command) => {
   try {
     const initial = await decideToolByClaude(
       command.command,
       command.projectPath
     );
-    console.log('[LLM] Claude selected method:', initial);
+    console.log("[LLM] Claude selected method:", initial);
 
-    if (initial.method === 'read_files') {
+    if (initial.method === "read_files") {
       const readRes = await axios.post(`${process.env.MCP_SERVER}/rpc`, {
-        method: 'read_files',
+        method: "read_files",
         params: initial.params,
       });
 
@@ -191,19 +191,19 @@ ipcMain.handle('run-command', async (event, command) => {
       const decision = await askLLMWithFileContext(
         command.command,
         files,
-        command.projectPath
+        initial.params.path
       );
-      console.log('[LLM Decision After File Read]', decision);
+      console.log("[LLM Decision After File Read]", decision);
 
-      if (decision.method === 'edit_file') {
+      if (decision.method === "edit_file") {
         const editRes = await axios.post(`${process.env.MCP_SERVER}/rpc`, {
-          method: 'edit_file',
+          method: "edit_file",
           params: decision.params,
         });
-        return { type: 'edit', result: editRes.data.result };
+        return { type: "edit", result: editRes.data.result };
       } else {
         return {
-          type: 'default',
+          type: "default",
           result: decision.response || decision.result,
         };
       }
@@ -215,15 +215,23 @@ ipcMain.handle('run-command', async (event, command) => {
       params: initial.params,
     });
 
-    return { type: 'default', result: directRes.data.result };
+    return { type: "default", result: directRes.data.result };
   } catch (e) {
-    console.error('[run-command error]', e.message);
+    console.error("[run-command error]", e.message);
     return { error: e.message };
   }
 });
 
-ipcMain.handle('select-folder', async () => {
-  const result = await dialog.showOpenDialog({ properties: ['openDirectory'] });
+ipcMain.handle("select-folder", async () => {
+  const result = await dialog.showOpenDialog({
+    // 폴더와 파일 모두 선택 가능
+    properties: [
+      "openDirectory",
+      // "openFile", // 파일 선택 허용
+      // 'multiSelections' // 여러 개 선택 허용(필요 시)
+    ],
+    // filters // 제거 또는 자유롭게 사용하세요
+  });
   return result.canceled || result.filePaths.length === 0
     ? null
     : result.filePaths[0];
@@ -234,6 +242,6 @@ app.whenReady().then(() => {
   createWindow();
 });
 
-app.on('will-quit', () => {
+app.on("will-quit", () => {
   if (serverProcess) serverProcess.kill();
 });
