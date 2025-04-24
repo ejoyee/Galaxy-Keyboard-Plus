@@ -89,6 +89,7 @@ async function spawnServer(def) {
   }
   log(`Spawning ${def.id}`, binPath, def.allowedDir);
   const proc = spawn(binPath, [def.allowedDir], {
+    cwd: def.allowedDir,
     stdio: ["pipe", "pipe", "pipe"],
   });
   const rpc = new StdioRPCClient(proc, def.id);
@@ -169,7 +170,25 @@ async function decideCall(prompt) {
     {
       model: "gpt-4o-mini",
       messages: [
-        { role: "system", content: "You are an agent…" },
+        {
+          role: "system",
+          content: `
+You are a specialized agent that transforms user requests into calls to the registered filesystem tools, or else returns plain-text answers.
+
+Guidelines:
+1. TOOL CALL
+   • If a request requires filesystem access (reading, writing, listing, etc.), emit exactly one tool call JSON with the correct tool name and all required parameters.
+   • Use only the provided tool names and schemas—do not invent new tools or free-form code.
+   • If the user did not specify a path (or uses "/" or "."), use the current project root directory instead.
+2. TEXT RESPONSE
+   • If the request can be satisfied without filesystem access, reply with natural-language text and do not call any tool.  
+3. FOLLOW-UP QUESTIONS
+   • If a required parameter is missing or ambiguous, ask the user a clarifying question instead of guessing.  
+4. NO EXTRA VERBIAGE
+   • When calling a tool, respond with strictly the function call object—no explanatory text.
+   • Any human-readable explanation should only appear in plain-text responses when no tool is invoked.
+`,
+        },
         { role: "user", content: prompt },
       ],
       tools: allTools().map(formatToolV2),
@@ -257,47 +276,78 @@ ipcMain.handle("select-folder", async () => {
 ipcMain.handle("run-command", async (_e, prompt) => {
   log("[IPC] run-command", prompt);
   try {
+    // 1) LLM 결정 → RPC 호출
     const d = await decideCall(prompt);
-    if (d.type === "text") return { result: d.content };
+    if (d.type === "text") {
+      // → 그냥 텍스트 리턴 (post-process 없이)
+      return { result: d.content };
+    }
 
     const srv = servers.find((s) => s.id === d.srvId);
     if (!srv) throw new Error(`server ${d.srvId} not found`);
 
-    // 툴 호출 페이로드
     const payload = { name: d.method, arguments: d.params };
     log("[RPC] calling call_tool", payload);
 
+    // 2) 실제 MCP 서버 호출
     let rpcRes;
     try {
-      // 먼저 call_tool 시도
       rpcRes = await srv.rpc.call("call_tool", payload);
     } catch (err) {
       if (err.code === -32601) {
-        // call_tool 이 없으면 tools/call 로 재시도
         log("[RPC] call_tool not found, falling back to tools/call");
         rpcRes = await srv.rpc.call("tools/call", payload);
-      } else throw err;
+      } else {
+        throw err;
+      }
     }
-    // ───────────────────────────────────────────────
-    // 툴 호출 결과가 { content: [ { type:'text', text } ] } 형태라면
-    // text 필드만 꺼내서 하나의 문자열로 만든다.
-    let result;
+
+    // 3) 툴 호출 결과에서 text만 꺼내기
+    let rawResult;
     if (rpcRes && Array.isArray(rpcRes.content)) {
-      const texts = rpcRes.content
+      rawResult = rpcRes.content
         .filter((c) => c.type === "text" && typeof c.text === "string")
-        .map((c) => c.text);
-      result = texts.join("\n");
+        .map((c) => c.text)
+        .join("\n");
     } else {
-      // 그 외엔 그냥 있는 그대로
-      result = rpcRes;
+      rawResult = JSON.stringify(rpcRes);
     }
-    log(`[RPC] final result:`, result);
-    return { result };
+    log("[RPC] rawResult:", rawResult);
+
+    // ──────────────────────────────────────────────────────────
+    // 4) → 여기서 다시 LLM에 보내서 자연어 응답 생성
+    const postRes = await axios.post(
+      "https://api.openai.com/v1/chat/completions",
+      {
+        model: "gpt-4o-mini",
+        messages: [
+          {
+            role: "system",
+            content:
+              "You are a helpful assistant. The user made a request, " +
+              "we ran a filesystem tool and got some raw output. " +
+              "Now produce a single, concise, natural-language response " +
+              "that explains the result to the user." + 
+              "답변은 한글로 해주세요",
+          },
+          { role: "user", content: `Original request:\n${prompt}` },
+          { role: "assistant", content: `Tool output:\n${rawResult}` },
+        ],
+        max_tokens: 512,
+      },
+      { headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` } }
+    );
+
+    const friendly = postRes.data.choices[0].message.content.trim();
+    log("[POST-PROCESS] final friendly answer:", friendly);
+
+    return { result: friendly };
   } catch (e) {
     err("cmd fail", e);
     return { error: e.message };
   }
 });
+
 
 /* ───── 6. lifecycle ───── */
 app.whenReady().then(async () => {
