@@ -1,3 +1,8 @@
+## 📐 시스템 아키텍처
+
+![MCP Architecture](docs/images/architecture.png)
+
+
 # 📘 Git 컨벤션 안내
 
 ## 📌 브랜치 네이밍 규칙
