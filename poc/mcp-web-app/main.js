@@ -1,221 +1,308 @@
-// main.js
-require('dotenv').config();
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
-const path    = require('path');
-const fs      = require('fs');
-const spawn   = require('cross-spawn');
-const axios   = require('axios');
+/* main.js – multi-server, stdio transport */
+require("dotenv").config();
+const { app, BrowserWindow, ipcMain, dialog } = require("electron");
+const path = require("path");
+const fs = require("fs");
+const spawn = require("cross-spawn");
+const axios = require("axios"); // ← OpenAI용
+const portfinder = require("portfinder"); // 다른 서버용
+const { v4: uuid } = require("uuid");
 
-// 1) 사용할 MCP 서버 매핑 (filesystem은 따로 기동)
-const MCP_SERVERS = {
-  github:                3001,
-  everything:            3002,
-  postgres:              3003,
-  puppeteer:             3004,
-  'sequential-thinking': 3005,
-  'brave-search':        3006,
-  gitlab:                3007,
-  redis:                 3008,
-  gdrive:                3009,
-  slack:                 3010,
-  'google-maps':         3011,
-  memory:                3012,
-};
+/* ───── logger ───── */
+const ts = () => new Date().toISOString();
+const log = (...a) => console.log(ts(), "[INFO ]", ...a);
+const warn = (...a) => console.warn(ts(), "[WARN ]", ...a);
+const err = (...a) => console.error(ts(), "[ERROR]", ...a);
 
-// 2) 인증용 환경변수 매핑
-const REQUIRED_ENV = {
-  'brave-search':    'BRAVE_API_KEY',
-  github:            'GITHUB_PERSONAL_ACCESS_TOKEN',
-  slack:             'SLACK_BOT_TOKEN',
-  'google-maps':     'GOOGLE_MAPS_API_KEY',
-};
+/* ───── Stdio RPC helper ───── */
+class StdioRPCClient {
+  constructor(proc, tag) {
+    this.proc = proc;
+    this.tag = tag;
+    this.pending = new Map();
+    this.buffer = "";
+    proc.stdout.on("data", (d) => this.#onData(d));
+    proc.stderr.on("data", (d) =>
+      d
+        .toString()
+        .split(/\r?\n/)
+        .forEach((l) => {
+          if (!l) return;
+          if (l.startsWith("Secure MCP") || l.startsWith("Allowed"))
+            log(`[${this.tag}]`, l);
+          else err(`[${this.tag}!]`, l);
+        })
+    );
+    proc.on("exit", (c) => warn(`[${tag}] exited`, c));
+  }
+  #onData(chunk) {
+    this.buffer += chunk.toString();
+    let idx;
+    while ((idx = this.buffer.indexOf("\n")) >= 0) {
+      const line = this.buffer.slice(0, idx).trim();
+      this.buffer = this.buffer.slice(idx + 1);
+      if (!line) continue;
+      try {
+        const msg = JSON.parse(line);
+        const p = this.pending.get(msg.id);
+        if (p) {
+          this.pending.delete(msg.id);
+          msg.error ? p.reject(msg.error) : p.resolve(msg.result);
+        }
+      } catch (e) {
+        err(`[${this.tag}] broken JSON`, line);
+      }
+    }
+  }
+  call(method, params = {}) {
+    const id = uuid();
+    const payload = { jsonrpc: "2.0", id, method, params };
+    return new Promise((resolve, reject) => {
+      this.pending.set(id, { resolve, reject });
+      this.proc.stdin.write(JSON.stringify(payload) + "\n");
+    });
+  }
+}
 
-// 3) 전역 상태
+/* ───── 0. server definitions ───── */
+const SERVER_DEFS = [
+  {
+    id: "fs",
+    name: "Filesystem",
+    bin:
+      process.platform === "win32"
+        ? "mcp-server-filesystem.cmd"
+        : "mcp-server-filesystem",
+    allowedDir: process.cwd(),
+  },
+];
+
+/* ───── 1. runtime state ───── */
+const servers = []; // {id,name,proc,rpc,tools,allowedDir}
+
+/* ───── 2. spawn & load tools ───── */
+async function spawnServer(def) {
+  const binPath = path.join(__dirname, "node_modules", ".bin", def.bin);
+  if (!fs.existsSync(binPath)) {
+    err("not found", binPath);
+    return null;
+  }
+  log(`Spawning ${def.id}`, binPath, def.allowedDir);
+  const proc = spawn(binPath, [def.allowedDir], {
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+  const rpc = new StdioRPCClient(proc, def.id);
+
+  const srv = { ...def, proc, rpc, tools: [] };
+  await refreshTools(srv);
+  servers.push(srv);
+  aliasMap.clear();
+  return srv;
+}
+async function refreshTools(srv) {
+  try {
+    // ① list_tools → ② tools/list 순서로 시도
+    let raw = null;
+    try {
+      raw = await srv.rpc.call("list_tools");
+    } catch (e) {
+      raw = await srv.rpc.call("tools/list");
+    }
+
+    // ② 형식 정규화 : 배열? 객체? 중첩?
+    let arr = [];
+    if (Array.isArray(raw)) arr = raw;
+    else if (raw?.tools) arr = raw.tools;
+    else if (typeof raw === "object") arr = Object.values(raw);
+
+    if (!arr.length) throw new Error("no tools found");
+    srv.tools = arr.map((t) => ({
+      ...t,
+      name: `${srv.id}_${t.name}`, // <-- dot → underscore
+      _origMethod: t.name, //   원본 이름 보관
+    }));
+    log(
+      `Tools[${srv.id}] loaded`,
+      srv.tools.map((t) => t.name)
+    );
+  } catch (e) {
+    err("tool load failed", e.message);
+  }
+}
+function allTools() {
+  return servers.flatMap((s) => s.tools);
+}
+
+function formatToolV2(t) {
+  // t             : { name, description, parameters|inputSchema, _origMethod }
+  // t.name        : safe alias명  (fs_read_file)
+  // t._origMethod : 서버측 실제 method (read_file)
+  aliasMap.set(t.name, {
+    srvId: t.name.split("_", 1)[0],
+    method: t._origMethod,
+  });
+
+  return {
+    type: "function",
+    function: {
+      name: t.name,
+      description: t.description,
+      parameters: t.inputSchema || // 서버 v0.3
+        t.parameters || {
+          // 다른 서버 혹시
+          type: "object",
+          properties: {},
+        },
+    },
+  };
+}
+
+const aliasMap = new Map();
+
+/* ───── 3. OpenAI decision ───── */
+async function decideCall(prompt) {
+  const key = process.env.OPENAI_API_KEY;
+  if (!key) return { type: "text", content: "OPENAI_API_KEY is not set." };
+
+  const res = await axios.post(
+    "https://api.openai.com/v1/chat/completions",
+    {
+      model: "gpt-4o-mini",
+      messages: [
+        { role: "system", content: "You are an agent…" },
+        { role: "user", content: prompt },
+      ],
+      tools: allTools().map(formatToolV2),
+      tool_choice: "auto",
+      max_tokens: 1024,
+    },
+    { headers: { Authorization: `Bearer ${key}` } }
+  );
+  log("[LLM] raw response:", JSON.stringify(res.data, null, 2));
+
+  const msg = res.data.choices[0].message;
+
+  // ── v2 호출: tool_calls[n].function.name/arguments
+  let fc = null;
+  if (Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0) {
+    fc = msg.tool_calls[0].function;
+  }
+  // ── legacy v1 호출: function_call.name/arguments
+  else if (msg.function_call) {
+    fc = msg.function_call;
+  }
+
+  // 호출 정보가 없거나 arguments 가 비어 있으면 텍스트 응답
+  if (!fc || !fc.arguments) {
+    return { type: "text", content: msg.content ?? "" };
+  }
+
+  // JSON parsing
+  let parsed;
+  try {
+    parsed = JSON.parse(fc.arguments);
+  } catch (e) {
+    err("Failed to parse tool arguments:", fc.arguments);
+    return { type: "text", content: msg.content ?? "" };
+  }
+
+  const alias = fc.name; // e.g. "fs_directory_tree"
+  const params = parsed.params || parsed;
+
+  const map = aliasMap.get(alias);
+  if (!map) {
+    err("Unmapped tool alias:", alias);
+    return { type: "text", content: msg.content ?? "" };
+  }
+
+  return {
+    type: "rpc",
+    srvId: map.srvId,
+    method: map.method,
+    params,
+  };
+}
+
+/* ───── 4. Electron window ───── */
 let mainWindow;
-let filesystemProc = null;
-let selectedFolder = null;
-
-// 4) Electron 윈도우 생성
 function createWindow() {
+  log("createWindow");
   mainWindow = new BrowserWindow({
     width: 1000,
     height: 700,
-    webPreferences: { preload: path.join(__dirname, 'preload.js') },
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js"),
+      contextIsolation: true,
+    },
   });
-  mainWindow.loadFile('renderer/index.html');
+  mainWindow.loadFile(path.join(__dirname, "renderer", "index.html"));
 }
 
-// 5) MCP 서버(HTTP 모드) 자동 기동 (filesystem 제외)
-function startMcpServers() {
-  const isWin = process.platform === 'win32';
-  for (const [pkg, port] of Object.entries(MCP_SERVERS)) {
-    const needKey = REQUIRED_ENV[pkg];
-    if (needKey && !process.env[needKey]) {
-      console.warn(`[MCP:${pkg}] SKIP (missing env ${needKey})`);
-      continue;
-    }
-    // 윈도우 cmd, 맥/리눅스는 그냥 바이너리
-    const binName = isWin
-      ? `mcp-server-${pkg}.cmd`
-      : `mcp-server-${pkg}`;
-    const binPath = path.join(__dirname, 'node_modules', '.bin', binName);
-    if (!fs.existsSync(binPath)) {
-      console.warn(`[MCP:${pkg}] SKIP (binary not found: ${binPath})`);
-      continue;
-    }
-    console.log(`[MCP:${pkg}] STARTING on port ${port} (HTTP mode)`);
-    const env = { ...process.env, MCP_PORT: port.toString() };
-    const proc = spawn(
-      binPath,
-      ['--http', '--transport', 'http'],
-      { stdio: ['ignore','pipe','pipe'], env, shell: true }
-    );
-    proc.stdout.on('data', buf =>
-      buf.toString().split(/\r?\n/).forEach(line => {
-        if (line) console.log(`[MCP:${pkg}] ${line}`);
-      })
-    );
-    proc.stderr.on('data', buf =>
-      buf.toString().split(/\r?\n/).forEach(line => {
-        if (line) console.error(`[MCP:${pkg} ERR] ${line}`);
-      })
-    );
-    proc.on('error', e =>
-      console.error(`[MCP:${pkg}] failed to start`, e)
-    );
-    proc.on('exit', code =>
-      console.log(`[MCP:${pkg}] exited with code ${code}`)
-    );
+/* ───── 5. IPC ───── */
+ipcMain.handle("select-folder", async () => {
+  const r = await dialog.showOpenDialog({ properties: ["openDirectory"] });
+  if (r.canceled) return null;
+  const dir = r.filePaths[0];
+  log("folder selected", dir);
+
+  // 재시작
+  const idx = servers.findIndex((s) => s.id === "fs");
+  if (idx >= 0) {
+    servers[idx].proc.kill();
+    servers.splice(idx, 1);
   }
-}
-
-// 6) filesystem 서버(HTTP 모드) 기동
-function startFilesystemServer(folderPath) {
-  if (filesystemProc) {
-    filesystemProc.kill();
-    filesystemProc = null;
-  }
-  const isWin = process.platform === 'win32';
-  const binName = isWin
-    ? 'mcp-server-filesystem.cmd'
-    : 'mcp-server-filesystem';
-  const binPath = path.join(__dirname, 'node_modules', '.bin', binName);
-  if (!fs.existsSync(binPath)) {
-    console.warn(`[MCP:filesystem] SKIP (binary not found: ${binPath})`);
-    return;
-  }
-  console.log(`[MCP:filesystem] STARTING on port 3000 for ${folderPath} (HTTP mode)`);
-  selectedFolder = folderPath;
-
-  const env = { ...process.env, MCP_PORT: '3000' };
-  filesystemProc = spawn(
-    binPath,
-    ['--http', '--transport', 'http', folderPath],
-    { stdio: ['ignore','pipe','pipe'], env, shell: true }
-  );
-  filesystemProc.stdout.on('data', buf =>
-    buf.toString().split(/\r?\n/).forEach(line => {
-      if (line) console.log(`[MCP:filesystem] ${line}`);
-    })
-  );
-  filesystemProc.stderr.on('data', buf =>
-    buf.toString().split(/\r?\n/).forEach(line => {
-      if (line) console.error(`[MCP:filesystem ERR] ${line}`);
-    })
-  );
-  filesystemProc.on('error', e =>
-    console.error(`[MCP:filesystem] start error`, e)
-  );
-  filesystemProc.on('exit', code =>
-    console.log(`[MCP:filesystem] exited with code ${code}`)
-  );
-}
-
-// 7) OpenAI Function Calling으로 툴 매핑
-async function decideToolByOpenAI(command) {
-  const functions = [{
-    name: 'call_mcp',
-    description: 'Call an MCP server',
-    parameters: {
-      type: 'object',
-      properties: {
-        tool:   { type:'string' },
-        method: { type:'string' },
-        params: { type:'object' },
-      },
-      required: ['tool','method','params'],
-    },
-  }];
-
-  const resp = await axios.post(
-    'https://api.openai.com/v1/chat/completions',
-    {
-      model: 'gpt-4o-mini',
-      messages: [
-        {
-          role: 'system',
-          content: `Available tools: filesystem, ${Object.keys(MCP_SERVERS).join(', ')}`
-        },
-        { role: 'user', content: command }
-      ],
-      functions,
-      function_call: 'auto',
-    },
-    { headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` } }
-  );
-
-  const msg = resp.data.choices[0].message;
-  if (msg.function_call) {
-    return JSON.parse(msg.function_call.arguments);
-  } else {
-    return { tool: null, method: null, response: msg.content };
-  }
-}
-
-// 8) IPC 핸들러: UI → OpenAI → MCP RPC
-ipcMain.handle('run-command', async (_, { command }) => {
+  await spawnServer({ ...SERVER_DEFS[0], allowedDir: dir });
+  return dir;
+});
+ipcMain.handle("run-command", async (_e, prompt) => {
+  log("[IPC] run-command", prompt);
   try {
-    const { tool, method, params, response } = await decideToolByOpenAI(command);
-    if (!tool) {
-      return { type: 'default', result: response };
+    const d = await decideCall(prompt);
+    if (d.type === "text") return { result: d.content };
+
+    const srv = servers.find((s) => s.id === d.srvId);
+    if (!srv) throw new Error(`server ${d.srvId} not found`);
+
+    // 툴 호출 페이로드
+    const payload = { name: d.method, arguments: d.params };
+    log("[RPC] calling call_tool", payload);
+
+    let rpcRes;
+    try {
+      // 먼저 call_tool 시도
+      rpcRes = await srv.rpc.call("call_tool", payload);
+    } catch (err) {
+      if (err.code === -32601) {
+        // call_tool 이 없으면 tools/call 로 재시도
+        log("[RPC] call_tool not found, falling back to tools/call");
+        rpcRes = await srv.rpc.call("tools/call", payload);
+      } else throw err;
     }
-    if (tool === 'filesystem' && !selectedFolder) {
-      throw new Error('먼저 폴더를 선택해 주세요.');
+    // ───────────────────────────────────────────────
+    // 툴 호출 결과가 { content: [ { type:'text', text } ] } 형태라면
+    // text 필드만 꺼내서 하나의 문자열로 만든다.
+    let result;
+    if (rpcRes && Array.isArray(rpcRes.content)) {
+      const texts = rpcRes.content
+        .filter((c) => c.type === "text" && typeof c.text === "string")
+        .map((c) => c.text);
+      result = texts.join("\n");
+    } else {
+      // 그 외엔 그냥 있는 그대로
+      result = rpcRes;
     }
-    const rpcParams = { ...params };
-    if (!rpcParams.path && tool === 'filesystem') {
-      rpcParams.path = selectedFolder;
-    }
-    const port = tool === 'filesystem' ? 3000 : MCP_SERVERS[tool];
-    if (!port) throw new Error(`Unknown tool: ${tool}`);
-    const rpcRes = await axios.post(`http://localhost:${port}/rpc`, {
-      method, params: rpcParams
-    });
-    return { type: 'default', result: rpcRes.data.result };
+    log(`[RPC] final result:`, result);
+    return { result };
   } catch (e) {
-    console.error('[run-command error]', e);
+    err("cmd fail", e);
     return { error: e.message };
   }
 });
 
-// 9) IPC 핸들러: 폴더 선택 → filesystem 서버 재기동
-ipcMain.handle('select-folder', async () => {
-  const result = await dialog.showOpenDialog({
-    properties: ['openDirectory']
-  });
-  if (result.canceled || !result.filePaths.length) {
-    return null;
-  }
-  const folderPath = result.filePaths[0];
-  startFilesystemServer(folderPath);
-  return folderPath;
-});
-
-// 10) 앱 초기화
-app.whenReady().then(() => {
-  // 초기 C:\ 경로로 filesystem 서버 기동
-  startFilesystemServer('C:\\');
-
-  startMcpServers();
+/* ───── 6. lifecycle ───── */
+app.whenReady().then(async () => {
+  log("Electron ready");
+  for (const def of SERVER_DEFS) await spawnServer(def);
   createWindow();
 });
+app.on("will-quit", () => servers.forEach((s) => s.proc.kill()));
