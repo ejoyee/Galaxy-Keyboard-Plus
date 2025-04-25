@@ -1,27 +1,56 @@
-/* main.js – multi-server, stdio transport */
-require("dotenv").config();
+/****************************************************************
+ *  MCP-Web-App – 메인 프로세스 진입점
+ *
+ *  ▸ 이 파일은 Electron ‘메인 프로세스’에서 실행된다.
+ *  ▸ 역할
+ *      1) Electron 윈도우 생성 및 애플리케이션 생명주기 관리
+ *      2) MCP 서버(여기서는 Filesystem 서버) 스폰 & RPC 통신
+ *      3) OpenAI LLM 호출 → “어떤 MCP 툴을 쓸지” 의사결정
+ *      4) Renderer(브라우저) ↔ Main 간 IPC 브리지
+ *
+ *  ⚠️  NOTE
+ *      ─ Electron 구조
+ *          • Main  : Node.js 런타임, OS 자원 접근 가능
+ *          • Renderer : Chromium, DOM 렌더링 / 사용자 UI
+ *          • Preload  : 둘 사이를 안전하게 중재(contextIsolation)
+ *
+ *      ─ MCP 서버
+ *          • `@modelcontextprotocol/server-filesystem` 바이너리를
+ *            자식 프로세스로 띄우고, stdin/stdout을 통해 JSON-RPC 사용
+ ****************************************************************/
+
+require("dotenv").config(); // .env 로부터 환경변수 로드
 const { app, BrowserWindow, ipcMain, dialog } = require("electron");
 const path = require("path");
 const fs = require("fs");
-const spawn = require("cross-spawn");
-const axios = require("axios"); // ← OpenAI용
-const portfinder = require("portfinder"); // 다른 서버용
-const { v4: uuid } = require("uuid");
+const spawn = require("cross-spawn"); // cross-platform child_process
+const axios = require("axios"); // OpenAI REST 호출
+const portfinder = require("portfinder"); // (지금은 미사용) 여유 포트 찾기
+const { v4: uuid } = require("uuid"); // JSON-RPC id 생성용
 
-/* ───── logger ───── */
+/* ───────────── Logger 헬퍼 ───────────── */
 const ts = () => new Date().toISOString();
 const log = (...a) => console.log(ts(), "[INFO ]", ...a);
 const warn = (...a) => console.warn(ts(), "[WARN ]", ...a);
 const err = (...a) => console.error(ts(), "[ERROR]", ...a);
 
-/* ───── Stdio RPC helper ───── */
+/* ───────────── StdioRPCClient 클래스 ─────────────
+   MCP 서버와의 JSON-RPC 통신을 캡슐화한다.
+   ▸ stdin.write() 로 요청 전송
+   ▸ stdout ‘\n’ 단위로 버퍼링하여 응답 파싱
+   ▸ id-Promise 매핑을 Map 으로 관리(pending)
+────────────────────────────────────────── */
 class StdioRPCClient {
   constructor(proc, tag) {
-    this.proc = proc;
-    this.tag = tag;
-    this.pending = new Map();
+    this.proc = proc; // child_process 인스턴스
+    this.tag = tag; // 로그 식별용 라벨
+    this.pending = new Map(); // { id → {resolve, reject} }
+
+    /* --- 데이터 수신 핸들러 등록 --- */
     this.buffer = "";
     proc.stdout.on("data", (d) => this.#onData(d));
+
+    /* --- STDERR → 로그로 라우팅 (서버 에러/경고) --- */
     proc.stderr.on("data", (d) =>
       d
         .toString()
@@ -29,12 +58,14 @@ class StdioRPCClient {
         .forEach((l) => {
           if (!l) return;
           if (l.startsWith("Secure MCP") || l.startsWith("Allowed"))
-            log(`[${this.tag}]`, l);
-          else err(`[${this.tag}!]`, l);
+            log(`[${this.tag}]`, l); // 정상 안내 메시지
+          else err(`[${this.tag}!]`, l); // 실제 오류
         })
     );
     proc.on("exit", (c) => warn(`[${tag}] exited`, c));
   }
+
+  /* stdout 버퍼 처리 – 한 줄(JSON)씩 분해하여 Promise resolve */
   #onData(chunk) {
     this.buffer += chunk.toString();
     let idx;
@@ -42,9 +73,10 @@ class StdioRPCClient {
       const line = this.buffer.slice(0, idx).trim();
       this.buffer = this.buffer.slice(idx + 1);
       if (!line) continue;
+
       try {
-        const msg = JSON.parse(line);
-        const p = this.pending.get(msg.id);
+        const msg = JSON.parse(line); // {"jsonrpc":"2.0", id, ...}
+        const p = this.pending.get(msg.id); // 대기중인 호출 찾기
         if (p) {
           this.pending.delete(msg.id);
           msg.error ? p.reject(msg.error) : p.resolve(msg.result);
@@ -54,6 +86,8 @@ class StdioRPCClient {
       }
     }
   }
+
+  /* JSON-RPC 메서드 호출 래퍼 (Promise 반환) */
   call(method, params = {}) {
     const id = uuid();
     const payload = { jsonrpc: "2.0", id, method, params };
@@ -64,64 +98,80 @@ class StdioRPCClient {
   }
 }
 
-/* ───── 0. server definitions ───── */
+/* ───────────── 0. MCP 서버 정의 ─────────────
+   여러 서버를 선택적으로 돌릴 수 있도록 배열로 보관
+   (현재는 Filesystem 서버 하나만)
+   기존에 만들어져있던 서버를 설치하여 사용할 경우 서버를 설치한 뒤뒤
+   SERVER_DEFS에 서버를 추가하면 실행 시 이 배열 내부를 돌면서 필요한 서버의 정보를 취득함.
+────────────────────────────────────────── */
 const SERVER_DEFS = [
   {
-    id: "fs",
+    id: "fs", // 툴 alias 접두사
     name: "Filesystem",
     bin:
-      process.platform === "win32"
+      process.platform === "win32" // OS 별 실행 파일
         ? "mcp-server-filesystem.cmd"
         : "mcp-server-filesystem",
-    allowedDir: process.cwd(),
+    allowedDir: process.cwd(), // 루트 디렉터리 기본값
   },
 ];
 
-/* ───── 1. runtime state ───── */
-const servers = []; // {id,name,proc,rpc,tools,allowedDir}
+/* ───────────── 1. 런타임 상태 ───────────── */
+const servers = []; // [{ id, name, proc, rpc, tools[], allowedDir }]
 
-/* ───── 2. spawn & load tools ───── */
+/* ───────────── 2. 서버 스폰 & 툴 로딩 ───────────── */
 async function spawnServer(def) {
   const binPath = path.join(__dirname, "node_modules", ".bin", def.bin);
   if (!fs.existsSync(binPath)) {
     err("not found", binPath);
     return null;
   }
+
   log(`Spawning ${def.id}`, binPath, def.allowedDir);
+  /* child_process.spawn
+     stdio = [stdin, stdout, stderr] 모두 파이프로 연결 */
   const proc = spawn(binPath, [def.allowedDir], {
     cwd: def.allowedDir,
     stdio: ["pipe", "pipe", "pipe"],
   });
-  const rpc = new StdioRPCClient(proc, def.id);
 
+  const rpc = new StdioRPCClient(proc, def.id);
   const srv = { ...def, proc, rpc, tools: [] };
-  await refreshTools(srv);
+
+  await refreshTools(srv); // list_tools → API 스키마 획득
   servers.push(srv);
-  aliasMap.clear();
+
+  /* aliasMap 은 툴 호출 이름 → {srvId, method} 매핑 */
+  aliasMap.clear(); // 서버 재시작 시 새로 갱신
   return srv;
 }
+
+/* 서버에서 지원하는 툴 목록 가져와서 (서버별) 저장 */
 async function refreshTools(srv) {
   try {
-    // ① list_tools → ② tools/list 순서로 시도
-    let raw = null;
+    // 서버 버전에 따라 list_tools 또는 tools/list 지원
+    let raw;
     try {
       raw = await srv.rpc.call("list_tools");
-    } catch (e) {
+    } catch {
       raw = await srv.rpc.call("tools/list");
     }
 
-    // ② 형식 정규화 : 배열? 객체? 중첩?
+    // 다양한 응답 형식을 배열로 정규화
     let arr = [];
     if (Array.isArray(raw)) arr = raw;
     else if (raw?.tools) arr = raw.tools;
     else if (typeof raw === "object") arr = Object.values(raw);
 
     if (!arr.length) throw new Error("no tools found");
+
+    /* name 충돌 방지를 위해 “srvid_toolname” 으로 alias 부여 */
     srv.tools = arr.map((t) => ({
       ...t,
-      name: `${srv.id}_${t.name}`, // <-- dot → underscore
-      _origMethod: t.name, //   원본 이름 보관
+      name: `${srv.id}_${t.name}`,
+      _origMethod: t.name, // 실제 서버 측 메서드 기억
     }));
+
     log(
       `Tools[${srv.id}] loaded`,
       srv.tools.map((t) => t.name)
@@ -130,14 +180,15 @@ async function refreshTools(srv) {
     err("tool load failed", e.message);
   }
 }
+
+/* 모든 서버의 툴 평탄화(Prompts에서 tools 필드로 넘김) */
 function allTools() {
   return servers.flatMap((s) => s.tools);
 }
 
+/* OpenAI ChatGPT v2 “function calling” 스펙용 변환 */
 function formatToolV2(t) {
-  // t             : { name, description, parameters|inputSchema, _origMethod }
-  // t.name        : safe alias명  (fs_read_file)
-  // t._origMethod : 서버측 실제 method (read_file)
+  // aliasMap : 호출 시 역-매핑하기 위해 보관
   aliasMap.set(t.name, {
     srvId: t.name.split("_", 1)[0],
     method: t._origMethod,
@@ -148,9 +199,8 @@ function formatToolV2(t) {
     function: {
       name: t.name,
       description: t.description,
-      parameters: t.inputSchema || // 서버 v0.3
+      parameters: t.inputSchema ||
         t.parameters || {
-          // 다른 서버 혹시
           type: "object",
           properties: {},
         },
@@ -158,9 +208,12 @@ function formatToolV2(t) {
   };
 }
 
-const aliasMap = new Map();
+const aliasMap = new Map(); // {alias → {srvId, method}}
 
-/* ───── 3. OpenAI decision ───── */
+/* ───────────── 3. OpenAI → 어떤 툴 쓸지 결정 ─────────────
+   ① 유저 프롬프트, ② 서버 툴 스키마 → Chat Completions 호출
+   ▸ LLM 결과가 “tool_call” 이면 RPC 실행, 아니면 텍스트 그대로
+────────────────────────────────────────── */
 async function decideCall(prompt) {
   const key = process.env.OPENAI_API_KEY;
   if (!key) return { type: "text", content: "OPENAI_API_KEY is not set." };
@@ -197,36 +250,42 @@ Guidelines:
     },
     { headers: { Authorization: `Bearer ${key}` } }
   );
-  log("[LLM] raw response:", JSON.stringify(res.data, null, 2));
 
+  log("[LLM] raw response:", JSON.stringify(res.data, null, 2));
   const msg = res.data.choices[0].message;
 
-  // ── v2 호출: tool_calls[n].function.name/arguments
+  /* ─ OpenAI 2024 이후 포맷: message.tool_calls[] ─ */
   let fc = null;
-  if (Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0) {
+  if (Array.isArray(msg.tool_calls) && msg.tool_calls.length)
     fc = msg.tool_calls[0].function;
-  }
-  // ── legacy v1 호출: function_call.name/arguments
-  else if (msg.function_call) {
+  /* ─ 레거시(v1) 포맷: function_call ─ */ else if (msg.function_call)
     fc = msg.function_call;
-  }
 
-  // 호출 정보가 없거나 arguments 가 비어 있으면 텍스트 응답
-  if (!fc || !fc.arguments) {
-    return { type: "text", content: msg.content ?? "" };
-  }
+  // 툴 호출이 없으면 텍스트 응답
+  if (!fc || !fc.arguments) return { type: "text", content: msg.content ?? "" };
 
-  // JSON parsing
+  // 툴 인자 JSON 파싱
   let parsed;
   try {
     parsed = JSON.parse(fc.arguments);
-  } catch (e) {
+  } catch {
     err("Failed to parse tool arguments:", fc.arguments);
     return { type: "text", content: msg.content ?? "" };
   }
 
-  const alias = fc.name; // e.g. "fs_directory_tree"
-  const params = parsed.params || parsed;
+  const alias = fc.name; // e.g. fs_directory_tree
+  const params = parsed.params || parsed; // (서버 마다 다름)
+
+  /* ───── 경로 보정 ─────
+    LLM이 '/'·'.'·'' 같이 루트 의미로 응답하면
+    MCP 서버 쪽엔 '.'(allowedDir)로 넘겨서
+    "허용된 디렉터리 바깥" 오류를 방지 */
+  if (typeof params.path === "string") {
+    const p = params.path.trim();
+    if (p === "/" || p === "\\" || p === "." || p === "") {
+      params.path = "."; // Filesystem 서버는 '.'을 프로젝트 루트로 해석
+    }
+  }
 
   const map = aliasMap.get(alias);
   if (!map) {
@@ -234,6 +293,7 @@ Guidelines:
     return { type: "text", content: msg.content ?? "" };
   }
 
+  // RPC 실행 정보 반환
   return {
     type: "rpc",
     srvId: map.srvId,
@@ -242,7 +302,7 @@ Guidelines:
   };
 }
 
-/* ───── 4. Electron window ───── */
+/* ───────────── 4. Electron 윈도우 생성 ───────────── */
 let mainWindow;
 function createWindow() {
   log("createWindow");
@@ -250,21 +310,27 @@ function createWindow() {
     width: 1000,
     height: 700,
     webPreferences: {
-      preload: path.join(__dirname, "preload.js"),
-      contextIsolation: true,
+      preload: path.join(__dirname, "preload.js"), // contextBridge 코드
+      contextIsolation: true, // Renderer → Main 완전 격리
     },
   });
   mainWindow.loadFile(path.join(__dirname, "renderer", "index.html"));
 }
 
-/* ───── 5. IPC ───── */
+/* ───────────── 5. IPC 라우팅 ─────────────
+   Renderer → Main
+     'select-folder' : 폴더 선택 다이얼로그 열기
+     'run-command'   : 사용자 자연어 명령 처리
+────────────────────────────────────────── */
 ipcMain.handle("select-folder", async () => {
+  // ① OS 폴더 선택 UI
   const r = await dialog.showOpenDialog({ properties: ["openDirectory"] });
   if (r.canceled) return null;
+
   const dir = r.filePaths[0];
   log("folder selected", dir);
 
-  // 재시작
+  /* ② 기존 fs 서버 종료 → 새 allowedDir 로 재시작 */
   const idx = servers.findIndex((s) => s.id === "fs");
   if (idx >= 0) {
     servers[idx].proc.kill();
@@ -273,23 +339,22 @@ ipcMain.handle("select-folder", async () => {
   await spawnServer({ ...SERVER_DEFS[0], allowedDir: dir });
   return dir;
 });
+
 ipcMain.handle("run-command", async (_e, prompt) => {
   log("[IPC] run-command", prompt);
   try {
-    // 1) LLM 결정 → RPC 호출
+    /* ① LLM에 의사결정 위임 */
     const d = await decideCall(prompt);
-    if (d.type === "text") {
-      // → 그냥 텍스트 리턴 (post-process 없이)
-      return { result: d.content };
-    }
+    if (d.type === "text") return { result: d.content }; // 툴 불필요
 
+    /* ② RPC 실행 대상 서버 탐색 */
     const srv = servers.find((s) => s.id === d.srvId);
     if (!srv) throw new Error(`server ${d.srvId} not found`);
 
     const payload = { name: d.method, arguments: d.params };
     log("[RPC] calling call_tool", payload);
 
-    // 2) 실제 MCP 서버 호출
+    /* ③ MCP 표준: call_tool 또는 tools/call */
     let rpcRes;
     try {
       rpcRes = await srv.rpc.call("call_tool", payload);
@@ -302,11 +367,11 @@ ipcMain.handle("run-command", async (_e, prompt) => {
       }
     }
 
-    // 3) 툴 호출 결과에서 text만 꺼내기
+    /* ④ Filesystem 서버의 응답 : content 배열 중 text 항목 추출 */
     let rawResult;
-    if (rpcRes && Array.isArray(rpcRes.content)) {
+    if (Array.isArray(rpcRes?.content)) {
       rawResult = rpcRes.content
-        .filter((c) => c.type === "text" && typeof c.text === "string")
+        .filter((c) => c.type === "text")
         .map((c) => c.text)
         .join("\n");
     } else {
@@ -314,8 +379,7 @@ ipcMain.handle("run-command", async (_e, prompt) => {
     }
     log("[RPC] rawResult:", rawResult);
 
-    // ──────────────────────────────────────────────────────────
-    // 4) → 여기서 다시 LLM에 보내서 자연어 응답 생성
+    /* ⑤ 결과를 한글 자연어로 요약(2차 OpenAI 호출) */
     const postRes = await axios.post(
       "https://api.openai.com/v1/chat/completions",
       {
@@ -327,20 +391,18 @@ ipcMain.handle("run-command", async (_e, prompt) => {
               "You are a helpful assistant. The user made a request, " +
               "we ran a filesystem tool and got some raw output. " +
               "Now produce a single, concise, natural-language response " +
-              "that explains the result to the user." + 
+              "that explains the result to the user." +
               "답변은 한글로 해주세요",
           },
           { role: "user", content: `Original request:\n${prompt}` },
           { role: "assistant", content: `Tool output:\n${rawResult}` },
         ],
-        max_tokens: 512,
       },
       { headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` } }
     );
 
     const friendly = postRes.data.choices[0].message.content.trim();
     log("[POST-PROCESS] final friendly answer:", friendly);
-
     return { result: friendly };
   } catch (e) {
     err("cmd fail", e);
@@ -348,10 +410,10 @@ ipcMain.handle("run-command", async (_e, prompt) => {
   }
 });
 
-
-/* ───── 6. lifecycle ───── */
+/* ───────────── 6. Electron App 생명주기 ───────────── */
 app.whenReady().then(async () => {
   log("Electron ready");
+  // 서버 사전 기동 (디폴트 allowedDir = 앱 실행 위치)
   for (const def of SERVER_DEFS) await spawnServer(def);
   createWindow();
 });
