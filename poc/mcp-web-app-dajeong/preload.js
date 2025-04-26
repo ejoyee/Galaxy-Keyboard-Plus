@@ -34,4 +34,7 @@ contextBridge.exposeInMainWorld("api", {
 
   /* 자연어 명령 → MCP 실행 → 결과 반환 */
   sendCommand: (text) => ipcRenderer.invoke("run-command", text),
+  
+  /* Google OAuth 인증 수행 */
+  authenticateGoogle: () => ipcRenderer.invoke("google-auth"),
 });

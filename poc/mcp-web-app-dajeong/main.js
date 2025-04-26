@@ -1,4 +1,117 @@
-/****************************************************************
+/* ───────────── OAuth 관련 함수 ───────────── */
+// OAuth 설정 파일 경로
+const path = require("path");
+const fs = require("fs");
+const HOME_DIR = process.env.HOME || process.env.USERPROFILE;
+const CONFIG_DIR = path.join(HOME_DIR, '.gmail-mcp');
+const OAUTH_PATH = path.join(CONFIG_DIR, 'gcp-oauth.keys.json');
+const CREDENTIALS_PATH = path.join(CONFIG_DIR, 'credentials.json');
+
+// OAuth 클라이언트 설정 (발급자용 설정 활용)
+const OAUTH_CLIENT_ID = "707596761486-2nanfg75jmj5c05jqndshb7splbuei8a.apps.googleusercontent.com";
+const OAUTH_CLIENT_SECRET = "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";
+const OAUTH_REDIRECT_URI = "http://localhost:3000/oauth2callback";
+
+// OAuth 인증 관리 함수
+async function runOAuthAuthentication() {
+    // 인증 디렉토리 생성
+    if (!fs.existsSync(CONFIG_DIR)) {
+        fs.mkdirSync(CONFIG_DIR, { recursive: true });
+    }
+
+    // OAuth 클라이언트 생성
+    const oauth2Client = new OAuth2Client(
+        OAUTH_CLIENT_ID,
+        OAUTH_CLIENT_SECRET,
+        OAUTH_REDIRECT_URI
+    );
+
+    // OAuth 상세 정보를 키 파일로 저장
+    const oauthKeysContent = {
+        "installed": {
+            "client_id": OAUTH_CLIENT_ID,
+            "project_id": "mcp-gmail-connection",
+            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+            "token_uri": "https://oauth2.googleapis.com/token",
+            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+            "client_secret": OAUTH_CLIENT_SECRET,
+            "redirect_uris": [OAUTH_REDIRECT_URI]
+        }
+    };
+
+    // OAuth 키 파일 저장
+    fs.writeFileSync(OAUTH_PATH, JSON.stringify(oauthKeysContent, null, 2));
+    log(`OAuth keys saved to: ${OAUTH_PATH}`);
+
+    // HTTP 서버 시작
+    const server = http.createServer();
+    server.listen(3000);
+    log('Local server started on port 3000');
+
+    return new Promise((resolve, reject) => {
+        // 인증 URL 생성
+        const authUrl = oauth2Client.generateAuthUrl({
+            access_type: 'offline',
+            scope: ['https://www.googleapis.com/auth/gmail.modify'],
+        });
+
+        log('Opening browser for authentication...');
+        // 브라우저로 인증 페이지 열기
+        open(authUrl);
+
+        // 콜백 처리
+        server.on('request', async (req, res) => {
+            if (!req.url?.startsWith('/oauth2callback')) return;
+
+            const url = new URL(req.url, 'http://localhost:3000');
+            const code = url.searchParams.get('code');
+
+            if (!code) {
+                res.writeHead(400);
+                res.end('No code provided');
+                reject(new Error('No code provided'));
+                return;
+            }
+
+            try {
+                // 콜백에서 코드를 받아서 토큰 요청
+                const { tokens } = await oauth2Client.getToken(code);
+                oauth2Client.setCredentials(tokens);
+                
+                // 권한 정보 저장
+                fs.writeFileSync(CREDENTIALS_PATH, JSON.stringify(tokens, null, 2));
+                log(`Credentials saved to: ${CREDENTIALS_PATH}`);
+
+                // 성공 페이지 응답
+                res.writeHead(200, { 'Content-Type': 'text/html' });
+                res.end(`
+                    <html>
+                        <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
+                            <h1 style="color: #4285F4;">Authentication Successful!</h1>
+                            <p>Google 계정 인증이 완료되었습니다.</p>
+                            <p>이 창을 닫고 앱으로 돌아가세요.</p>
+                        </body>
+                    </html>
+                `);
+                
+                // 서버 종료 및 성공 반환
+                server.close();
+                resolve({ success: true, tokens });
+            } catch (error) {
+                res.writeHead(500);
+                res.end('Authentication failed');
+                server.close();
+                reject(error);
+            }
+        });
+
+        // 서버 오류 처리
+        server.on('error', (error) => {
+            log(`Server error: ${error.message}`);
+            reject(error);
+        });
+    });
+}/****************************************************************
  *  MCP-Web-App – 메인 프로세스 진입점
  *
  *  ▸ 이 파일은 Electron ‘메인 프로세스’에서 실행된다.
@@ -21,12 +134,14 @@
 
 require("dotenv").config(); // .env 로부터 환경변수 로드
 const { app, BrowserWindow, ipcMain, dialog } = require("electron");
-const path = require("path");
-const fs = require("fs");
 const spawn = require("cross-spawn"); // cross-platform child_process
 const axios = require("axios"); // OpenAI REST 호출
 const portfinder = require("portfinder"); // (지금은 미사용) 여유 포트 찾기
 const { v4: uuid } = require("uuid"); // JSON-RPC id 생성용
+const { google } = require('googleapis');
+const { OAuth2Client } = require('google-auth-library');
+const open = require('open').default;
+const http = require('http');
 
 /* ───────────── Logger 헬퍼 ───────────── */
 const ts = () => new Date().toISOString();
@@ -100,8 +215,8 @@ class StdioRPCClient {
 
 /* ───────────── 0. MCP 서버 정의 ─────────────
    여러 서버를 선택적으로 돌릴 수 있도록 배열로 보관
-   (현재는 Filesystem 서버 하나만)
-   기존에 만들어져있던 서버를 설치하여 사용할 경우 서버를 설치한 뒤뒤
+   (Filesystem 서버와 Gmail 서버)
+   기존에 만들어져있던 서버를 설치하여 사용할 경우 서버를 설치한 뒤
    SERVER_DEFS에 서버를 추가하면 실행 시 이 배열 내부를 돌면서 필요한 서버의 정보를 취득함.
 ────────────────────────────────────────── */
 const SERVER_DEFS = [
@@ -113,6 +228,14 @@ const SERVER_DEFS = [
         ? "mcp-server-filesystem.cmd"
         : "mcp-server-filesystem",
     allowedDir: process.cwd(), // 루트 디렉터리 기본값
+  },
+  {
+    id: "gmail", // 툴 alias 접두사
+    name: "Gmail",
+    bin:
+      process.platform === "win32"
+        ? "gmail-mcp.cmd"
+        : "gmail-mcp",
   },
 ];
 
@@ -313,12 +436,16 @@ function createWindow() {
     },
   });
   mainWindow.loadFile(path.join(__dirname, "renderer", "index.html"));
+  
+  // 개발자 도구 콘솔 오픈
+  mainWindow.webContents.openDevTools();
 }
 
 /* ───────────── 5. IPC 라우팅 ─────────────
    Renderer → Main
      'select-folder' : 폴더 선택 다이얼로그 열기
      'run-command'   : 사용자 자연어 명령 처리
+     'google-auth'   : Google OAuth 인증 수행
 ────────────────────────────────────────── */
 ipcMain.handle("select-folder", async () => {
   // ① OS 폴더 선택 UI
@@ -336,6 +463,53 @@ ipcMain.handle("select-folder", async () => {
   }
   await spawnServer({ ...SERVER_DEFS[0], allowedDir: dir });
   return dir;
+});
+
+// Google 인증 처리를 위한 새 IPC 핸들러
+ipcMain.handle("google-auth", async () => {
+  log("[IPC] google-auth 시작");
+  try {
+    const gmailServerDef = SERVER_DEFS.find(s => s.id === "gmail");
+    // 이미 실행 중이면 종료
+    const gmailServerIdx = servers.findIndex((s) => s.id === "gmail");
+    if (gmailServerIdx >= 0) {
+      log(`기존 Gmail 서버 종료`);
+      servers[gmailServerIdx].proc.kill();
+      servers.splice(gmailServerIdx, 1);
+    }
+    
+    // 직접 OAuth 인증 시도 (기본 제공되는 키 사용)
+    try {
+      log("[OAuth] 직접 인증 시도 시작");
+      const authResult = await runOAuthAuthentication();
+      
+      if (authResult.success) {
+        // 인증 성공했으니 Gmail 서버 실행
+        log(`인증 성공, Gmail 서버 스폰 시도`);
+        const server = await spawnServer(gmailServerDef);
+        
+        if (server) {
+          log(`Gmail 서버 스폰 성공: ${server.id}`);
+          return { 
+            success: true, 
+            message: "Google 계정 인증이 완료되었습니다. 이제 Gmail 기능을 사용할 수 있습니다." 
+          };
+        } else {
+          throw new Error("Gmail 서버 시작 실패");
+        }
+      }
+    } catch (oauthError) {
+      log(`[OAuth] 직접 인증 실패: ${oauthError.message}`);
+      throw oauthError; // 에러 전파
+    }
+  } catch (e) {
+    err("Google auth failed", e);
+    return { 
+      success: false, 
+      message: `Google 계정 인증 중 오류 발생: ${e.message}`,
+      error: e.message 
+    };
+  }
 });
 
 ipcMain.handle("run-command", async (_e, prompt) => {
@@ -368,7 +542,7 @@ ipcMain.handle("run-command", async (_e, prompt) => {
       }
     }
 
-    /* ④ Filesystem 서버의 응답 : content 배열 중 text 항목 추출 */
+    /* ④ MCP 서버의 응답 : content 배열 중 text 항목 추출 */
     let rawResult;
     if (Array.isArray(rpcRes?.content)) {
       rawResult = rpcRes.content
@@ -390,7 +564,7 @@ ipcMain.handle("run-command", async (_e, prompt) => {
             role: "system",
             content:
               "You are a helpful assistant. The user made a request, " +
-              "we ran a filesystem tool and got some raw output. " +
+              `we ran a ${srv.name} tool and got some raw output. ` +
               "Now produce a single, concise, natural-language response " +
               "that explains the result to the user." +
               "답변은 한글로 해주세요",
@@ -414,8 +588,8 @@ ipcMain.handle("run-command", async (_e, prompt) => {
 /* ───────────── 6. Electron App 생명주기 ───────────── */
 app.whenReady().then(async () => {
   log("Electron ready");
-  // 서버 사전 기동 (디폴트 allowedDir = 앱 실행 위치)
-  for (const def of SERVER_DEFS) await spawnServer(def);
+  // Filesystem 서버만 시작 (Gmail은 인증 버튼 클릭 시 시작)
+  await spawnServer(SERVER_DEFS.find(s => s.id === "fs"));
   createWindow();
 });
 app.on("will-quit", () => servers.forEach((s) => s.proc.kill()));
