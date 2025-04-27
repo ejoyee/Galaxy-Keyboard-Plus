@@ -5,16 +5,20 @@
   "main": "main.js",
   "type": "commonjs",
   "scripts": {
-    "dev": "electron .",
+    "dev": "set NODE_OPTIONS=--no-warnings --trace-warnings --enable-source-maps && electron .",
     "pack": "electron-builder --dir",
     "dist": "electron-builder"
   },
   "dependencies": {
+    "@gongrzhe/server-gmail-autoauth-mcp": "^1.1.8",
     "@modelcontextprotocol/server-filesystem": "^2025.3.28",
     "axios": "^1.8.4",
     "cross-spawn": "^7.0.6",
     "dotenv": "^16.5.0",
     "electron": "^35.2.0",
+    "google-auth-library": "^9.15.1",
+    "googleapis": "^148.0.0",
+    "open": "^10.1.1",
     "portfinder": "^1.0.32",
     "uuid": "^11.1.0"
   },
