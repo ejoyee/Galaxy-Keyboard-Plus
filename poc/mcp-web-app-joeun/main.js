@@ -1,3 +1,15 @@
+/**
+ * @typedef {Object} ToolCall
+ * @property {string} name - MCP tool 이름 (예: gdrive_read_file_content)
+ * @property {Object.<string, any>} arguments - 툴 인자
+ */
+
+/**
+ * @typedef {Object} ExecutionContext
+ * @property {any} [previousResult] - 바로 직전 tool의 결과
+ * @property {any[]} results - 모든 tool 실행 결과
+ */
+
 /* ───────────── OAuth 관련 함수 ───────────── */
 // OAuth 설정 파일 경로
 const path = require("path");
@@ -219,6 +231,143 @@ class StdioRPCClient {
    기존에 만들어져있던 서버를 설치하여 사용할 경우 서버를 설치한 뒤
    SERVER_DEFS에 서버를 추가하면 실행 시 이 배열 내부를 돌면서 필요한 서버의 정보를 취득함.
 ────────────────────────────────────────── */
+
+// 🍄 decideCall에서 여러 tool_call 파싱
+function parseToolCalls(msg) {
+  if (Array.isArray(msg.tool_calls)) {
+    return msg.tool_calls.map((tc) => ({
+      name: tc.function.name,
+      arguments: JSON.parse(tc.function.arguments),
+    }));
+  } else if (msg.function_call) {
+    return [
+      {
+        name: msg.function_call.name,
+        arguments: JSON.parse(msg.function_call.arguments),
+      },
+    ];
+  } else {
+    return [];
+  }
+}
+
+// 🍄 tool_calls 순차 실행 + context 넘겨주기
+async function executePlan(toolCalls) {
+  const context = {
+    results: [],
+    previousResult: null,
+  };
+
+  log("[executePlan] Starting sequential execution:", toolCalls);
+
+  for (const call of toolCalls) {
+    const srvId = call.name.split("_")[0];
+    const srv = servers.find((s) => s.id === srvId);
+    if (!srv) throw new Error(`server ${srvId} not found`);
+
+    // 인자에 context 삽입
+    const args = fillArgumentsWithContext(call.arguments, context);
+
+    const payload = { name: call.name.replace(`${srvId}_`, ""), arguments: args };
+    log("[RPC] calling", payload);
+
+    // MCP 표준 호출
+    let rpcRes;
+    try {
+      rpcRes = await srv.rpc.call("call_tool", payload);
+    } catch (err) {
+      if (err.code === -32601) {
+        rpcRes = await srv.rpc.call("tools/call", payload);
+      } else {
+        throw err;
+      }
+    }
+
+    // 결과 저장
+    let rawResult;
+    if (Array.isArray(rpcRes?.content)) {
+      rawResult = rpcRes.content
+        .filter((c) => c.type === "text")
+        .map((c) => c.text)
+        .join("\n");
+    } else {
+      rawResult = JSON.stringify(rpcRes);
+    }
+
+    context.previousResult = rawResult;
+    context.results.push(rawResult);
+  }
+
+  return context;
+}
+
+// 🍄 arguments 안에 {{previous_result}} 같은 placeholder 자동으로 채워줌
+function fillArgumentsWithContext(argumentsObj, context) {
+  const filled = {};
+
+  for (const key in argumentsObj) {
+    const val = argumentsObj[key];
+    if (typeof val === "string" && val.includes("{{previous_result}}")) {
+      filled[key] = val.replace("{{previous_result}}", context.previousResult ?? "");
+    } else {
+      filled[key] = val;
+    }
+  }
+
+  return filled;
+}
+
+// 🍄 독립적인 병렬 작업일 때 사용하는 함수
+async function executePlanParallel(toolCalls) {
+  log("[executePlanParallel] Starting parallel execution:", toolCalls);
+
+  const results = await Promise.all(
+    toolCalls.map(async (call) => {
+      const srvId = call.name.split("_")[0];
+      const srv = servers.find((s) => s.id === srvId);
+      if (!srv) throw new Error(`server ${srvId} not found`);
+
+      const args = call.arguments;
+      const payload = { name: call.name.replace(`${srvId}_`, ""), arguments: args };
+
+      let rpcRes;
+      try {
+        rpcRes = await srv.rpc.call("call_tool", payload);
+      } catch (err) {
+        if (err.code === -32601) {
+          rpcRes = await srv.rpc.call("tools/call", payload);
+        } else {
+          throw err;
+        }
+      }
+
+      let rawResult;
+      if (Array.isArray(rpcRes?.content)) {
+        rawResult = rpcRes.content
+          .filter((c) => c.type === "text")
+          .map((c) => c.text)
+          .join("\n");
+      } else {
+        rawResult = JSON.stringify(rpcRes);
+      }
+
+      return rawResult;
+    })
+  );
+
+  return results;
+}
+
+// 🍄 previous_result를 써야 한다면 순차, 아니면 병렬
+function markRequiresPreviousResult(toolCalls) {
+  return toolCalls.map((call) => ({
+    ...call,
+    requiresPreviousResult: Object.values(call.arguments).some(
+      (v) => typeof v === "string" && v.includes("{{previous_result}}")
+    ),
+  }));
+}
+
 const SERVER_DEFS = [
   {
     id: "fs", // 툴 alias 접두사
@@ -315,9 +464,27 @@ function allTools() {
   return servers.flatMap((s) => s.tools);
 }
 
-/* OpenAI ChatGPT v2 “function calling” 스펙용 변환 */
+// 🍄 타입 틀린 tools 빼고 전송
+function allToolsForLLM() {
+  return servers.flatMap((s) =>
+    s.tools.filter((t) => {
+      // 1) inputSchema가 object 타입이고
+      const input = t.inputSchema || t.parameters;
+      if (!input || input.type !== "object") return false;
+
+      // 2) properties 정의가 정상적이고
+      if (!input.properties || typeof input.properties !== "object") return false;
+
+      // 3) additionalProperties 없거나 true일 때만 허용
+      if (input.additionalProperties === false) return false;
+
+      return true;
+    })
+  );
+}
+
+/* OpenAI ChatGPT v2 “function calling” 스펙용 변환 🍄 수정*/
 function formatToolV2(t) {
-  // aliasMap : 호출 시 역-매핑하기 위해 보관
   aliasMap.set(t.name, {
     srvId: t.name.split("_", 1)[0],
     method: t._origMethod,
@@ -327,12 +494,12 @@ function formatToolV2(t) {
     type: "function",
     function: {
       name: t.name,
-      description: t.description,
-      parameters: t.inputSchema ||
-        t.parameters || {
-          type: "object",
-          properties: {},
-        },
+      description: t.description || "No description provided",
+      parameters: {
+        type: "object",
+        properties: t.inputSchema?.properties || t.parameters?.properties || {},
+        required: t.inputSchema?.required || t.parameters?.required || [],
+      },
     },
   };
 }
@@ -355,31 +522,65 @@ async function decideCall(prompt) {
         {
           role: "system",
           content: `
-You are a helpful assistant that can respond to questions directly or help with filesystem tasks.
+You are a helpful assistant capable of chaining multiple tool actions.
 
 Guidelines:
-1. TOOL CALL
+1. STEP PLANNING
+   • If the user's request requires multiple steps (such as read-then-send), break it down into an ordered list of actions.
+   • Each action must specify a tool name and required arguments.
+   • If later steps need earlier results (e.g., sending a read file), insert "{{previous_result}}" where the output should go.
+
+2. TOOL CALL
+  • Use only provided tool names and their schemas.
+   • Tool names are prefixed by their service (e.g., "gdrive_read_file_content", "gmail_send_email").
    • If a request requires filesystem access (reading, writing, listing, etc.), emit exactly one tool call JSON with the correct tool name and all required parameters.
    • Use only the provided tool names and schemas—do not invent new tools or free-form code.
    • If the user did not specify a path (or uses "/" or "."), use the current project root directory instead.
    • When accessing files in Google Drive, users do not need to provide file IDs. File names (e.g., "test.txt" or "test") are sufficient, and the server will automatically search for and find the file. Do not ask for file IDs.
- • When accessing files in Google Drive:
-     - Users do not need to provide file IDs. File names (e.g., "test.txt" or "test") are sufficient, and the server will automatically search for and find the file. Do not ask for file IDs.
-     - To replace the entire file content, use "update_file_content".
-     - To append new text to an existing file, use "append_file_content".
-     - To delete specific text from a file, use "delete_from_file_content".
-     - To simply read or view a file's content, use "read_file_content".
-     - Always select the tool that most precisely matches the user's intention.
-   2. TEXT RESPONSE
+   • When accessing files in Google Drive:
+       - Users do not need to provide file IDs. File names (e.g., "test.txt" or "test") are sufficient, and the server will automatically search for and find the file. Do not ask for file IDs.
+       - To replace the entire file content, use "update_file_content".
+       - To append new text to an existing file, use "append_file_content".
+       - To delete specific text from a file, use "delete_from_file_content".
+       - To simply read or view a file's content, use "read_file_content".
+       - Always select the tool that most precisely matches the user's intention.
+3. TEXT RESPONSE
    • For general questions, conversations, or requests that don't need filesystem access, just respond normally with helpful information.
    • Always respond in Korean unless specifically asked for another language.
-3. FOLLOW-UP QUESTIONS
-   • If a required parameter is missing or ambiguous, ask the user a clarifying question instead of guessing.  
+3-1. OUTPUT FORMAT
+   • Always respond with a list of tool_calls, NOT natural language explanations.
+   • Each tool call includes:
+     - function name
+     - JSON stringified arguments
+3-2. PLACEHOLDER
+   • To reuse the previous step's result, insert "{{previous_result}}" in the argument field.
+4. FOLLOW-UP QUESTIONS
+   • If a required parameter is missing or ambiguous, ask the user a clarifying question instead of guessing.
+5. EXAMPLES
+Request: "Send 'test.txt' in Google Drive to whdsmdl401@naver.com"
+Plan:
+[
+  {
+    "name": "gdrive_read_file_content",
+    "arguments": { "filename": "test.txt" }
+  },
+  {
+    "name": "gmail_send_email",
+    "arguments": {
+      "to": "whdsmdl401@naver.com",
+      "subject": "Requested File",
+      "body": "{{previous_result}}"
+    }
+  }
+]
+
+⚠ Always output only the JSON list of tool_calls.
+
 `,
         },
         { role: "user", content: prompt },
       ],
-      tools: allTools().map(formatToolV2),
+      tools: allToolsForLLM().map(formatToolV2),
       tool_choice: "auto",
       max_tokens: 1024,
     },
@@ -389,49 +590,70 @@ Guidelines:
   log("[LLM] raw response:", JSON.stringify(res.data, null, 2));
   const msg = res.data.choices[0].message;
 
-  /* ─ OpenAI 2024 이후 포맷: message.tool_calls[] ─ */
-  let fc = null;
-  if (Array.isArray(msg.tool_calls) && msg.tool_calls.length) fc = msg.tool_calls[0].function;
-  /* ─ 레거시(v1) 포맷: function_call ─ */ else if (msg.function_call) fc = msg.function_call;
+  // multiple tool_calls 가능하게
+  const toolCalls = markRequiresPreviousResult(parseToolCalls(msg));
+  log("[Plan] toolCalls:", toolCalls);
 
-  // 툴 호출이 없으면 텍스트 응답 (일반 질문으로 처리)
-  if (!fc || !fc.arguments) return { type: "text", content: msg.content ?? "" };
-
-  // 툴 인자 JSON 파싱
-  let parsed;
-  try {
-    parsed = JSON.parse(fc.arguments);
-  } catch {
-    err("Failed to parse tool arguments:", fc.arguments);
-    return { type: "text", content: msg.content ?? "" };
-  }
-
-  const alias = fc.name; // e.g. fs_directory_tree
-  const params = parsed.params || parsed; // (서버 마다 다름)
-
-  /* ───── 경로 보정 ─────
-    LLM이 '/'·'.'·'' 같이 루트 의미로 응답하면
-    MCP 서버 쪽엔 '.'(allowedDir)로 넘겨서
-    "허용된 디렉터리 바깥" 오류를 방지 */
-  if (typeof params.path === "string") {
-    const p = params.path.trim();
-    if (p === "/" || p === "\\" || p === "." || p === "") {
-      params.path = "."; // Filesystem 서버는 '.'을 프로젝트 루트로 해석
+  if (toolCalls.length === 0 && msg.content) {
+    try {
+      const fallbackParsed = JSON.parse(msg.content);
+      if (Array.isArray(fallbackParsed)) {
+        log("[Fallback] parsed toolCalls from content:", fallbackParsed);
+        return {
+          type: "toolCalls",
+          toolCalls: markRequiresPreviousResult(fallbackParsed),
+        };
+      }
+    } catch (e) {
+      log("[Fallback] content parsing failed:", e.message);
     }
   }
 
-  const map = aliasMap.get(alias);
-  if (!map) {
-    err("Unmapped tool alias:", alias);
+  if (toolCalls.length === 0) {
+    // 툴 호출이 없으면 일반 텍스트 응답
     return { type: "text", content: msg.content ?? "" };
   }
 
-  // RPC 실행 정보 반환
+  // /* ─ OpenAI 2024 이후 포맷: message.tool_calls[] ─ */
+  // let fc = null;
+  // if (Array.isArray(msg.tool_calls) && msg.tool_calls.length) fc = msg.tool_calls[0].function;
+  // /* ─ 레거시(v1) 포맷: function_call ─ */ else if (msg.function_call) fc = msg.function_call;
+
+  // // 툴 호출이 없으면 텍스트 응답 (일반 질문으로 처리)
+  // if (!fc || !fc.arguments) return { type: "text", content: msg.content ?? "" };
+
+  // 툴 인자 JSON 파싱
+  // let parsed;
+  // try {
+  //   parsed = JSON.parse(fc.arguments);
+  // } catch {
+  //   err("Failed to parse tool arguments:", fc.arguments);
+  //   return { type: "text", content: msg.content ?? "" };
+  // }
+
+  // const alias = fc.name; // e.g. fs_directory_tree
+  // const params = parsed.params || parsed; // (서버 마다 다름)
+
+  // /* ───── 경로 보정 ─────
+  //   LLM이 '/'·'.'·'' 같이 루트 의미로 응답하면
+  //   MCP 서버 쪽엔 '.'(allowedDir)로 넘겨서
+  //   "허용된 디렉터리 바깥" 오류를 방지 */
+  // if (typeof params.path === "string") {
+  //   const p = params.path.trim();
+  //   if (p === "/" || p === "\\" || p === "." || p === "") {
+  //     params.path = "."; // Filesystem 서버는 '.'을 프로젝트 루트로 해석
+  //   }
+  // }
+
+  // const map = aliasMap.get(alias);
+  // if (!map) {
+  //   err("Unmapped tool alias:", alias);
+  //   return { type: "text", content: msg.content ?? "" };
+  // }
+
   return {
-    type: "rpc",
-    srvId: map.srvId,
-    method: map.method,
-    params,
+    type: "toolCalls",
+    toolCalls,
   };
 }
 
@@ -537,44 +759,66 @@ ipcMain.handle("google-auth", async () => {
 ipcMain.handle("run-command", async (_e, prompt) => {
   log("[IPC] run-command", prompt);
   try {
-    /* ① LLM에 의사결정 위임 */
+    // 1. LLM에 Plan 요청
     const d = await decideCall(prompt);
 
     // 일반 질문인 경우 - 텍스트 응답을 바로 반환
     if (d.type === "text") return { result: d.content };
 
+    // 2. toolCalls 추출출
+    const toolCalls = d.toolCalls; // ➡️ decideCall에서 배열로 반환해야 함
+
+    if (!Array.isArray(toolCalls) || toolCalls.length === 0) {
+      throw new Error("도구 호출이 없습니다. Plan 생성 실패");
+    }
+
+    /** 3. Plan 실행 (순차 or 병렬) */
+    let context;
+
+    if (toolCalls.some((call) => call.requiresPreviousResult)) {
+      // 연쇄 의존 관계가 필요한 경우
+      context = await executePlan(toolCalls);
+    } else {
+      // 독립적인 작업은 병렬 실행
+      const results = await executePlanParallel(toolCalls);
+      context = { results, previousResult: results.at(-1) }; // 마지막 결과
+    }
+
+    // 4. 결과 요약
+    const rawSummary = context.results.map((r, i) => `Step ${i + 1}: ${r}`).join("\n\n");
+
     // MCP 도구 호출이 필요한 경우 - 기존 코드
     /* ② RPC 실행 대상 서버 탐색 */
-    const srv = servers.find((s) => s.id === d.srvId);
-    if (!srv) throw new Error(`server ${d.srvId} not found`);
+    // const srv = servers.find((s) => s.id === d.srvId);
+    // if (!srv) throw new Error(`server ${d.srvId} not found`);
 
-    const payload = { name: d.method, arguments: d.params };
-    log("[RPC] calling call_tool", payload);
+    // const payload = { name: d.method, arguments: d.params };
+    // log("[RPC] calling call_tool", payload);
 
-    /* ③ MCP 표준: call_tool 또는 tools/call */
-    let rpcRes;
-    try {
-      rpcRes = await srv.rpc.call("call_tool", payload);
-    } catch (err) {
-      if (err.code === -32601) {
-        log("[RPC] call_tool not found, falling back to tools/call");
-        rpcRes = await srv.rpc.call("tools/call", payload);
-      } else {
-        throw err;
-      }
-    }
+    // /* ③ MCP 표준: call_tool 또는 tools/call */
+    // let rpcRes;
+    // try {
+    //   rpcRes = await srv.rpc.call("call_tool", payload);
+    // } catch (err) {
+    //   if (err.code === -32601) {
+    //     log("[RPC] call_tool not found, falling back to tools/call");
+    //     rpcRes = await srv.rpc.call("tools/call", payload);
+    //   } else {
+    //     throw err;
+    //   }
+    // }
 
-    /* ④ MCP 서버의 응답 : content 배열 중 text 항목 추출 */
-    let rawResult;
-    if (Array.isArray(rpcRes?.content)) {
-      rawResult = rpcRes.content
-        .filter((c) => c.type === "text")
-        .map((c) => c.text)
-        .join("\n");
-    } else {
-      rawResult = JSON.stringify(rpcRes);
-    }
-    log("[RPC] rawResult:", rawResult);
+    // /* ④ MCP 서버의 응답 : content 배열 중 text 항목 추출 */
+    // let rawResult;
+    // if (Array.isArray(rpcRes?.content)) {
+    //   rawResult = rpcRes.content
+    //     .filter((c) => c.type === "text")
+    //     .map((c) => c.text)
+    //     .join("\n");
+    // } else {
+    //   rawResult = JSON.stringify(rpcRes);
+    // }
+    // log("[RPC] rawResult:", rawResult);
 
     /* ⑤ 결과를 한글 자연어로 요약(2차 OpenAI 호출) */
     const postRes = await axios.post(
@@ -585,22 +829,19 @@ ipcMain.handle("run-command", async (_e, prompt) => {
           {
             role: "system",
             content:
-              "You are a helpful assistant. The user made a request, " +
-              `we ran a ${srv.name} tool and got some raw output. ` +
-              "Now produce a single, concise, natural-language response " +
-              "that explains the result to the user." +
-              "답변은 한글로 해주세요",
+              "You are a helpful assistant. The user performed multiple tool actions.\n" +
+              "Summarize the steps and results briefly and clearly, in natural Korean.\n",
           },
           { role: "user", content: `Original request:\n${prompt}` },
-          { role: "assistant", content: `Tool output:\n${rawResult}` },
+          { role: "assistant", content: `Tool outputs:\n${rawSummary}` },
         ],
       },
       { headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` } }
     );
 
-    const friendly = postRes.data.choices[0].message.content.trim();
-    log("[POST-PROCESS] final friendly answer:", friendly);
-    return { result: friendly };
+    const finalAnswer = postRes.data.choices[0].message.content.trim();
+    log("[POST-PROCESS] final answer:", finalAnswer);
+    return { result: finalAnswer };
   } catch (e) {
     err("cmd fail", e);
     return { error: e.message };
