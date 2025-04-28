@@ -42,3 +42,4 @@ contextBridge.exposeInMainWorld("api", {
   requestGmailServer: () => ipcRenderer.invoke("gmail-spawn"),
   requestCalendarServer: () => ipcRenderer.invoke("calendar-spawn"),
 });
+
