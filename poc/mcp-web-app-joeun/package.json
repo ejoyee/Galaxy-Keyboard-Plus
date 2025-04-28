@@ -16,9 +16,11 @@
     "axios": "^1.8.4",
     "cross-spawn": "^7.0.6",
     "dotenv": "^16.5.0",
+    "ej-mcp-server-gdrive": "github:ejoyee/ej-mcp-server-gdrive",
     "electron": "^35.2.0",
     "google-auth-library": "^9.15.1",
     "googleapis": "^148.0.0",
+    "mime-types": "^3.0.1",
     "open": "^10.1.1",
     "portfinder": "^1.0.32",
     "uuid": "^11.1.0"

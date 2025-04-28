@@ -237,7 +237,7 @@ const SERVER_DEFS = [
   {
     id: "gdrive", // ➡️ 추가
     name: "GDrive",
-    bin: process.platform === "win32" ? "mcp-server-gdrive.cmd" : "mcp-server-gdrive",
+    bin: process.platform === "win32" ? "ej-mcp-server-gdrive.cmd" : "ej-mcp-server-gdrive",
   },
 ];
 
@@ -277,9 +277,13 @@ async function refreshTools(srv) {
     // 서버 버전에 따라 list_tools 또는 tools/list 지원
     let raw;
     try {
+      log("start list_tool");
       raw = await srv.rpc.call("list_tools");
+      log("end list_tool");
     } catch {
+      log("start tools/list");
       raw = await srv.rpc.call("tools/list");
+      log("end tools/list");
     }
 
     // 다양한 응답 형식을 배열로 정규화
