@@ -81,18 +81,18 @@ services:
       - SPRING_PROFILES_ACTIVE=local
   
   llm:
-  build:
-    context: ./remote/llm/llm
-  container_name: llm-service
-  ports:
-    - "8092:8092"
-  networks:
-    - backend
-  depends_on:
-    - gateway
-  environment:
-    - OPENAI_API_KEY=${OPENAI_API_KEY}
-    - STREAM_BUFFER_SIZE=${STREAM_BUFFER_SIZE}
+    build:
+      context: ./remote/llm/llm
+    container_name: llm-service
+    ports:
+      - "8092:8092"
+    networks:
+      - backend
+    depends_on:
+      - gateway
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - STREAM_BUFFER_SIZE=${STREAM_BUFFER_SIZE}
 
 volumes:
   postgres-data:
