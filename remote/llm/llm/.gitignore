@@ -1,0 +1,42 @@
+# llm/.gitignore
+
+# 환경 변수 파일 (API 키 등 민감 정보 포함)
+.env
+
+# Python 가상 환경 폴더
+venv/
+.venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# Python 캐시 및 컴파일된 파일
+__pycache__/
+*.py[cod]
+*$py.class
+
+# IDE 및 에디터 설정 파일/폴더
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# 운영체제 생성 파일
+.DS_Store
+Thumbs.db
+
+# 빌드 및 배포 관련 폴더 (필요시 추가)
+build/
+dist/
+*.egg-info/
+
+# 테스트 관련 캐시 (필요시 추가)
+.pytest_cache/
+.coverage*
+
+# 로그 파일 (필요시 추가)
+*.log
