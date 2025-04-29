@@ -16,22 +16,27 @@ router = APIRouter(prefix="/llm", tags=["LLM Chat"])
 
 @router.post(
     "/chat",
-    summary="LLM 채팅 (단일 응답)",
-    description="OpenAI API를 호출하여 완전한 JSON 응답을 한 번에 반환합니다.",
-    response_model=Dict[str, Any] # 동적 OpenAI 응답 처리
+    summary="LLM 채팅 (단순 텍스트 응답)",
+    description="OpenAI API를 호출하여 응답 메시지의 내용(content)만 추출하여 반환합니다.",
+    response_model=Dict[str, Any] # 응답 모델 변경 (OpenAI 응답 구조는 동적이므로 Dict 사용)
 )
 async def post_chat_completion(
     payload: ChatCompletionInput,
     client: AsyncOpenAI = Depends(get_openai_client),
     # ChatService를 직접 주입할 수도 있지만, 여기서는 static method를 사용
 ) -> Dict[str, Any]:
-    """컨트롤러: 요청을 받아 ChatService.create_completion 호출 후 응답 반환"""
+    """컨트롤러: 요청을 받아 ChatService.create_completion 호출 후 결과를 파싱하여 단순 텍스트 응답 반환"""
     try:
-        result = await ChatService.create_completion(payload, client)
-        return result
+        # 서비스 계층 호출 (전체 OpenAI 응답 객체를 받음)
+        full_result = await ChatService.create_completion(payload, client)
+        # 추출 로직 없이 그대로 반환
+        return full_result
     except OpenAIError as e:
-        # 서비스에서 발생한 OpenAI 오류를 HTTP 예외로 변환하여 클라이언트에 반환
+        # 서비스에서 발생한 OpenAI 오류를 HTTP 예외로 변환
         raise handle_openai_error(e)
+    # HTTPException 은 handle_openai_error 에서 발생시키므로 별도 처리는 불필요할 수 있음
+    # except HTTPException:
+    #      raise
     except Exception as e:
         # 기타 예상치 못한 오류 처리
         print(f"Unexpected error in /chat controller: {e}")
