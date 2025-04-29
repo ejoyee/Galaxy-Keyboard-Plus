@@ -321,36 +321,57 @@ function fillArgumentsWithContext(argumentsObj, context) {
 
   for (const key in argumentsObj) {
     const val = argumentsObj[key];
-    if (typeof val === "string") {
-      let newVal = val;
-
-      // previous_result 또는 previous_result.XXX 패턴 찾기
-      const match = newVal.match(/\{\{previous_result(?:\.(.+?))?\}\}/);
-      if (match) {
-        const path = match[1]; // e.g., "body", "subject", "id"
-        if (path) {
-          if (typeof context.previousResult === "object" && context.previousResult !== null) {
-            const value = context.previousResult[path];
-            newVal = value !== undefined ? value : "";
-          } else {
-            newVal = "";
-          }
-        } else {
-          newVal =
-            typeof context.previousResult === "string"
-              ? context.previousResult
-              : JSON.stringify(context.previousResult ?? "");
-        }
-      }
-
-      if (newVal.includes("{{previous_results_joined}}")) {
-        newVal = newVal.replace("{{previous_results_joined}}", (context.results || []).join("\n\n"));
-      }
-
-      filled[key] = newVal;
-    } else {
+    if (typeof val !== "string") {
       filled[key] = val;
+      continue;
     }
+
+    let newVal = val;
+
+    // {{previous_result}} or {{previous_result.body}}
+    newVal = newVal.replace(/\{\{previous_result(?:\.(\w+))?\}\}/g, (_, field) => {
+      const pr = context.previousResult;
+      if (!pr) return "";
+      if (!field) {
+        if (typeof pr === "string") return pr;
+        if (typeof pr === "object") return pr.body ?? pr.text ?? JSON.stringify(pr);
+        return String(pr);
+      }
+      if (typeof pr === "object") {
+        return pr[field] ?? "";
+      }
+      return "";
+    });
+
+    // {{previous_results_joined}}
+    newVal = newVal.replace(/\{\{previous_results_joined\}\}/g, () => {
+      return (context.results || [])
+        .filter((r) => r !== null && r !== undefined)
+        .map((r) => {
+          if (typeof r === "string") return r;
+          if (typeof r === "object") return r.body ?? r.text ?? JSON.stringify(r);
+          return String(r);
+        })
+        .join("\n\n");
+    });
+
+    // {{previous_results[N]}} or {{previous_results[N].body}}
+    newVal = newVal.replace(/\{\{previous_results\[(\d+)\](?:\.(\w+))?\}\}/g, (_, idxStr, field) => {
+      const idx = parseInt(idxStr, 10);
+      const r = context.results?.[idx];
+      if (r === undefined) return "";
+      if (!field) {
+        if (typeof r === "string") return r;
+        if (typeof r === "object") return r.body ?? r.text ?? JSON.stringify(r);
+        return String(r);
+      }
+      if (typeof r === "object") {
+        return r[field] ?? "";
+      }
+      return "";
+    });
+
+    filled[key] = newVal;
   }
 
   return filled;
@@ -549,16 +570,7 @@ function allToolsForLLM() {
         required: ["prompt"],
       },
     },
-
-    ...servers.flatMap((s) =>
-      s.tools.filter((t) => {
-        const input = t.inputSchema || t.parameters;
-        if (!input || input.type !== "object") return false;
-        if (!input.properties || typeof input.properties !== "object") return false;
-        if (input.additionalProperties === false) return false;
-        return true;
-      })
-    ),
+    ...servers.flatMap((s) => s.tools), // 🔥 filter 없이 전체 tools
   ];
 }
 
@@ -569,16 +581,22 @@ function formatToolV2(t) {
     method: t._origMethod,
   });
 
+  const rawInput = t.inputSchema || t.parameters || {};
+
+  // 🔥 여기서 최소한 "OpenAI가 원하는 모양"으로 보정
+  const parameters = {
+    type: "object",
+    properties: rawInput.properties || {},
+    required: rawInput.required || [],
+    // additionalProperties 명시하지 않음
+  };
+
   return {
     type: "function",
     function: {
       name: t.name,
       description: t.description || "No description provided",
-      parameters: {
-        type: "object",
-        properties: t.inputSchema?.properties || t.parameters?.properties || {},
-        required: t.inputSchema?.required || t.parameters?.required || [],
-      },
+      parameters,
     },
   };
 }
@@ -603,6 +621,16 @@ async function callGenerateText(prompt) {
 
 // 🍄 toolCall 하나를 실행하는 헬퍼 함수
 async function executeToolCall(call, context) {
+  const cleanName = call.name.replace(/^functions\./, "");
+
+  if (cleanName === "generate_text") {
+    const prompt = call.arguments.prompt;
+    const generatedText = await callGenerateText(prompt);
+    context.previousResult = { body: generatedText };
+    context.results.push(generatedText);
+    return generatedText;
+  }
+
   const srvId = call.name.replace(/^functions\./, "").split("_")[0];
   const srv = servers.find((s) => s.id === srvId);
   if (!srv) throw new Error(`server ${srvId} not found`);
@@ -663,17 +691,18 @@ async function executePlanFlexible(toolCalls) {
   const sequential = toolCalls.filter((call) => call.requiresPreviousResult);
   const parallel = toolCalls.filter((call) => !call.requiresPreviousResult);
 
-  // 병렬 먼저 실행
-  if (parallel.length) {
-    const parallelResults = await Promise.all(parallel.map((call) => executeToolCall(call, context)));
-    if (parallelResults.length) {
-      context.previousResult = parallelResults[parallelResults.length - 1];
-    }
+  // 병렬 먼저 (순서 보장 위해 await 하나씩 실행)
+  for (const call of parallel) {
+    const result = await executeToolCall(call, context);
+    context.results.push(result);
+    context.previousResult = result;
   }
 
   // 순차 실행
   for (const call of sequential) {
-    await executeToolCall(call, context);
+    const result = await executeToolCall(call, context);
+    context.results.push(result);
+    context.previousResult = result;
   }
 
   return context;
@@ -726,6 +755,9 @@ Guidelines:
   (예: search_emails로 "newer_than:1d" 같은 쿼리를 보내서 최근 메일을 찾는다)
    • "gmail_read_email" 툴을 호출한 후 메일 본문을 사용할 때는 "{{previous_result.body}}"를 사용하세요.
    • "gmail_read_email" 툴의 결과에는 "body", "subject", "from" 등이 포함되어 있습니다. 반드시 "body"를 사용하세요.
+   - 사용자가 요청한 경우에만, generate_text로 생성한 결과를 메일 본문에 포함해야 합니다.
+   - 예를 들어, "정리한 내용을 메일로 보내줘" 또는 "요약해서 메일 보내줘"와 같은 요청이 있는 경우에만 메일을 전송하세요.
+   - 파일 읽기나 텍스트 생성 결과를 메일로 보내야 할 경우, {{previous_results_joined}}를 사용해 본문을 구성하세요.
 
 3. TEXT RESPONSE
    • For general questions, conversations, or requests that don't need filesystem access, just respond normally with helpful information.
@@ -1057,7 +1089,9 @@ ipcMain.handle("run-command", async (_e, prompt) => {
             role: "system",
             content:
               "You are a helpful assistant. The user performed multiple tool actions.\n" +
-              "Summarize the steps and results briefly and clearly, in natural Korean.\n",
+              "For each action, show the action result directly without omitting or summarizing.\n" +
+              "Especially if the action read a file, show the file content exactly as it is.\n" +
+              "Respond in natural Korean.\n",
           },
           { role: "user", content: `Original request:\n${prompt}` },
           { role: "assistant", content: `Tool outputs:\n${rawSummary}` },
