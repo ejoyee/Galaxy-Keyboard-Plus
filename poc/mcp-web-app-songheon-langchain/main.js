@@ -2,6 +2,7 @@
 // OAuth 설정 파일 경로
 const path = require("path");
 const fs = require("fs");
+const { RunnableSequence, RunnableLambda } = require("@langchain/core/runnables");
 const HOME_DIR = process.env.HOME || process.env.USERPROFILE;
 const CONFIG_DIR = path.join(HOME_DIR, '.gmail-mcp');
 const OAUTH_PATH = path.join(CONFIG_DIR, 'gcp-oauth.keys.json');
@@ -11,6 +12,133 @@ const CREDENTIALS_PATH = path.join(CONFIG_DIR, 'credentials.json');
 const OAUTH_CLIENT_ID = "707596761486-2nanfg75jmj5c05jqndshb7splbuei8a.apps.googleusercontent.com";
 const OAUTH_CLIENT_SECRET = "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";
 const OAUTH_REDIRECT_URI = "http://localhost:3000/oauth2callback";
+
+
+const COMMAND_SPLIT_PROMPT = `You are an expert at analyzing complex user requests and deciding how to process them optimally.
+
+Instructions:
+- First, review the user request carefully and also review the provided list of available tools.
+- If any available tool can be used to fulfill part or all of the request, you must split the request into steps.
+- Even if only one tool is needed, you must still output the result in "mode": "steps" format (NOT using tool_calls directly).
+- Each step must correspond exactly to one tool execution.
+- Use the provided available tools list to guide your step splitting. Do not invent new tools.
+- If none of the available tools are appropriate for any part of the request, provide a final natural-language response instead.
+- Every request must produce a valid, non-empty JSON output.
+- Do not use "tool_calls" — always structure output manually under "steps" if tools are involved.
+
+Json Output Format:
+
+For natural-language response (no tools needed):
+{
+  "mode": "natural",
+  "response": "<Write your helpful answer here>"
+}
+
+For step-by-step tool usage (even if only one step):
+{
+  "mode": "steps",
+  "steps": [
+    {
+      "step": 1,
+      "instruction": "<Write the task to be performed using a tool>"
+    },
+    {
+      "step": 2,
+      "instruction": "<Write the task to be performed using a tool>"
+    }
+  ]
+}
+
+Examples:
+
+User Request: "Summarize the document.txt file"
+
+Output:
+{
+  "mode": "steps",
+  "steps": [
+    {
+      "step": 1,
+      "instruction": "Summarize the document.txt file."
+    }
+  ]
+}
+
+User Request: "What is the population of South Korea?"
+
+Output:
+{
+  "mode": "natural",
+  "response": "As of 2024, the population of South Korea is approximately 51 million."
+}
+
+User Request: "Add an event to Google Calendar for June 2, and check events for May 3."
+
+Output:
+{
+  "mode": "steps",
+  "steps": [
+    {
+      "step": 1,
+      "instruction": "Add an event to Google Calendar for June 2."
+    },
+    {
+      "step": 2,
+      "instruction": "List the events on Google Calendar for May 3."
+    }
+  ]
+}
+
+Important:
+- Always use "mode": "steps" when any tool is needed.
+- Never output tool_calls or invoke tools directly.
+- Output must always be valid JSON format.
+
+Now, based on the user request below, produce the appropriate JSON output.
+`;
+
+const SELECT_TOOL_PROMPT =`You are an expert assistant that selects the most appropriate MCP Tool to execute a specific task step, based on the user's request and previous context.
+
+Instructions:
+- Carefully review the Current Step, Previous Step, and Previous Result.
+- Carefully review the provided list of available MCP Tools (via system message separately).
+- If any MCP Tool matches the Current Step, you MUST respond using a tool_call JSON format.
+- If no tools are appropriate, you MUST respond with a normal text response (content).
+- Every request must result in a non-empty, valid response — either a tool_call or a natural content reply.
+
+Guidelines:
+1. TOOL CALL
+   • If a tool is suitable for the task (e.g., filesystem access: reading, writing, listing files, etc.), respond using a tool_call JSON structure.
+   • Use exactly one tool per step, matching the provided tool names and schemas.
+   • Never invent new tools or modify tool schemas arbitrarily.
+   • If the user specified "/", ".", or left the path empty, treat it as the current project root directory ("./").
+
+2. TEXT RESPONSE
+   • If the task is purely conversational, general knowledge, reasoning, or not requiring any MCP tool, respond with a normal text response.
+   • Answer helpfully and in Korean unless specifically asked for another language.
+
+3. CONTEXT USAGE
+   • Always consider the Previous Step and Previous Result.
+   • Use Previous Result as needed to fill missing fields like content, body, filename, etc.
+
+4. FOLLOW-UP QUESTIONS
+   • If a required parameter is missing or ambiguous, ask the user a clarifying question rather than guessing.
+
+Output Behavior:
+- If a tool is needed, you must respond with a tool_call JSON format.
+- If no tool is needed, respond using normal assistant message content.
+- Never return an empty response.
+
+Response Format:
+- For tool_call: respond in tool_call format (OpenAI Function Calling).
+- For natural language reply: respond with a non-empty content field (normal assistant message).
+
+Important:
+- Prioritize using available MCP Tools whenever possible.
+- Do not emit both a tool_call and a content reply together — only one must be chosen appropriately.
+
+Choose the best action based on the above and the available tools.
+`;
 
 // OAuth 인증 관리 함수
 async function runOAuthAuthentication() {
@@ -341,13 +469,59 @@ function formatToolV2(t) {
 
 const aliasMap = new Map(); // {alias → {srvId, method}}
 
-/* ─────────── 3. OpenAI → 어떤 툴 쓸지 결정 또는 직접 응답 ─────────────
+/* ─────────── 3. OpenAI → 사용자의 명령을 여러 단계로 분할할 ─────────────
+   ① 유저 프롬프트, ② 서버 툴 스키마 → Chat Completions 호출
+   ▸ LLM 결과는 배열 형태로 명령 처리 단계 응답답
+────────────────────────────────────────── */
+async function splitIntoSteps(prompt) {
+  const key = process.env.OPENAI_API_KEY;
+  if (!key) throw new Error("OPENAI_API_KEY is not set.");
+
+  const res = await axios.post(
+    "https://api.openai.com/v1/chat/completions",
+    {
+      model: "gpt-4o-mini",
+      messages: [
+        { role: "system", content: COMMAND_SPLIT_PROMPT },
+        { role: "user", content: prompt }
+      ],
+      tools: allTools().map(formatToolV2),
+      max_tokens: 1024
+    },
+    { headers: { Authorization: `Bearer ${key}` } }
+  );
+
+  const content = res.data.choices[0].message.content?.trim();
+  if (!content) {
+    return { earlyExit: true, message: "No content received from LLM." };
+  }
+
+  try {
+    const parsed = JSON.parse(content);
+
+    if (parsed.mode === "steps" && Array.isArray(parsed.steps)) {
+      return { earlyExit: false, steps: parsed.steps };
+    } else if (parsed.mode === "natural" && typeof parsed.response === "string") {
+      return { earlyExit: true, message: parsed.response };
+    } else {
+      // mode가 없거나 예상치 못한 형식이면 그냥 content를 반환
+      return { earlyExit: true, message: content };
+    }
+  } catch (e) {
+    // JSON 파싱 실패한 경우 자연어 content 그대로 반환
+    return { earlyExit: true, message: content };
+  }
+}
+
+
+
+/* ─────────── 4. OpenAI → 어떤 툴 쓸지 결정 또는 직접 응답 ─────────────
    ① 유저 프롬프트, ② 서버 툴 스키마 → Chat Completions 호출
    ▸ LLM 결과가 "tool_call" 이면 RPC 실행, 아니면 텍스트 그대로 응답
 ────────────────────────────────────────── */
-async function decideCall(prompt) {
+async function selectToolForStep(currentStep, previousStep, previousResult) {
   const key = process.env.OPENAI_API_KEY;
-  if (!key) return { type: "text", content: "OPENAI_API_KEY is not set." };
+  if (!key) throw new Error("OPENAI_API_KEY is not set.");
 
   const res = await axios.post(
     "https://api.openai.com/v1/chat/completions",
@@ -356,52 +530,18 @@ async function decideCall(prompt) {
       messages: [
         {
           role: "system",
-          content: `
-You are a helpful assistant that can respond to questions directly or help with document tasks.
-
-Guidelines:
-  • If a user request logically requires multiple operations, such as generating text before using it in a tool or reading a file then sending it via email, you must emit an array of tool call JSON objects describing the full sequence.
-  • Always think carefully about whether the user’s request implies multiple sequential steps. If so, you must respond with a multi-step tool call that fully covers the user's intention.
-  
-1. MULTI-STEP TOOL CALLS
-  • If a user request logically requires multiple operations (e.g., generating text before using it in a tool, reading a file then sending it via email), emit an array of tool call JSON objects.
-  • Each tool call must have its own "name" and "arguments" following the provided tool schemas.
-  • If a step simply requires the model's own reasoning or text generation (not a tool), insert a tool call with name set to assistance and provide an appropriate prompt field inside arguments.
-  • If a tool call depends on the previous result, use the keyword {{previous_result}} in the corresponding field.
-
-   Example:
-   User prompt: "Recommend a subject for an email and then send an email using the suggested subject."
-   Expected tool call output:
-   [
-     {
-       "name": "assistance",
-       "arguments": {
-         "prompt": "Recommend a subject for an email to be sent."
-       }
-     },
-     {
-       "name": "gmail_send_email",
-       "arguments": {
-         "to": "user@example.com",
-         "subject": "{{previous_result}}",
-         "body": "This is an email with the recommended subject."
-       }
-     }
-   ]
-
-2. TOOL USAGE RULES
-   • Use only the provided tool names and schemas — do not invent new tools or write free-form code.
-   • For filesystem requests, if no path is specified (or uses "/" or "."), assume the current project root directory.
-3. TEXT RESPONSE
-   • If the request doesn't involve tool operations, respond naturally with helpful information.
-   • Always respond in Korean unless specifically asked otherwise.
-4. FOLLOW-UP QUESTIONS
-   • If required parameters are missing or ambiguous, ask the user for clarification instead of guessing.
-`,
+          content: SELECT_TOOL_PROMPT,
         },
-        { role: "user", content: prompt },
+        {
+          role: "user",
+          content: `
+Current Step: ${currentStep}
+Previous Step: ${previousStep ?? "None"}
+Previous Result: ${previousResult ?? "None"}
+          `
+        }
       ],
-      tools: allTools().map(formatToolV2),
+      tools: allTools().map(formatToolV2), // MCP 툴 목록 넘겨줌
       tool_choice: "auto",
       max_tokens: 1024,
     },
@@ -457,9 +597,11 @@ Guidelines:
     method: map.method,
     params,
   };
+
 }
 
-/* ───────────── 4. Electron 윈도우 생성 ───────────── */
+
+/* ───────────── 5. Electron 윈도우 생성 ───────────── */
 let mainWindow;
 function createWindow() {
   log("createWindow");
@@ -477,11 +619,13 @@ function createWindow() {
   mainWindow.webContents.openDevTools();
 }
 
-/* ───────────── 5. IPC 라우팅 ─────────────
+/* ───────────── 6. IPC 라우팅 ─────────────
    Renderer → Main
      'select-folder' : 폴더 선택 다이얼로그 열기
      'run-command'   : 사용자 자연어 명령 처리
      'google-auth'   : Google OAuth 인증 수행
+     'gmail-spawn'   : Gmail mcp 서버 띄우는 과정
+     'calendar-spawn' : Calendar mcp 서버 띄우는 과정
 ────────────────────────────────────────── */
 ipcMain.handle("select-folder", async () => {
   // ① OS 폴더 선택 UI
@@ -555,7 +699,7 @@ ipcMain.handle("gmail-spawn", async () => {
   }
 });
 
-// Google Calendar 서버를 띄우는 IPC 핸들러러
+// Google Calendar 서버를 띄우는 IPC 핸들러
 ipcMain.handle("calendar-spawn", async () => {
 
   try {
@@ -591,78 +735,122 @@ ipcMain.handle("calendar-spawn", async () => {
 });
 
 
-ipcMain.handle("run-command", async (_e, prompt) => {
-  log("[IPC] run-command", prompt);
+// MCP Tool 호출 함수
+async function callMcpTool(server, tool, args) {
+  
+  log("call Tool : ", server, tool, args)
+  const srv = servers.find((s) => s.id === server);
+  if (!srv) throw new Error(`server ${server} not found`);
+
+  const payload = { name: tool, arguments: args };
+  log("[RPC] calling MCP tool:", payload);
+
   try {
-    /* ① LLM에 의사결정 위임 */
-    const d = await decideCall(prompt);
-    
-    // 일반 질문인 경우 - 텍스트 응답을 바로 반환
-    if (d.type === "text") return { result: d.content };
-
-    // MCP 도구 호출이 필요한 경우 - 기존 코드
-    /* ② RPC 실행 대상 서버 탐색 */
-    const srv = servers.find((s) => s.id === d.srvId);
-    if (!srv) throw new Error(`server ${d.srvId} not found`);
-
-    const payload = { name: d.method, arguments: d.params };
-    log("[RPC] calling call_tool", payload);
-
-    /* ③ MCP 표준: call_tool 또는 tools/call */
-    let rpcRes;
-    try {
-      rpcRes = await srv.rpc.call("call_tool", payload);
-    } catch (err) {
-      if (err.code === -32601) {
-        log("[RPC] call_tool not found, falling back to tools/call");
-        rpcRes = await srv.rpc.call("tools/call", payload);
-      } else {
-        throw err;
-      }
-    }
-
-    /* ④ MCP 서버의 응답 : content 배열 중 text 항목 추출 */
-    let rawResult;
-    if (Array.isArray(rpcRes?.content)) {
-      rawResult = rpcRes.content
-        .filter((c) => c.type === "text")
-        .map((c) => c.text)
-        .join("\n");
+    const res = await srv.rpc.call("call_tool", payload);
+    return typeof res === "object" ? JSON.stringify(res) : String(res);
+  } catch (err) {
+    if (err.code === -32601) {
+      log("[RPC] fallback to tools/call");
+      const res = await srv.rpc.call("tools/call", payload);
+      return typeof res === "object" ? JSON.stringify(res) : String(res);
     } else {
-      rawResult = JSON.stringify(rpcRes);
+      throw err;
     }
-    log("[RPC] rawResult:", rawResult);
+  }
+}
 
-    /* ⑤ 결과를 한글 자연어로 요약(2차 OpenAI 호출) */
-    const postRes = await axios.post(
+
+ipcMain.handle("run-command", async (_e, prompt) => {
+  log("[IPC] run-command (LangChain style)", prompt);
+
+  try {
+
+    const splitResult = await splitIntoSteps(prompt);
+    log("Split steps:", splitResult);
+
+    if (splitResult.earlyExit) {
+      const response = splitResult.message;
+      console.log("[Shortcut] Natural language answer detected:", response);
+      return { result: response };
+    }
+
+    
+    const steps = await splitIntoSteps(prompt);
+    log("Split steps:", steps.steps);
+
+    // 초기 상태 정의
+    let state = {
+      previousStep: null,
+      previousResult: null,
+      accumulatedLogs: []
+    };
+
+    for (const step of steps.steps) {
+      const runnable = RunnableLambda.from(async (input) => {
+
+        const { previousStep, previousResult, accumulatedLogs, step } = input;
+
+        const d = await selectToolForStep(step.instruction, previousStep, previousResult);
+
+        let result;
+
+        // 일반 질문인 경우 - 텍스트 응답을 바로 반환
+        if (d.type === "text") { result = d.content }
+        else{
+          // MCP 도구 호출이 필요한 경우 - 기존 코드
+          result = await callMcpTool(d.srvId, d.method, d.params);
+        }
+
+        return {
+          previousStep: step,
+          previousResult: result,
+          accumulatedLogs: [
+            ...accumulatedLogs,
+            { step: step.instruction, result: result?.substring(0, 50) ?? "(no result)" }
+          ]
+        };
+      });
+
+      state = await runnable.invoke({ ...state, step });
+    }
+
+    // 요약 후 자연어 응답 생성
+    const executionSummary = state.accumulatedLogs
+      .map(log => `• ${log.step}: ${log.result}`)
+      .join("\n");
+
+    const finalRes = await axios.post(
       "https://api.openai.com/v1/chat/completions",
       {
         model: "gpt-4o-mini",
         messages: [
           {
             role: "system",
-            content:
-              "You are a helpful assistant. The user made a request, " +
-              `we ran a ${srv.name} tool and got some raw output. ` +
-              "Now produce a single, concise, natural-language response " +
-              "that explains the result to the user." +
-              "답변은 한글로 해주세요",
-          },
-          { role: "user", content: `Original request:\n${prompt}` },
-          { role: "assistant", content: `Tool output:\n${rawResult}` },
-        ],
+            content: `
+You are a helpful assistant. The user made a request involving multiple tools.
+Here is the execution summary:
+
+${executionSummary}
+
+Now produce a single, concise, natural-language response in Korean.
+            `
+          }
+        ]
       },
       { headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` } }
     );
 
-    const friendly = postRes.data.choices[0].message.content.trim();
+    const friendly = finalRes.data.choices[0].message.content.trim();
     log("[POST-PROCESS] final friendly answer:", friendly);
     return { result: friendly };
+
   } catch (e) {
-    err("cmd fail", e);
+    err("run-command chain fail", e);
     return { error: e.message };
   }
 });
+
+
 
 /* ───────────── 6. Electron App 생명주기 ───────────── */
 app.whenReady().then(async () => {
