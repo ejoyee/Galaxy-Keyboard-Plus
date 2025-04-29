@@ -27,6 +27,20 @@ services:
     networks:
       - backend
 
+  gateway:
+    build:
+      context: ./remote/gateway/gateway 
+    container_name: spring-gateway
+    ports:
+      - "8090:8090"
+    networks:
+      - backend
+    depends_on:
+      - db
+      - redis
+    environment:
+      - SPRING_PROFILES_ACTIVE=local
+
 volumes:
   postgres-data:
   redis-data:
