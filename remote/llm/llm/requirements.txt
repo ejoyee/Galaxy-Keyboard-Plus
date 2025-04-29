@@ -1,0 +1,5 @@
+# llm/requirements.txt
+fastapi[all]>=0.111.0  # FastAPI 웹 프레임워크 및 모든 선택적 의존성 포함
+openai>=1.23.6         # OpenAI Python 클라이언트 라이브러리 (v1 이후 버전)
+uvicorn[standard]>=0.29.0 # ASGI 서버 (표준 의존성 포함)
+python-dotenv>=1.0.0   # .env 파일에서 환경 변수 로드
