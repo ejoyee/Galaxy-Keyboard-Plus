@@ -1,5 +1,5 @@
 server:
-  port: 8090
+  port: 8090  # Gateway Server 포트
 
 spring:
   profiles:
@@ -9,17 +9,17 @@ spring:
     gateway:
       routes:
         - id: auth-route
-          uri: ${AUTH_SERVER_URI}
+          uri: http://auth-service:8091  # auth 서비스의 컨테이너 이름과 포트
           predicates:
             - Path=/auth/**
 
         - id: llm-route
-          uri: ${LLM_SERVER_URI}
+          uri: http://llm-service:8092  # llm 서비스의 컨테이너 이름과 포트
           predicates:
             - Path=/llm/**
 
         - id: logging-route
-          uri: ${LOGGING_SERVER_URI}
+          uri: http://logging-service:8093  # logging 서비스의 컨테이너 이름과 포트
           predicates:
             - Path=/logging/**
 
