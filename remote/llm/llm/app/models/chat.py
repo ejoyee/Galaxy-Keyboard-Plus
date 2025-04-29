@@ -17,9 +17,13 @@ class ChatCompletionInput(BaseModel):
                 {
                     "messages": [
                         {"role": "system", "content": "You are a helpful assistant."},
-                        {"role": "user", "content": "Hello, who are you?"}
+                        {"role": "user", "content": "안녕? 니 소개를 해줘"}
                     ]
                 }
             ]
         }
     }
+
+class ChatSimpleResponse(BaseModel):
+    """단순 텍스트 응답을 위한 스키마"""
+    response: str = Field(..., description="LLM이 생성한 응답 텍스트")
