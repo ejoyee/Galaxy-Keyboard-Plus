@@ -236,13 +236,13 @@ class StdioRPCClient {
 function parseToolCalls(msg) {
   if (Array.isArray(msg.tool_calls)) {
     return msg.tool_calls.map((tc) => ({
-      name: tc.function.name,
+      name: tc.function.name.replace(/^functions\./, ""),
       arguments: JSON.parse(tc.function.arguments),
     }));
   } else if (msg.function_call) {
     return [
       {
-        name: msg.function_call.name,
+        name: msg.function_call.name.replace(/^functions\./, ""),
         arguments: JSON.parse(msg.function_call.arguments),
       },
     ];
@@ -261,43 +261,57 @@ async function executePlan(toolCalls) {
   log("[executePlan] Starting sequential execution:", toolCalls);
 
   for (const call of toolCalls) {
-    const srvId = call.name.split("_")[0];
-    const srv = servers.find((s) => s.id === srvId);
-    if (!srv) throw new Error(`server ${srvId} not found`);
+    if (call.name === "generate_text") {
+      const prompt = fillArgumentsWithContext(call.arguments, context).prompt;
+      log("[generate_text] prompt:", prompt);
+      const generatedText = await callGenerateText(prompt);
+      context.previousResult = generatedText;
+      context.results.push(generatedText);
+    } else {
+      const srvId = call.name.replace(/^functions\./, "").split("_")[0];
+      const srv = servers.find((s) => s.id === srvId);
+      if (!srv) throw new Error(`server ${srvId} not found`);
 
-    // 인자에 context 삽입
-    const args = fillArgumentsWithContext(call.arguments, context);
+      const args = fillArgumentsWithContext(call.arguments, context);
+      const mcpToolName = call.name
+        .replace(/^functions\./, "") // functions. 없애고
+        .replace(new RegExp(`^${srvId}_`), ""); // gdrive_ 없애기
 
-    const payload = { name: call.name.replace(`${srvId}_`, ""), arguments: args };
-    log("[RPC] calling", payload);
+      const payload = { name: mcpToolName, arguments: args };
+      log("[RPC] calling", payload);
 
-    // MCP 표준 호출
-    let rpcRes;
-    try {
-      rpcRes = await srv.rpc.call("call_tool", payload);
-    } catch (err) {
-      if (err.code === -32601) {
-        rpcRes = await srv.rpc.call("tools/call", payload);
+      let rpcRes;
+      try {
+        rpcRes = await srv.rpc.call("call_tool", payload);
+        log("[DEBUG] Raw rpcRes:", JSON.stringify(rpcRes, null, 2)); // 여기 추가
+      } catch (err) {
+        if (err.code === -32601) {
+          rpcRes = await srv.rpc.call("tools/call", payload);
+          log("[DEBUG] Raw rpcRes (fallback):", JSON.stringify(rpcRes, null, 2)); // 여기도 추가해주면 좋아
+        } else {
+          throw err;
+        }
+      }
+
+      log("[DEBUG] Raw rpcRes:", JSON.stringify(rpcRes, null, 2));
+
+      let rawResult;
+      if (Array.isArray(rpcRes?.content)) {
+        rawResult = rpcRes.content
+          .filter((c) => c.type === "text")
+          .map((c) => c.text)
+          .join("\n");
       } else {
-        throw err;
+        rawResult = rpcRes;
+      }
+
+      if (typeof rawResult === "string") {
+        context.previousResult = { body: rawResult };
+      } else {
+        context.previousResult = rawResult;
       }
     }
-
-    // 결과 저장
-    let rawResult;
-    if (Array.isArray(rpcRes?.content)) {
-      rawResult = rpcRes.content
-        .filter((c) => c.type === "text")
-        .map((c) => c.text)
-        .join("\n");
-    } else {
-      rawResult = JSON.stringify(rpcRes);
-    }
-
-    context.previousResult = rawResult;
-    context.results.push(rawResult);
   }
-
   return context;
 }
 
@@ -307,8 +321,33 @@ function fillArgumentsWithContext(argumentsObj, context) {
 
   for (const key in argumentsObj) {
     const val = argumentsObj[key];
-    if (typeof val === "string" && val.includes("{{previous_result}}")) {
-      filled[key] = val.replace("{{previous_result}}", context.previousResult ?? "");
+    if (typeof val === "string") {
+      let newVal = val;
+
+      // previous_result 또는 previous_result.XXX 패턴 찾기
+      const match = newVal.match(/\{\{previous_result(?:\.(.+?))?\}\}/);
+      if (match) {
+        const path = match[1]; // e.g., "body", "subject", "id"
+        if (path) {
+          if (typeof context.previousResult === "object" && context.previousResult !== null) {
+            const value = context.previousResult[path];
+            newVal = value !== undefined ? value : "";
+          } else {
+            newVal = "";
+          }
+        } else {
+          newVal =
+            typeof context.previousResult === "string"
+              ? context.previousResult
+              : JSON.stringify(context.previousResult ?? "");
+        }
+      }
+
+      if (newVal.includes("{{previous_results_joined}}")) {
+        newVal = newVal.replace("{{previous_results_joined}}", (context.results || []).join("\n\n"));
+      }
+
+      filled[key] = newVal;
     } else {
       filled[key] = val;
     }
@@ -321,14 +360,29 @@ function fillArgumentsWithContext(argumentsObj, context) {
 async function executePlanParallel(toolCalls) {
   log("[executePlanParallel] Starting parallel execution:", toolCalls);
 
+  const context = {
+    results: [],
+    previousResult: null,
+  };
+
   const results = await Promise.all(
     toolCalls.map(async (call) => {
-      const srvId = call.name.split("_")[0];
+      if (call.name === "generate_text") {
+        const prompt = call.arguments.prompt;
+        log("[generate_text] prompt:", prompt);
+        return await callGenerateText(prompt);
+      }
+
+      const srvId = call.name.split("_")[0].replace(/^functions\./, "");
       const srv = servers.find((s) => s.id === srvId);
       if (!srv) throw new Error(`server ${srvId} not found`);
 
-      const args = call.arguments;
-      const payload = { name: call.name.replace(`${srvId}_`, ""), arguments: args };
+      const args = fillArgumentsWithContext(call.arguments, context);
+      const mcpToolName = call.name
+        .replace(/^functions\./, "") // functions. 없애고
+        .replace(new RegExp(`^${srvId}_`), ""); // gdrive_ 없애기
+
+      const payload = { name: mcpToolName, arguments: args };
 
       let rpcRes;
       try {
@@ -348,7 +402,13 @@ async function executePlanParallel(toolCalls) {
           .map((c) => c.text)
           .join("\n");
       } else {
-        rawResult = JSON.stringify(rpcRes);
+        rawResult = rpcRes;
+      }
+
+      if (typeof rawResult === "string") {
+        context.previousResult = { body: rawResult };
+      } else {
+        context.previousResult = rawResult;
       }
 
       return rawResult;
@@ -363,7 +423,7 @@ function markRequiresPreviousResult(toolCalls) {
   return toolCalls.map((call) => ({
     ...call,
     requiresPreviousResult: Object.values(call.arguments).some(
-      (v) => typeof v === "string" && v.includes("{{previous_result}}")
+      (v) => typeof v === "string" && (v.includes("{{previous_result") || v.includes("{{previous_results_joined}}"))
     ),
   }));
 }
@@ -412,18 +472,21 @@ async function spawnServer(def) {
   const rpc = new StdioRPCClient(proc, def.id);
   const srv = { ...def, proc, rpc, tools: [] };
 
-  await refreshTools(srv); // list_tools → API 스키마 획득
-  servers.push(srv);
+  // await refreshTools(srv); // list_tools → API 스키마 획득
+  // servers.push(srv);
 
-  /* aliasMap 은 툴 호출 이름 → {srvId, method} 매핑 */
-  aliasMap.clear(); // 서버 재시작 시 새로 갱신
+  // /* aliasMap 은 툴 호출 이름 → {srvId, method} 매핑 */
+  // aliasMap.clear(); // 서버 재시작 시 새로 갱신
+
+  aliasMap.clear();
+  servers.push(srv);
+  await refreshTools(srv); // clear한 다음 refreshTools
   return srv;
 }
 
 /* 서버에서 지원하는 툴 목록 가져와서 (서버별) 저장 */
 async function refreshTools(srv) {
   try {
-    // 서버 버전에 따라 list_tools 또는 tools/list 지원
     let raw;
     try {
       log("start list_tool");
@@ -435,7 +498,6 @@ async function refreshTools(srv) {
       log("end tools/list");
     }
 
-    // 다양한 응답 형식을 배열로 정규화
     let arr = [];
     if (Array.isArray(raw)) arr = raw;
     else if (raw?.tools) arr = raw.tools;
@@ -443,12 +505,21 @@ async function refreshTools(srv) {
 
     if (!arr.length) throw new Error("no tools found");
 
-    /* name 충돌 방지를 위해 “srvid_toolname” 으로 alias 부여 */
-    srv.tools = arr.map((t) => ({
-      ...t,
-      name: `${srv.id}_${t.name}`,
-      _origMethod: t.name, // 실제 서버 측 메서드 기억
-    }));
+    srv.tools = arr.map((t) => {
+      const input = t.inputSchema || t.parameters || {}; // ✅ 반드시 넣어야 함
+
+      return {
+        name: `${srv.id}_${t.name}`,
+        description: t.description || "No description provided",
+        inputSchema: input, // ✅ OpenAI function call용 inputSchema 추가
+        _origMethod: t.name,
+      };
+    });
+
+    // aliasMap에 정확하게 등록
+    for (const tool of srv.tools) {
+      aliasMap.set(tool.name, { srvId: srv.id, method: tool._origMethod });
+    }
 
     log(
       `Tools[${srv.id}] loaded`,
@@ -466,21 +537,29 @@ function allTools() {
 
 // 🍄 타입 틀린 tools 빼고 전송
 function allToolsForLLM() {
-  return servers.flatMap((s) =>
-    s.tools.filter((t) => {
-      // 1) inputSchema가 object 타입이고
-      const input = t.inputSchema || t.parameters;
-      if (!input || input.type !== "object") return false;
+  return [
+    {
+      name: "generate_text",
+      description: "Prompt를 입력받아 텍스트를 생성합니다.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          prompt: { type: "string", description: "생성할 내용을 설명하는 프롬프트" },
+        },
+        required: ["prompt"],
+      },
+    },
 
-      // 2) properties 정의가 정상적이고
-      if (!input.properties || typeof input.properties !== "object") return false;
-
-      // 3) additionalProperties 없거나 true일 때만 허용
-      if (input.additionalProperties === false) return false;
-
-      return true;
-    })
-  );
+    ...servers.flatMap((s) =>
+      s.tools.filter((t) => {
+        const input = t.inputSchema || t.parameters;
+        if (!input || input.type !== "object") return false;
+        if (!input.properties || typeof input.properties !== "object") return false;
+        if (input.additionalProperties === false) return false;
+        return true;
+      })
+    ),
+  ];
 }
 
 /* OpenAI ChatGPT v2 “function calling” 스펙용 변환 🍄 수정*/
@@ -502,6 +581,102 @@ function formatToolV2(t) {
       },
     },
   };
+}
+
+// 🍄 LLM을 호출하는 가짜 MCP
+async function callGenerateText(prompt) {
+  const key = process.env.OPENAI_API_KEY;
+  const res = await axios.post(
+    "https://api.openai.com/v1/chat/completions",
+    {
+      model: "gpt-4o-mini",
+      messages: [
+        { role: "system", content: "아래 요청에 대해 짧고 자연스럽게 답변하거나 필요한 정보를 생성하세요." },
+        { role: "user", content: prompt },
+      ],
+      max_tokens: 300,
+    },
+    { headers: { Authorization: `Bearer ${key}` } }
+  );
+  return res.data.choices[0].message.content.trim();
+}
+
+// 🍄 toolCall 하나를 실행하는 헬퍼 함수
+async function executeToolCall(call, context) {
+  const srvId = call.name.replace(/^functions\./, "").split("_")[0];
+  const srv = servers.find((s) => s.id === srvId);
+  if (!srv) throw new Error(`server ${srvId} not found`);
+
+  const args = fillArgumentsWithContext(call.arguments, context); // previousResult를 사용해서 인자 채우기
+  const mcpToolName = call.name.replace(/^functions\./, "").replace(new RegExp(`^${srvId}_`), "");
+
+  const payload = { name: mcpToolName, arguments: args };
+  let rpcRes;
+  try {
+    rpcRes = await srv.rpc.call("call_tool", payload);
+  } catch (err) {
+    if (err.code === -32601) {
+      rpcRes = await srv.rpc.call("tools/call", payload);
+    } else {
+      throw err;
+    }
+  }
+
+  log("[DEBUG] executeToolCall Raw rpcRes:", JSON.stringify(rpcRes, null, 2));
+
+  let resultForPrevious;
+  if (Array.isArray(rpcRes?.content)) {
+    resultForPrevious = rpcRes.content
+      .filter((c) => c.type === "text")
+      .map((c) => c.text)
+      .join("\n");
+  } else {
+    resultForPrevious = rpcRes;
+  }
+
+  if (typeof resultForPrevious === "string") {
+    context.previousResult = { body: resultForPrevious };
+  } else {
+    context.previousResult = resultForPrevious;
+  }
+
+  context.results.push(resultForPrevious);
+  return resultForPrevious;
+}
+
+// 🍄 {{previous_result.id}}, {{previous_result.text}} 같은 걸 진짜 값으로 치환 <<F< 없애도 된다는디
+function resolveArguments(args, previousResult) {
+  const argsString = JSON.stringify(args);
+  const resolvedString = argsString
+    .replace(/{{\s*previous_result\.id\s*}}/g, previousResult?.id || "")
+    .replace(/{{\s*previous_result\.text\s*}}/g, previousResult?.text || "");
+  return JSON.parse(resolvedString);
+}
+
+// 🍄 병렬 + 순차를 섞어서 수행하는 유연한 Plan 실행
+async function executePlanFlexible(toolCalls) {
+  const context = {
+    results: [],
+    previousResult: null,
+  };
+
+  const sequential = toolCalls.filter((call) => call.requiresPreviousResult);
+  const parallel = toolCalls.filter((call) => !call.requiresPreviousResult);
+
+  // 병렬 먼저 실행
+  if (parallel.length) {
+    const parallelResults = await Promise.all(parallel.map((call) => executeToolCall(call, context)));
+    if (parallelResults.length) {
+      context.previousResult = parallelResults[parallelResults.length - 1];
+    }
+  }
+
+  // 순차 실행
+  for (const call of sequential) {
+    await executeToolCall(call, context);
+  }
+
+  return context;
 }
 
 const aliasMap = new Map(); // {alias → {srvId, method}}
@@ -544,9 +719,25 @@ Guidelines:
        - To delete specific text from a file, use "delete_from_file_content".
        - To simply read or view a file's content, use "read_file_content".
        - Always select the tool that most precisely matches the user's intention.
+
+   - 절대로 존재하지 않는 툴 이름을 만들어내지 말 것.
+   - 존재하는 툴만 사용하고, 제공된 inputSchema로만 입력할 것.
+   - "최근 메일 읽기"처럼 구체적인 요청이 있어도, 주어진 툴 조합으로 해결 방법을 찾아야 한다.
+  (예: search_emails로 "newer_than:1d" 같은 쿼리를 보내서 최근 메일을 찾는다)
+   • "gmail_read_email" 툴을 호출한 후 메일 본문을 사용할 때는 "{{previous_result.body}}"를 사용하세요.
+   • "gmail_read_email" 툴의 결과에는 "body", "subject", "from" 등이 포함되어 있습니다. 반드시 "body"를 사용하세요.
+
 3. TEXT RESPONSE
    • For general questions, conversations, or requests that don't need filesystem access, just respond normally with helpful information.
    • Always respond in Korean unless specifically asked for another language.
+  + 필요한 경우 "generate_text" 툴을 사용해 날짜, 날씨 등 정보를 생성하세요.
+  + 절대 자연어로 답하지 말고 반드시 tool_calls 배열만 출력하세요.   ⚠ 반드시 JSON 배열 형태로 tool_calls만 출력하세요.  
+   ⚠ JSON 이외의 자연어 설명, 계획, 이유를 작성하지 마세요.  
+   ⚠ JSON이 아니면 무조건 실패로 간주됩니다.
+
+
+
+반드시 [ {...}, {...} ] 형식의 JSON 배열만 출력하세요.
 3-1. OUTPUT FORMAT
    • Always respond with a list of tool_calls, NOT natural language explanations.
    • Each tool call includes:
@@ -557,7 +748,7 @@ Guidelines:
 4. FOLLOW-UP QUESTIONS
    • If a required parameter is missing or ambiguous, ask the user a clarifying question instead of guessing.
 5. EXAMPLES
-Request: "Send 'test.txt' in Google Drive to whdsmdl401@naver.com"
+Request: "Send 'test.txt' and 'test2.txt' from Google Drive to whdsmdl401@gmail.com"
 Plan:
 [
   {
@@ -565,15 +756,38 @@ Plan:
     "arguments": { "filename": "test.txt" }
   },
   {
+    "name": "gdrive_read_file_content",
+    "arguments": { "filename": "test2.txt" }
+  },
+  {
     "name": "gmail_send_email",
     "arguments": {
-      "to": "whdsmdl401@naver.com",
-      "subject": "Requested File",
-      "body": "{{previous_result}}"
+      "to": ["whdsmdl401@gmail.com"],
+      "subject": "test 내용 정리",
+      "body": "{{previous_results_joined}}"
     }
   }
 ]
-
+  Request: "최근 받은 이메일을 읽어줘."
+Plan:
+[
+  {
+    "name": "gmail_search_emails",
+    "arguments": { "query": "newer_than:1d", "maxResults": 1 }
+  },
+  {
+    "name": "gmail_read_email",
+    "arguments": { "messageId": "{{previous_result.id}}" }
+  }
+]
+  6. 텍스트 생성 요청(generate_text)을 여러 개 해야 할 경우:
+   • 하나의 generate_text tool은 하나의 프롬프트만 처리해야 한다.
+   • "오늘 날짜"와 "부산의 오늘 날씨"처럼 주제가 다르면 반드시 별도로 generate_text tool을 호출하라.
+   • 절대 한 번에 여러 정보를 한 generate_text로 묶지 마라.
+- 절대로 "multi_tool_use.parallel"이나 "multi_tool_use" 같은 가상의 tool 이름을 만들지 마세요.
+- 절대적으로 제공된 tool name만 사용하고, 병렬 실행이 필요하면 tool_calls를 그냥 나열하세요.
+• ⚠ If a field expects an array (like "to": array of strings), always wrap the value in an array, even if it is only one item.
+• ⚠ Use "{{previous_results_joined}}" if you need to combine multiple previous outputs.
 ⚠ Always output only the JSON list of tool_calls.
 
 `,
@@ -595,6 +809,10 @@ Plan:
   log("[Plan] toolCalls:", toolCalls);
 
   if (toolCalls.length === 0 && msg.content) {
+    if (!msg.content.trim().startsWith("[")) {
+      log("[Fallback] content is not JSON array, skipping fallback parse");
+      return { type: "text", content: msg.content ?? "" };
+    }
     try {
       const fallbackParsed = JSON.parse(msg.content);
       if (Array.isArray(fallbackParsed)) {
@@ -775,18 +993,27 @@ ipcMain.handle("run-command", async (_e, prompt) => {
     /** 3. Plan 실행 (순차 or 병렬) */
     let context;
 
-    if (toolCalls.some((call) => call.requiresPreviousResult)) {
-      // 연쇄 의존 관계가 필요한 경우
-      context = await executePlan(toolCalls);
-    } else {
-      // 독립적인 작업은 병렬 실행
-      const results = await executePlanParallel(toolCalls);
-      context = { results, previousResult: results.at(-1) }; // 마지막 결과
-    }
+    // if (toolCalls.some((call) => call.requiresPreviousResult)) {
+    //   // 연쇄 의존 관계가 필요한 경우
+    //   context = await executePlan(toolCalls);
+    // } else {
+    //   // 독립적인 작업은 병렬 실행
+    //   const results = await executePlanParallel(toolCalls);
+    //   context = { results, previousResult: results.at(-1) }; // 마지막 결과
+    // }
+
+    context = await executePlanFlexible(toolCalls);
 
     // 4. 결과 요약
-    const rawSummary = context.results.map((r, i) => `Step ${i + 1}: ${r}`).join("\n\n");
-
+    const rawSummary = context.results
+      .map((r, i) => {
+        if (typeof r === "object") {
+          return `Step ${i + 1}: ${r.body || r.text || JSON.stringify(r)}`;
+        } else {
+          return `Step ${i + 1}: ${r}`;
+        }
+      })
+      .join("\n\n");
     // MCP 도구 호출이 필요한 경우 - 기존 코드
     /* ② RPC 실행 대상 서버 탐색 */
     // const srv = servers.find((s) => s.id === d.srvId);
