@@ -25,20 +25,6 @@ services:
     networks:
       - backend
 
-  logging-service:
-    build: .
-    image: your-docker-registry/logging-service:latest
-    ports:
-      - "8093:8093"
-    depends_on:
-      - broker
-    volumes:
-      - ./application.properties:/app.properties:ro
-    environment:
-      SPRING_CONFIG_LOCATION: /app.properties
-    networks:
-      - backend
-
   db:
     image: postgres:15
     container_name: postgres-db
