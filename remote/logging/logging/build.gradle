@@ -36,6 +36,16 @@ dependencies {
 	testImplementation 'io.projectreactor:reactor-test'
 	testImplementation 'org.springframework.kafka:spring-kafka-test'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+
+	// Kafka (Reactor Kafka)
+	implementation 'io.projectreactor.kafka:reactor-kafka'
+	// Reactive MongoDB
+	implementation 'org.springframework.boot:spring-boot-starter-data-mongodb-reactive'
+	testImplementation 'de.flapdoodle.embed:de.flapdoodle.embed.mongo'
+	// Scheduling
+	implementation 'org.springframework.boot:spring-boot-starter'
+	// JSON 직렬화
+	implementation 'com.fasterxml.jackson.core:jackson-databind'
 }
 
 tasks.named('test') {
