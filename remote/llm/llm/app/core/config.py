@@ -15,6 +15,11 @@ class Settings(BaseSettings):
     openai_api_key: str
     stream_buffer_size: int = 256 # 기본값 256
 
+    # --- Kafka 설정 ---
+    kafka_bootstrap_servers: str = "http://k12e201.p.ssafy.io:9092" # 기본값 설정 (쉼표로 여러개 지정 가능)
+    kafka_log_topic: str = "llm_logs" # 로그 토픽 이름 (예시)
+    kafka_usage_topic: str = "token-usage" # 토큰 사용량 토픽 이름 (예시)
+
     # pydantic-settings 설정
     model_config = SettingsConfigDict(
         env_file='.env', # .env 파일 명시적 지정
