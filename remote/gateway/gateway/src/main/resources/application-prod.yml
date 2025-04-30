@@ -1,0 +1,30 @@
+spring:
+  cloud:
+    gateway:
+      routes:
+        - id: auth-swagger-route
+          uri: http://auth:8091
+          predicates:
+            - Path=/swagger-ui.html,/swagger-ui/**,/v3/api-docs/**,/webjars/**
+
+        - id: auth-route
+          uri: http://auth:8091
+          predicates:
+            - Path=/auth/**
+
+        - id: llm-route
+          uri: http://llm:8092
+          predicates:
+            - Path=/llm/**
+
+        - id: logging-route
+          uri: http://logging:8093
+          predicates:
+            - Path=/logging/**
+
+        - id: test-route
+          uri: https://httpbin.org
+          predicates:
+            - Path=/test/**
+          filters:
+            - StripPrefix=1
