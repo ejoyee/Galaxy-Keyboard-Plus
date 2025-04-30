@@ -4,3 +4,4 @@ openai>=1.23.6         # OpenAI Python 클라이언트 라이브러리 (v1 이�
 uvicorn[standard]>=0.29.0 # ASGI 서버 (표준 의존성 포함)
 python-dotenv>=1.0.0   # .env 파일에서 환경 변수 로드
 pydantic-settings>=2.0.0
+aiokafka>=0.10.0
