@@ -101,7 +101,7 @@ services:
       - redis
       - gateway
     environment:
-      - SPRING_PROFILES_ACTIVE=local
+      - SPRING_PROFILES_ACTIVE=prod
   
   llm:
     build:
