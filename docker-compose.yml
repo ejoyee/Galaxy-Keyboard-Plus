@@ -3,7 +3,6 @@ version: '3.8'
 services:
   nginx:
     image: nginx:alpine
-    container_name: nginx-proxy
     ports:
       - "80:80"
       - "443:443"
@@ -46,7 +45,6 @@ services:
       - backend
   db:
     image: postgres:15
-    container_name: postgres-db
     restart: always
     ports:
       - "5432:5432"
@@ -61,7 +59,6 @@ services:
 
   redis:
     image: redis:7
-    container_name: redis-cache
     restart: always
     ports:
       - "6379:6379"
@@ -73,7 +70,6 @@ services:
   gateway:
     build:
       context: ./remote/gateway/gateway 
-    container_name: spring-gateway
     ports:
       - "8090:8090"
     networks:
@@ -87,7 +83,6 @@ services:
   auth:
     build:
       context: ./remote/auth/auth
-    container_name: auth-service
     ports:
       - "8091:8091"
     networks:
@@ -102,7 +97,6 @@ services:
   llm:
     build:
       context: ./remote/llm/llm
-    container_name: llm-service
     ports:
       - "8092:8092"
     networks:
