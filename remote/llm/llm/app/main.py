@@ -1,17 +1,20 @@
 # llm/app/main.py
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
-from openai import OpenAIError
+from openai import OpenAIError     
 
-# 컨트롤러 라우터 및 전역 예외 핸들러 헬퍼 임포트
+# 컨트롤러, 전역 핸들러, Kafka lifespan 임포트
 from app.controllers import chat_controller
 from app.core.openai_client import handle_openai_error # 전역 핸들러에서 사용
+from app.core.kafka_producer import kafka_lifespan # kafka_lifespan
 
 # FastAPI 애플리케이션 생성
 app = FastAPI(
-    title="LLM Bridge Server (Refactored)",
-    description="Electron 클라이언트와 OpenAI API 간의 브리지 역할을 하는 FastAPI 서버 (MVC 스타일 구조).",
-    version="0.2.0",
+    title="LLM Bridge Server (Kafka Enabled)",
+    description="Electron 클라이언트와 OpenAI API 간의 브리지 역할을 하는 FastAPI 서버",
+    version="0.3.0",
+    lifespan=kafka_lifespan
 )
 
 # --- 전역 예외 핸들러 등록 ---
@@ -31,10 +34,10 @@ async def openai_exception_handler(request: Request, exc: OpenAIError):
 app.include_router(chat_controller.router)
 
 # --- 루트 엔드포인트 ---
-@app.get("/", tags=["Root"], summary="서버 상태 확인")
+@app.get("/llm/test", tags=["Root"], summary="서버 상태 확인")
 async def read_root():
     """서버가 실행 중인지 확인하는 간단한 엔드포인트입니다."""
-    return {"message": "LLM Bridge Server is running (Refactored)."}
+    return {"message": "LLM Bridge Server is running."}
 
 # --- 애플리케이션 실행 (Uvicorn 사용 시) ---
 if __name__ == "__main__":
