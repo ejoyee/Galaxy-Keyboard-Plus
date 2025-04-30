@@ -1,33 +1,40 @@
 package com.moca.auth.controller;
 
+import com.moca.auth.service.ConnectionCheckService;
+import lombok.RequiredArgsConstructor;
+import reactor.core.publisher.Mono;
+
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
 
-/**
- * 서비스 상태 확인을 위한 헬스 체크 컨트롤러
- */
 @RestController
 @RequestMapping("/auth/health")
+@RequiredArgsConstructor
 public class HealthCheckController {
 
-    /**
-     * 서비스 상태 확인 엔드포인트
-     * 
-     * @return 서비스 상태 정보
-     */
+    private final ConnectionCheckService connectionCheckService;
+
     @GetMapping
     public ResponseEntity<Map<String, Object>> checkHealth() {
         Map<String, Object> healthInfo = new HashMap<>();
         healthInfo.put("service", "auth");
         healthInfo.put("status", "UP");
         healthInfo.put("timestamp", LocalDateTime.now().toString());
-        
+
         return ResponseEntity.ok(healthInfo);
     }
+
+    @GetMapping("/connections")
+    public Mono<ResponseEntity<Map<String, Object>>> checkConnections() {
+        return connectionCheckService.checkConnections()
+            .map(result -> {
+                result.put("service", "auth");
+                return ResponseEntity.ok(result);
+            });
+    }
+
 }
