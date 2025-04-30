@@ -1,0 +1,40 @@
+spring:
+  application:
+    name: auth
+
+  r2dbc:
+    url: r2dbc:postgresql://db:5432/${POSTGRE_DB_NAME}
+    username: ${POSTGRE_USERNAME}
+    password: ${POSTGRE_PASSWORD}
+    pool:
+      initial-size: 5
+      max-size: 20
+      max-idle-time: 30m
+  data:
+    redis:
+      host: k12e201.p.ssafy.io
+      port: 6379
+      timeout: 6000
+
+server:
+  port: 8091
+
+logging:
+  level:
+    com.moca.auth: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always
+springdoc:
+  api-docs:
+    path: /v3/api-docs  # Swagger JSON 경로
+  swagger-ui:
+    path: /swagger-ui.html  # Swagger UI 경로
