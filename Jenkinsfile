@@ -1,28 +1,22 @@
 pipeline {
   agent any
 
-  /*──────────────────[ 전역 환경 ]──────────────────*/
   environment {
     COMPOSE_FILE = 'docker-compose-prod.yml'
     ENV_FILE     = '.env.prod'
   }
 
-  /*─────────────[ 파이프라인 매개변수 ]─────────────*/
+  /* ───── 파라미터: 첫 배포/강제 전체 재배포용 ───── */
   parameters {
-    string(
-      name: 'FORCE_SERVICES',
-      defaultValue: '',
-      description: '콤마(,)로 구분해 빌드·배포할 서비스명을 지정 (예: gateway,auth,scheduler,rag). 비워두면 diff 기반으로 동작'
-    )
+    string(name: 'FORCE_SERVICES', defaultValue: '',
+      description: '콤마(,)로 지정 시 해당 서비스만 빌드·배포 (예: gateway,auth,scheduler,rag)')
   }
 
-  /*──────────────────[ 단계 ]──────────────────*/
   stages {
-
-    /* 0) 소스 체크아웃 ------------------------------------------------*/
+    /* 0) Checkout */
     stage('Checkout') { steps { checkout scm } }
 
-    /* 1) .env.prod 생성 ------------------------------------------------*/
+    /* 1) .env.prod 생성 */
     stage('Create .env.prod') {
       steps {
         withCredentials([
@@ -54,28 +48,25 @@ ENV=prod
       }
     }
 
-    /* 2) 변경 서비스 탐지 + 파라미터 병합 ------------------------------*/
+    /* 2) 변경 서비스 탐지 + 파라미터 병합 */
     stage('Detect Changed Services') {
       steps {
         script {
-          // 2-1. Git diff 기반 리스트
           def diff = sh(
             script: "git diff --name-only ${env.GIT_PREVIOUS_SUCCESSFUL_COMMIT ?: 'HEAD~1'} ${env.GIT_COMMIT}",
-            returnStdout:true
-          ).trim()
+            returnStdout:true).trim()
 
           def changed = diff.split('\n')
                             .collect { it.trim() }
                             .findAll { it.startsWith('back/') }
-                            .collect { p -> p.tokenize('/')[1] }   // 폴더명만
+                            .collect { p -> p.tokenize('/')[1] }
                             .unique()
 
-          // 2-2. 파라미터가 비어 있지 않으면 우선 사용
-          def forced = params.FORCE_SERVICES?.trim()
-          def targets = forced ? forced.split(',').collect{ it.trim() }.unique() : changed
+          def targets = params.FORCE_SERVICES?.trim() ?
+                        params.FORCE_SERVICES.split(',').collect{ it.trim() } :
+                        changed
 
           env.CHANGED_SERVICES = targets.join(',')
-
           if (targets.isEmpty()) {
             echo 'No service changes.'
             currentBuild.result = 'SUCCESS'
@@ -86,7 +77,7 @@ ENV=prod
       }
     }
 
-    /* 3) Build & Deploy ---------------------------------------------*/
+    /* 3) Build & Deploy */
     stage('Build & Deploy') {
       when { expression { env.CHANGED_SERVICES?.trim() } }
       steps {
@@ -103,13 +94,9 @@ ENV=prod
     }
   }
 
-  /*──────────────────[ 후처리 ]──────────────────*/
+  /* 4) Post */
   post {
     always  { sh 'shred -u .env.prod || rm -f .env.prod' }
-    failure {
-      mail to: 'devops@example.com',
-           subject: "Deploy Failed – ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-           body: "Check Jenkins logs."
-    }
+    failure { echo 'Build failed. (SMTP 미설정 시 메일 전송 생략)' }
   }
 }
