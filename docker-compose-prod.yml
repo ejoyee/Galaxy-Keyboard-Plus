@@ -4,9 +4,9 @@ services:
   nginx:
     image: nginx:alpine
     container_name: nginx
-    ports: ["80:80","443:443"]
+    ports: ["80:80", "443:443"]
     volumes:
-      - /home/ubuntu/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - /home/ubuntu/nginx/nginx.conf:/etc/nginx/nginx.conf:ro   # ← 절대경로
       - /etc/letsencrypt:/etc/letsencrypt:ro
     depends_on: [gateway]
     restart: always
@@ -16,21 +16,20 @@ services:
     build: ./back/gateway
     command: ["java","-jar","/app/app.jar","--spring.profiles.active=prod"]
     env_file: .env.prod
-    depends_on: [postgres]
 
   auth:
     container_name: auth-service
     build: ./back/auth
     command: ["java","-jar","/app/app.jar","--spring.profiles.active=prod"]
     env_file: .env.prod
-    depends_on: [postgres]
+    depends_on: [postgres_auth]
 
   scheduler:
     container_name: backend-service
     build: ./back/scheduler
     command: ["java","-jar","/app/app.jar","--spring.profiles.active=prod"]
     env_file: .env.prod
-    depends_on: [postgres]
+    depends_on: [postgres_sched]
 
   rag:
     container_name: rag-service
@@ -38,11 +37,18 @@ services:
     command: ["uvicorn","app.main:app","--host","0.0.0.0","--port","8090"]
     env_file: .env.prod
 
-  postgres:
-    container_name: postgres
+  postgres_auth:
+    container_name: postgres-auth
     image: postgres:15
     env_file: .env.prod
-    volumes: [pgdata:/var/lib/postgresql/data]
+    volumes: [pg_auth:/var/lib/postgresql/data]
+
+  postgres_sched:
+    container_name: postgres-sched
+    image: postgres:15
+    env_file: .env.prod
+    volumes: [pg_sched:/var/lib/postgresql/data]
 
 volumes:
-  pgdata:
+  pg_auth:
+  pg_sched:
