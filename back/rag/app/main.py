@@ -6,6 +6,7 @@ from app.api.image_classify import router as image_classify_router
 from app.api.embedding_api import router as embedding_api_router
 from app.api.text_extractor_api import router as text_extractor_api_router
 from app.api.image_caption_api import router as image_caption_api_router
+from app.api.schedule_api import router as schedule_api_router
 import logging
 
 app = FastAPI()
@@ -25,6 +26,8 @@ app.include_router(image_classify_router, prefix="/rag")
 app.include_router(embedding_api_router, prefix="/rag")
 app.include_router(text_extractor_api_router, prefix="/rag")
 app.include_router(image_caption_api_router, prefix="/rag")
+app.include_router(schedule_api_router, prefix="/rag")
+
 
 if __name__ == "__main__":
     import uvicorn
