@@ -12,7 +12,6 @@ docker run -d --name jenkins \
   -p 8088:8080 -p 50000:50000 \
   -v jenkins_home:/var/jenkins_home \
   -v /var/run/docker.sock:/var/run/docker.sock \
-  -v /opt/env:/opt/env:ro \
   --restart unless-stopped \
   jenkins-docker:latest
 
