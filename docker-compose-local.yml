@@ -1,56 +1,77 @@
 version: "3.8"
+
 services:
   nginx:
     image: nginx:alpine
     container_name: nginx
-    ports:
-      - "80:80"
-      - "443:443"
+    ports: ["80:80", "443:443"]
     volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - /home/ubuntu/nginx/nginx.conf:/etc/nginx/nginx.conf:ro   # ← 절대경로
       - /etc/letsencrypt:/etc/letsencrypt:ro
-    depends_on:
-      - gateway
+    depends_on: [gateway]
     restart: always
 
   gateway:
+    container_name: gateway-service
     build: ./back/gateway
-    ports:
-      - "8000:8000"
-    environment:
-      - SPRING_PROFILES_ACTIVE=local
+    command: ["java","-jar","/app/app.jar","--spring.profiles.active=local"]
+    ports: ["8000:8000"]
 
-  spring-auth:
+  auth:
+    container_name: auth-service
     build: ./back/auth
-    ports:
-      - "8082:8082"
+    command: ["java","-jar","/app/app.jar","--spring.profiles.active=local"]
+    ports: ["8082:8082"]
+    depends_on: [postgres_auth]
     environment:
-      - SPRING_PROFILES_ACTIVE=local
+      DB_HOST: postgres_auth
+      DB_PORT: 5432
+      DB_NAME: ${POSTGRES_AUTH_DB_NAME}
+      DB_USER: ${POSTGRES_AUTH_USER}
+      DB_PASSWORD: ${POSTGRES_AUTH_PASSWORD}
 
-  spring-scheduler:
+  scheduler:
+    container_name: backend-service
     build: ./back/scheduler
-    ports:
-      - "8083:8083"
+    command: ["java","-jar","/app/app.jar","--spring.profiles.active=local"]
+    ports: ["8083:8083"]
+    depends_on: [postgres_sched]
     environment:
-      - SPRING_PROFILES_ACTIVE=local
+      DB_HOST: postgres_sched
+      DB_PORT: 5432
+      DB_NAME: ${POSTGRES_SCHED_DB_NAME}
+      DB_USER: ${POSTGRES_SCHED_USER}
+      DB_PASSWORD: ${POSTGRES_SCHED_PASSWORD}
 
-  fastapi:
+  rag:
+    container_name: rag-service
     build: ./back/rag
-    ports:
-      - "8090:8090"
-    environment:
-      - ENV=local
+    command: ["uvicorn","app.main:app","--host","0.0.0.0","--port","8090"]
+    environment: { ENV: local }
+    ports: ["8090:8090"]
 
-  postgres:
+  postgres_auth:
+    container_name: postgres-auth
     image: postgres:15
-    ports:
-      - "5432:5432"
+    env_file: .env.dev
     environment:
-      POSTGRES_USER: ${POSTGRE_USERNAME}
-      POSTGRES_PASSWORD: ${POSTGRE_PASSWORD}
-      POSTGRES_DB: ${POSTGRE_DB_NAME}
-    volumes:
-      - pgdata:/var/lib/postgresql/data
+      POSTGRES_USER:     ${POSTGRES_AUTH_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_AUTH_PASSWORD}
+      POSTGRES_DB:       ${POSTGRES_AUTH_DB_NAME}
+    ports: ["5432:5432"]
+    volumes: [pg_auth:/var/lib/postgresql/data]
+
+  postgres_sched:
+    container_name: postgres-sched
+    image: postgres:15
+    env_file: .env.dev
+    environment:
+      POSTGRES_USER:     ${POSTGRES_SCHED_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_SCHED_PASSWORD}
+      POSTGRES_DB:       ${POSTGRES_SCHED_DB_NAME}
+    ports: ["5433:5432"]
+    volumes: [pg_sched:/var/lib/postgresql/data]
 
 volumes:
-  pgdata:
+  pg_auth:
+  pg_sched:
