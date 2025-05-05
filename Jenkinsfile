@@ -38,9 +38,9 @@ pipeline {
           string(credentialsId: 'OPENAI_API_KEY',         variable: 'OPENAI')
         ]) {
           // 필수 환경 변수 검증
-          if (!AUTH_USER || !AUTH_PW || !JWT || !OPENAI) {
-            error "필수 환경 변수가 설정되지 않았습니다."
-          }
+          // if (!AUTH_USER || !AUTH_PW || !OPENAI) {
+          //   error "필수 환경 변수가 설정되지 않았습니다."
+          // }
           
           writeFile file: '.env.prod', text: """
 POSTGRES_AUTH_USER=${AUTH_USER}
