@@ -32,7 +32,9 @@ pipeline {
           string(credentialsId: 'POSTGRES_SCHED_USER',    variable: 'SCHED_USER'),
           string(credentialsId: 'POSTGRES_SCHED_PASSWORD',variable: 'SCHED_PW'),
           string(credentialsId: 'POSTGRES_SCHED_DB_NAME', variable: 'SCHED_DB'),
-          string(credentialsId: 'JWT_SECRET',             variable: 'JWT'),
+          string(credentialsId: 'POSTGRES_SCHED_DB_NAME', variable: 'SCHED_DB'),
+          string(credentialsId: 'PINECONE_KEY',             variable: 'PINECONE_KEY'),
+          string(credentialsId: 'CLAUDE_API_KEY',             variable: 'CLAUDE_API_KEY'),
           string(credentialsId: 'OPENAI_API_KEY',         variable: 'OPENAI')
         ]) {
           // 필수 환경 변수 검증
@@ -104,10 +106,5 @@ ENV=prod
         }
       }
     }
-  }
-
-  /* 4. 정리 & 알림 ------------------------------------------- */
-  post {
-    // 비어있는 post 섹션
   }
 }
