@@ -2,6 +2,7 @@
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from app.api.pinecone_test import router as pinecone_test_router
+from app.api.image_classify import router as image_classify_router
 import logging
 
 app = FastAPI()
@@ -17,6 +18,7 @@ logging.info("✅ FastAPI 애플리케이션 시작 전 로깅 설정 완료")
 
 # API 라우터 등록
 app.include_router(pinecone_test_router, prefix="/rag")
+app.include_router(image_classify_router, prefix="/rag")
 
 if __name__ == "__main__":
     import uvicorn
