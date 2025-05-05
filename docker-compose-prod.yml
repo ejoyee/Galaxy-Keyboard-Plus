@@ -1,56 +1,48 @@
 version: "3.8"
+
 services:
   nginx:
     image: nginx:alpine
     container_name: nginx
-    ports:
-      - "80:80"
-      - "443:443"
+    ports: ["80:80","443:443"]
     volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - /home/ubuntu/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - /etc/letsencrypt:/etc/letsencrypt:ro
-    depends_on:
-      - gateway
+    depends_on: [gateway]
     restart: always
 
   gateway:
+    container_name: gateway-service
     build: ./back/gateway
-    ports:
-      - "8000:8000"
-    environment:
-      - SPRING_PROFILES_ACTIVE=prod
+    command: ["java","-jar","/app/app.jar","--spring.profiles.active=prod"]
+    env_file: .env.prod
+    depends_on: [postgres]
 
-  spring-auth:
+  auth:
+    container_name: auth-service
     build: ./back/auth
-    ports:
-      - "8082:8082"
-    environment:
-      - SPRING_PROFILES_ACTIVE=prod
+    command: ["java","-jar","/app/app.jar","--spring.profiles.active=prod"]
+    env_file: .env.prod
+    depends_on: [postgres]
 
-  spring-scheduler:
+  scheduler:
+    container_name: backend-service
     build: ./back/scheduler
-    ports:
-      - "8083:8083"
-    environment:
-      - SPRING_PROFILES_ACTIVE=prod
+    command: ["java","-jar","/app/app.jar","--spring.profiles.active=prod"]
+    env_file: .env.prod
+    depends_on: [postgres]
 
-  fastapi:
+  rag:
+    container_name: rag-service
     build: ./back/rag
-    ports:
-      - "8090:8090"
-    environment:
-      - ENV=local
+    command: ["uvicorn","app.main:app","--host","0.0.0.0","--port","8090"]
+    env_file: .env.prod
 
   postgres:
+    container_name: postgres
     image: postgres:15
-    ports:
-      - "5432:5432"
-    environment:
-      POSTGRES_USER: ${POSTGRE_USERNAME}
-      POSTGRES_PASSWORD: ${POSTGRE_PASSWORD}
-      POSTGRES_DB: ${POSTGRE_DB_NAME}
-    volumes:
-      - pgdata:/var/lib/postgresql/data
+    env_file: .env.prod
+    volumes: [pgdata:/var/lib/postgresql/data]
 
 volumes:
   pgdata:
