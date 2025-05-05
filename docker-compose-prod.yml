@@ -16,6 +16,7 @@ services:
     build: ./back/gateway
     command: ["java","-jar","/app/app.jar","--spring.profiles.active=prod"]
     env_file: .env.prod
+    restart: always
 
   auth:
     container_name: auth-service
@@ -23,6 +24,7 @@ services:
     command: ["java","-jar","/app/app.jar","--spring.profiles.active=prod"]
     env_file: .env.prod
     depends_on: [postgres_auth]
+    restart: always
 
   scheduler:
     container_name: backend-service
@@ -30,25 +32,37 @@ services:
     command: ["java","-jar","/app/app.jar","--spring.profiles.active=prod"]
     env_file: .env.prod
     depends_on: [postgres_sched]
+    restart: always
 
   rag:
     container_name: rag-service
     build: ./back/rag
     command: ["uvicorn","app.main:app","--host","0.0.0.0","--port","8090"]
     env_file: .env.prod
+    restart: always
 
   postgres_auth:
     container_name: postgres-auth
     image: postgres:15
     env_file: .env.prod
-    ports: ["5432:5432"]        # ← 외부에서도 auth DB 접속
+    environment:
+      POSTGRES_USER:     ${POSTGRES_AUTH_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_AUTH_PASSWORD}
+      POSTGRES_DB:       ${POSTGRES_AUTH_DB_NAME}
+    ports: ["5432:5432"]
+    restart: always
     volumes: [pg_auth:/var/lib/postgresql/data]
 
   postgres_sched:
     container_name: postgres-sched
     image: postgres:15
     env_file: .env.prod
-    ports: ["5433:5432"]        # ← 외부에서도 sched DB 접속
+    environment:
+      POSTGRES_USER:     ${POSTGRES_SCHED_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_SCHED_PASSWORD}
+      POSTGRES_DB:       ${POSTGRES_SCHED_DB_NAME}
+    ports: ["5433:5432"]
+    restart: always
     volumes: [pg_sched:/var/lib/postgresql/data]
 
 volumes:
