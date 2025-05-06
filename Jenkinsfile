@@ -33,7 +33,10 @@ pipeline {
           string(credentialsId: 'CLAUDE_API_KEY',           variable: 'CLAUDE_API_KEY'),
           string(credentialsId: 'OPENAI_API_KEY',           variable: 'OPENAI')
         ]) {
+          // GCP 키 파일 복사
           sh 'cp "$GCP_KEY_FILE" gcp-key.json'
+
+          // .env.prod 생성
           writeFile file: '.env.prod', text: """
 POSTGRES_AUTH_USER=${AUTH_USER}
 POSTGRES_AUTH_PASSWORD=${AUTH_PW}
@@ -69,8 +72,8 @@ ENV=prod
                             .collect { it.trim() }
                             .findAll { it.startsWith('back/') || it.startsWith('front/frontend/') }
                             .collect { path ->
-                              path.startsWith('back/')              ? path.tokenize('/')[1]
-                            : path.startsWith('front/frontend/')    ? 'frontend'
+                              path.startsWith('back/')           ? path.tokenize('/')[1]
+                            : path.startsWith('front/frontend/') ? 'frontend'
                             : null
                             }
                             .unique()
@@ -79,7 +82,10 @@ ENV=prod
                         ? params.FORCE_SERVICES.split(',').collect{ it.trim() }
                         : []
 
-          env.CHANGED_SERVICES = ((forced ?: changed) as Set).join(',')
+          // 중복 제거된 타깃 목록 결정
+          def targets = (forced ?: changed) as Set
+          env.CHANGED_SERVICES = targets.join(',')
+
           if (!env.CHANGED_SERVICES) {
             echo 'No service changes.'
             currentBuild.result = 'SUCCESS'
@@ -99,7 +105,7 @@ ENV=prod
         }
       }
       steps {
-        // TODO: Implement React Native / Kotlin mobile app build & release
+        // TODO: React Native / Kotlin 모바일 앱의 CI/CD 단계 구현
       }
     }
 
@@ -111,8 +117,8 @@ ENV=prod
           env.CHANGED_SERVICES.split(',').each { svc ->
             echo "▶  Building & deploying: ${svc}"
             sh """
-              docker compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" build ${svc}
-              docker compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" up -d --no-deps ${svc}
+              docker compose -f \"${COMPOSE_FILE}\" --env-file \"${ENV_FILE}\" build ${svc}
+              docker compose -f \"${COMPOSE_FILE}\" --env-file \"${ENV_FILE}\" up -d --no-deps ${svc}
             """
           }
         }
