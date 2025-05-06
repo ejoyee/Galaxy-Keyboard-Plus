@@ -51,7 +51,8 @@ PINECONE_KEY=${PINECONE_API_KEY}
 PINECONE_INDEX_NAME=${PINECONE_INDEX_NAME}
 CLAUDE_API_KEY=${CLAUDE_API_KEY}
 
-GOOGLE_APPLICATION_CREDENTIALS=$(pwd)/gcp-key.json
+# GCP 서비스 계정 키 파일 경로 (절대경로)
+GOOGLE_APPLICATION_CREDENTIALS=${env.WORKSPACE}/gcp-key.json
 
 ENV=prod
 """.trim()
@@ -82,7 +83,7 @@ ENV=prod
                         ? params.FORCE_SERVICES.split(',').collect{ it.trim() }
                         : []
 
-          // 중복 제거된 타깃 목록 결정
+          // 우선순위: 파라미터 지정 > 자동 감지
           def targets = (forced ?: changed) as Set
           env.CHANGED_SERVICES = targets.join(',')
 
@@ -105,7 +106,7 @@ ENV=prod
         }
       }
       steps {
-        // TODO: React Native / Kotlin 모바일 앱의 CI/CD 단계 구현
+        // TODO: React Native / Kotlin 앱 빌드·릴리즈 단계 추가
       }
     }
 
