@@ -34,9 +34,9 @@ services:
     ports: ["8082:8082"]
     restart: always
 
-  scheduler:
+  backend:
     container_name: backend-service
-    build: ./back/scheduler
+    build: ./back/backend
     command: ["java","-jar","/app/app.jar","--spring.profiles.active=local"]
     env_file: .env.dev
     depends_on: [postgres_sched]
