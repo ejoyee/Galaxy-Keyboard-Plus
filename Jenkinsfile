@@ -6,30 +6,34 @@ pipeline {
     ENV_FILE     = '.env.prod'
   }
 
-  /* ───── 파라미터: 첫 배포/강제 전체 재배포용 ───── */
   parameters {
     string(name: 'FORCE_SERVICES', defaultValue: '',
-      description: '콤마(,)로 지정 시 해당 서비스만 빌드·배포 (예: gateway,auth,scheduler,rag)')
+      description: '콤마(,)로 지정 시 해당 서비스만 빌드·배포 (예: gateway,auth,backend,rag,frontend)')
   }
 
   stages {
     /* 0) Checkout */
-    stage('Checkout') { steps { checkout scm } }
+    stage('Checkout') {
+      steps { checkout scm }
+    }
 
     /* 1) .env.prod 생성 */
     stage('Create .env.prod') {
       steps {
         withCredentials([
-          string(credentialsId:'POSTGRES_AUTH_USER',     variable:'AUTH_USER'),
-          string(credentialsId:'POSTGRES_AUTH_PASSWORD', variable:'AUTH_PW'),
-          string(credentialsId:'POSTGRES_AUTH_DB_NAME',  variable:'AUTH_DB'),
-          string(credentialsId:'POSTGRES_SCHED_USER',    variable:'SCHED_USER'),
-          string(credentialsId:'POSTGRES_SCHED_PASSWORD',variable:'SCHED_PW'),
-          string(credentialsId:'POSTGRES_SCHED_DB_NAME', variable:'SCHED_DB'),
-          string(credentialsId:'PINECONE_KEY',           variable:'PINECONE_KEY'),
-          string(credentialsId:'CLAUDE_API_KEY',         variable:'CLAUDE_API_KEY'),
-          string(credentialsId:'OPENAI_API_KEY',         variable:'OPENAI')
+          string(credentialsId: 'POSTGRES_AUTH_USER',      variable: 'AUTH_USER'),
+          string(credentialsId: 'POSTGRES_AUTH_PASSWORD',  variable: 'AUTH_PW'),
+          string(credentialsId: 'POSTGRES_AUTH_DB_NAME',   variable: 'AUTH_DB'),
+          string(credentialsId: 'POSTGRES_SCHED_USER',     variable: 'SCHED_USER'),
+          string(credentialsId: 'POSTGRES_SCHED_PASSWORD', variable: 'SCHED_PW'),
+          string(credentialsId: 'POSTGRES_SCHED_DB_NAME',  variable: 'SCHED_DB'),
+          string(credentialsId: 'PINECONE_API_KEY',         variable: 'PINECONE_API_KEY'),
+          string(credentialsId: 'PINECONE_INDEX_NAME',      variable: 'PINECONE_INDEX_NAME'),
+          file(  credentialsId: 'moca-457801-bfa12690864b.json', variable: 'GCP_KEY_FILE'),
+          string(credentialsId: 'CLAUDE_API_KEY',           variable: 'CLAUDE_API_KEY'),
+          string(credentialsId: 'OPENAI_API_KEY',           variable: 'OPENAI')
         ]) {
+          sh 'cp "$GCP_KEY_FILE" gcp-key.json'
           writeFile file: '.env.prod', text: """
 POSTGRES_AUTH_USER=${AUTH_USER}
 POSTGRES_AUTH_PASSWORD=${AUTH_PW}
@@ -40,34 +44,43 @@ POSTGRES_SCHED_PASSWORD=${SCHED_PW}
 POSTGRES_SCHED_DB_NAME=${SCHED_DB}
 
 OPENAI_API_KEY=${OPENAI}
-PINECONE_KEY=${PINECONE_KEY}
+PINECONE_KEY=${PINECONE_API_KEY}
+PINECONE_INDEX_NAME=${PINECONE_INDEX_NAME}
 CLAUDE_API_KEY=${CLAUDE_API_KEY}
+
+GOOGLE_APPLICATION_CREDENTIALS=$(pwd)/gcp-key.json
+
 ENV=prod
 """.trim()
         }
       }
     }
 
-    /* 2) 변경 서비스 탐지 + 파라미터 병합 */
+    /* 2) 변경 서비스 감지 */
     stage('Detect Changed Services') {
       steps {
         script {
           def diff = sh(
             script: "git diff --name-only ${env.GIT_PREVIOUS_SUCCESSFUL_COMMIT ?: 'HEAD~1'} ${env.GIT_COMMIT}",
-            returnStdout:true).trim()
+            returnStdout: true
+          ).trim()
 
           def changed = diff.split('\n')
                             .collect { it.trim() }
-                            .findAll { it.startsWith('back/') }
-                            .collect { p -> p.tokenize('/')[1] }
+                            .findAll { it.startsWith('back/') || it.startsWith('front/frontend/') }
+                            .collect { path ->
+                              path.startsWith('back/')              ? path.tokenize('/')[1]
+                            : path.startsWith('front/frontend/')    ? 'frontend'
+                            : null
+                            }
                             .unique()
 
-          def targets = params.FORCE_SERVICES?.trim() ?
-                        params.FORCE_SERVICES.split(',').collect{ it.trim() } :
-                        changed
+          def forced = params.FORCE_SERVICES?.trim()
+                        ? params.FORCE_SERVICES.split(',').collect{ it.trim() }
+                        : []
 
-          env.CHANGED_SERVICES = targets.join(',')
-          if (targets.isEmpty()) {
+          env.CHANGED_SERVICES = ((forced ?: changed) as Set).join(',')
+          if (!env.CHANGED_SERVICES) {
             echo 'No service changes.'
             currentBuild.result = 'SUCCESS'
           } else {
@@ -77,7 +90,20 @@ ENV=prod
       }
     }
 
-    /* 3) Build & Deploy */
+    /* 3) Frontend CI/CD (Placeholder) */
+    stage('Frontend CI/CD') {
+      when {
+        anyOf {
+          expression { env.CHANGED_SERVICES.split(',').contains('frontend') }
+          expression { params.FORCE_SERVICES?.split(',')?.contains('frontend') }
+        }
+      }
+      steps {
+        // TODO: Implement React Native / Kotlin mobile app build & release
+      }
+    }
+
+    /* 4) Build & Deploy Backend Services */
     stage('Build & Deploy') {
       when { expression { env.CHANGED_SERVICES?.trim() } }
       steps {
@@ -94,9 +120,13 @@ ENV=prod
     }
   }
 
-  /* 4) Post */
   post {
-    always  { sh 'shred -u .env.prod || rm -f .env.prod' }
-    failure { echo 'Build failed. (SMTP 미설정 시 메일 전송 생략)' }
+    always {
+      sh 'shred -u .env.prod || rm -f .env.prod'
+      sh 'rm -f gcp-key.json'
+    }
+    failure {
+      echo 'Build failed. (메일 설정이 없으면 생략)'
+    }
   }
 }

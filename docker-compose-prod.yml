@@ -54,6 +54,8 @@ services:
     build: ./back/rag
     command: ["uvicorn","app.main:app","--host","0.0.0.0","--port","8090"]
     env_file: .env.prod
+    volumes:
+      - ./gcp-key.json:/app/gcp-key.json:ro
     ports:
       - "127.0.0.1:8090:8090"
     restart: always
