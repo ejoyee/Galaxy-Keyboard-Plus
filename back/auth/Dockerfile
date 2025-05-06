@@ -20,6 +20,5 @@ WORKDIR /app
 # 빌드 산출물만 복사
 COPY --from=build /workspace/build/libs/*.jar app.jar
 
-EXPOSE 8082
 HEALTHCHECK CMD curl -f http://localhost:8082/actuator/health || exit 1
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]
