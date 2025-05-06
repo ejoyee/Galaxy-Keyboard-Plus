@@ -2,7 +2,7 @@ import React from 'react';
 import {View, Text, TouchableOpacity, ScrollView} from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import {ImageThumbnail} from './ImageThumbnail';
-import {ImageItem} from '../stores/useImageStore';
+import {ImageItem} from '../stores/useImageDetailStore';
 import tw from '../utils/tw';
 
 interface SectionProps {

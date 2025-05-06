@@ -1,5 +1,5 @@
 // src/data/dummyPhotos.ts
-import {ImageItem} from '../stores/useImageStore';
+import {ImageItem} from '../stores/useImageDetailStore';
 
 export const dummyPhotos: ImageItem[] = Array.from({length: 30}, (_, i) => ({
   imageUuid: `dummy-${i + 1}`,

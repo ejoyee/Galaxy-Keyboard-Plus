@@ -1,45 +1,45 @@
-import React from 'react';
-import {View, FlatList, Text} from 'react-native';
+import React, {useEffect} from 'react';
+import {View, FlatList, Text, TouchableOpacity} from 'react-native';
 import {useNavigation} from '@react-navigation/native';
 import {StackNavigationProp} from '@react-navigation/stack';
 import {RootStackParamList} from '../types/types';
-
-// import Icon from 'react-native-vector-icons/Ionicons';
-import {useEffect} from 'react';
-
 import {GalleryHeader} from '../components/GalleryHeader';
 import {ImageThumbnail} from '../components/ImageThumbnail';
 import {Section} from '../components/Section';
-
-import {useImageStore, ImageItem} from '../stores/useImageStore';
+import {useImagePreviewStore} from '../stores/useImagePreviewStore';
 import tw from '../utils/tw';
-
-// 더미데이터
+import {BasicImageItem} from '../types/imageTypes';
 import {dummyPhotos} from '../components/dummyPhotos';
 
 const PhotoGalleryScreen = () => {
-  const {images, appendImages} = useImageStore();
+  const {images, appendImages} = useImagePreviewStore();
 
   useEffect(() => {
-    appendImages(dummyPhotos); // 초기에 한 번 더미 데이터 로드
+    appendImages(dummyPhotos); // 임시 데이터 초기 로드
   }, []);
 
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
 
-  const favorites = images.filter(img => img.isFavorite);
-  const alarms = images.filter(img => img.hasAlarm);
+  const favorites = images.filter(img => img.star);
+
+  const handleImagePress = (image: BasicImageItem) => {
+    navigation.navigate('ImageDetail', {imageId: image.imageId});
+  };
 
   return (
-    <View style={tw`flex-1 bg-white `}>
-      {/* Header */}
+    <View style={tw`flex-1 bg-white`}>
       <GalleryHeader />
 
       <FlatList
         data={images}
-        renderItem={({item}) => <ImageThumbnail item={item} size="small" />}
-        keyExtractor={item => item.imageUuid}
+        renderItem={({item}) => (
+          <TouchableOpacity onPress={() => handleImagePress(item)}>
+            <ImageThumbnail item={item} size="small" />
+          </TouchableOpacity>
+        )}
+        keyExtractor={item => item.imageId}
         numColumns={4}
-        contentContainerStyle={tw`px-5 pb-4 `}
+        contentContainerStyle={tw`px-5 pb-4`}
         ListHeaderComponent={
           <>
             <Section
@@ -49,9 +49,10 @@ const PhotoGalleryScreen = () => {
             />
             <Section
               title="알림"
-              data={alarms}
+              data={favorites}
               onPressMore={() => navigation.navigate('AlarmGallery')}
             />
+
             <Text style={tw`mt-4 mb-2 text-base font-semibold`}>전체 보기</Text>
           </>
         }
