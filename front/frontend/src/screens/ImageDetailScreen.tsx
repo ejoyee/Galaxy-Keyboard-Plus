@@ -11,10 +11,13 @@ import Icon from 'react-native-vector-icons/Ionicons';
 import {useRoute, useNavigation, RouteProp} from '@react-navigation/native';
 import {StackNavigationProp} from '@react-navigation/stack';
 import {RootStackParamList} from '../types/types';
-import {generateUriFromAccessId} from '../types/imageTypes';
+// import {generateUriFromAccessId} from '../types/imageTypes';
 import tw from '../utils/tw';
 import {useImageDetailStore} from '../stores/useImageDetailStore';
-import {getImageDetail} from '../services/imageService';
+// import {getImageDetail} from '../services/imageService';
+
+// 더미
+import dummyImage from '../assets/sample.png'; // 예시 이미지
 
 const ImageDetailScreen = () => {
   const route = useRoute<RouteProp<RootStackParamList, 'ImageDetail'>>();
@@ -30,7 +33,16 @@ const ImageDetailScreen = () => {
   useEffect(() => {
     const fetchDetail = async () => {
       try {
-        const data = await getImageDetail(imageId);
+        // const data = await getImageDetail(imageId);
+
+        const data = {
+          imageId: imageId,
+          accessId: imageId,
+          star: false,
+          imageTime: 'ttt',
+          content: '더미데이터입니다~',
+        };
+
         setImage(data);
       } catch (error) {
         console.error('Failed to fetch image detail', error);
@@ -65,11 +77,13 @@ const ImageDetailScreen = () => {
 
       {/* Main Image */}
       <View style={tw`flex-1 justify-center items-center bg-gray-200`}>
-        <Image
+        {/* <Image
           source={{uri: generateUriFromAccessId(image.accessId)}}
           style={tw`w-full h-full`}
           resizeMode="contain"
-        />
+        /> */}
+        {/* 더미 */}
+        <Image source={dummyImage} style={tw`w-full `} resizeMode="contain" />
       </View>
 
       {/* Bottom Toolbar */}

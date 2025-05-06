@@ -1,4 +1,4 @@
-import React, {useEffect} from 'react';
+import React, {useEffect, useLayoutEffect} from 'react';
 import {View, FlatList, Text, TouchableOpacity} from 'react-native';
 import {useNavigation} from '@react-navigation/native';
 import {StackNavigationProp} from '@react-navigation/stack';
@@ -13,12 +13,15 @@ import {dummyPhotos} from '../components/dummyPhotos';
 
 const PhotoGalleryScreen = () => {
   const {images, appendImages} = useImagePreviewStore();
+  const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
+
+  useLayoutEffect(() => {
+    navigation.navigate('ImageDetail', {imageId: 'dummy-001'});
+  }, []);
 
   useEffect(() => {
     appendImages(dummyPhotos); // 임시 데이터 초기 로드
   }, []);
-
-  const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
 
   const favorites = images.filter(img => img.star);
 

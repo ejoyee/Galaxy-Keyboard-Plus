@@ -5,6 +5,7 @@ import HomeScreen from '../screens/HomeScreen.tsx';
 import PhotoGalleryScreen from '../screens/PhotoGalleryScreen';
 import FavoriteGalleryScreen from '../screens/FavoriteGalleryScreen.tsx';
 import AlarmGalleryScreen from '../screens/AlarmGalleryScreen.tsx';
+import ImageDetailScreen from '../screens/ImageDetailScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -23,6 +24,12 @@ export default function AppNavigator() {
           component={FavoriteGalleryScreen}
         />
         <Stack.Screen name="AlarmGallery" component={AlarmGalleryScreen} />
+
+        <Stack.Screen
+          name="ImageDetail"
+          component={ImageDetailScreen}
+          options={{headerShown: false}}
+        />
       </Stack.Navigator>
     </NavigationContainer>
   );
