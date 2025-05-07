@@ -51,7 +51,7 @@ pipeline {
             cp gcp-key.json back/rag/
           '''
 
-          // .env.prod 파일 생성 (GCP 경로 설정은 Dockerfile에서 처리)
+          // .env.prod 파일 생성 - PINECONE_KEY를 PINECONE_API_KEY로 변경
           writeFile file: '.env.prod', text: """
 POSTGRES_AUTH_USER=${AUTH_USER}
 POSTGRES_AUTH_PASSWORD=${AUTH_PW}
@@ -62,7 +62,7 @@ POSTGRES_SCHED_PASSWORD=${SCHED_PW}
 POSTGRES_SCHED_DB_NAME=${SCHED_DB}
 
 OPENAI_API_KEY=${OPENAI}
-PINECONE_KEY=${PINECONE_API_KEY}
+PINECONE_API_KEY=${PINECONE_API_KEY}
 PINECONE_INDEX_NAME=${PINECONE_INDEX_NAME}
 CLAUDE_API_KEY=${CLAUDE_API_KEY}
 
