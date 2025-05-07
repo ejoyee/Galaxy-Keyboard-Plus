@@ -19,14 +19,10 @@ pipeline {
   }
 
   stages {
-    /* 0) Checkout */
     stage('Checkout') {
-      steps {
-        checkout scm
-      }
+      steps { checkout scm }
     }
 
-    /* 1) .env.prod 생성 */
     stage('Create .env.prod') {
       steps {
         withCredentials([
@@ -74,7 +70,6 @@ ENV=prod
       }
     }
 
-    /* 2) 변경 서비스 감지 */
     stage('Detect Changed Services') {
       steps {
         script {
@@ -83,17 +78,11 @@ ENV=prod
             returnStdout: true
           ).trim()
           def changed = diff.split('\n')
-                            .findAll { it }
-                            .findAll { it.startsWith('back/') || it.startsWith('front/frontend/') }
-                            .collect { path ->
-                              path.startsWith('back/')           ? path.tokenize('/')[1]
-                            : path.startsWith('front/frontend/') ? 'frontend'
-                            : null
-                            }
+                            .findAll{ it }
+                            .findAll{ it.startsWith('back/') || it.startsWith('front/frontend/') }
+                            .collect{ p -> p.startsWith('front/frontend/') ? 'frontend' : p.tokenize('/')[1] }
                             .unique()
-          def forced = params.FORCE_SERVICES?.trim()
-                        ? params.FORCE_SERVICES.split(',').collect{ it.trim() }
-                        : []
+          def forced = params.FORCE_SERVICES?.trim() ? params.FORCE_SERVICES.split(',').collect{ it.trim() } : []
           env.CHANGED_SERVICES = (forced ?: changed).toSet().join(',')
           if (!env.CHANGED_SERVICES) {
             echo 'No service changes.'
@@ -105,7 +94,6 @@ ENV=prod
       }
     }
 
-    /* 3) Frontend CI/CD */
     stage('Frontend CI/CD') {
       when {
         anyOf {
@@ -117,7 +105,7 @@ ENV=prod
         stage('Frontend Setup') {
           steps {
             dir(env.FRONTEND_DIR) {
-              // 1) 호스트 워크스페이스에 google-services.json 복사
+              // 1) google-services.json 호스트에 복사 (권한 보장)
               withCredentials([ file(credentialsId: 'google-services-json', variable: 'GOOGLE_SERVICES_JSON') ]) {
                 sh '''
                   mkdir -p android/app
@@ -125,12 +113,13 @@ ENV=prod
                   chmod 644 android/app/google-services.json
                 '''
               }
-              // 2) npm install inside container via volumes-from
+              // 2) npm install inside Docker as current user, bind only project dir
               sh '''
                 echo "== npm install =="
                 docker run --rm \
-                  --volumes-from $(hostname) \
-                  -w "${WORKSPACE}/${FRONTEND_DIR}" \
+                  -u $(id -u):$(id -g) \
+                  -v "${WORKSPACE}/${FRONTEND_DIR}:/app" \
+                  -w /app \
                   node:${NODE_VERSION} \
                   npm install --no-audit --no-fund
                 echo "== npm install complete =="
@@ -154,13 +143,14 @@ ENV=prod
                 '''
               }
               sh '''
-                echo "== Android 빌드 시작 =="
+                echo "== Android build =="
                 docker run --rm \
-                  --volumes-from $(hostname) \
-                  -w "${WORKSPACE}/${FRONTEND_DIR}" \
+                  -u $(id -u):$(id -g) \
+                  -v "${WORKSPACE}/${FRONTEND_DIR}:/app" \
+                  -w /app \
                   cimg/android:2023.08.1 \
                   bash -c "cd android && echo MYAPP_RELEASE_STORE_FILE=keystore/release.keystore >> gradle.properties && echo MYAPP_RELEASE_KEY_ALIAS=${KEY_ALIAS} >> gradle.properties && echo MYAPP_RELEASE_STORE_PASSWORD=${KEYSTORE_PASSWORD} >> gradle.properties && echo MYAPP_RELEASE_KEY_PASSWORD=${KEY_PASSWORD} >> gradle.properties && ./gradlew assembleRelease"
-                echo "== Android 빌드 완료 =="
+                echo "== Android build complete =="
               '''
               archiveArtifacts artifacts: "android/app/build/outputs/apk/release/*.apk", fingerprint: true
             }
@@ -176,11 +166,12 @@ ENV=prod
                 string(credentialsId: 'FIREBASE_APP_ID',           variable: 'FIREBASE_APP_ID')
               ]) {
                 sh '''
-                  echo "== Firebase 배포 시작 =="
+                  echo "== Firebase deploy =="
                   APK_FILE=$(find android/app/build/outputs/apk/release -name "*.apk" | head -1)
                   cp "$FIREBASE_SA" firebase-key.json
-                  firebase appdistribution:distribute $APK_FILE --app $FIREBASE_APP_ID --token $FIREBASE_TOKEN --groups testers --release-notes "Jenkins 빌드 #$BUILD_NUMBER"
-                  echo "== Firebase 배포 완료 =="
+                  npm install -g firebase-tools
+                  firebase appdistribution:distribute $APK_FILE --app $FIREBASE_APP_ID --token $FIREBASE_TOKEN --groups testers --release-notes "Jenkins build #${BUILD_NUMBER}"
+                  echo "== Firebase deploy complete =="
                 '''
               }
             }
@@ -189,7 +180,6 @@ ENV=prod
       }
     }
 
-    /* 4) Build & Deploy Backend Services */
     stage('Build & Deploy Backend') {
       when {
         expression { env.CHANGED_SERVICES.split(',').any { it != 'frontend' } }
@@ -198,7 +188,7 @@ ENV=prod
         script {
           env.CHANGED_SERVICES.split(',').each { svc ->
             if (svc != 'frontend') {
-              echo "▶  Building & deploying: ${svc}"
+              echo "▶ Building & deploying ${svc}"
               sh """
                 docker compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" build ${svc}
                 docker compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" up -d --no-deps ${svc}
@@ -214,11 +204,7 @@ ENV=prod
     always {
       sh 'rm -f .env.prod gcp-key.json back/rag/gcp-key.json ${FRONTEND_DIR}/.env'
     }
-    success {
-      echo '빌드 및 배포 성공 🎉'
-    }
-    failure {
-      echo '빌드 또는 배포 실패 ❗'
-    }
+    success { echo '빌드 및 배포 성공 🎉' }
+    failure { echo '빌드 또는 배포 실패 ❗' }
   }
 }
