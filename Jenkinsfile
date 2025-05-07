@@ -38,7 +38,8 @@ pipeline {
           string(credentialsId: 'CLAUDE_API_KEY',           variable: 'CLAUDE_API_KEY'),
           string(credentialsId: 'OPENAI_API_KEY',           variable: 'OPENAI'),
           string(credentialsId: 'FIREBASE_CREDENTIALS_JSON_BASE64',           variable: 'FIREBASE_CREDENTIALS_JSON_BASE64'),
-          string(credentialsId: 'FRONTEND_API_URL',         variable: 'API_URL')
+          string(credentialsId: 'JWT_SECRET_KEY',         variable: 'JWT_SECRET_KEY'),
+          string(credentialsId: 'FRONTEND_API_URL', variable: 'API_URL'),
         ]) {
           sh '''
             cp "$GCP_KEY_FILE" gcp-key.json
@@ -60,6 +61,7 @@ PINECONE_API_KEY=${PINECONE_API_KEY}
 PINECONE_INDEX_NAME=${PINECONE_INDEX_NAME}
 CLAUDE_API_KEY=${CLAUDE_API_KEY}
 FIREBASE_CREDENTIALS_JSON_BASE64=${FIREBASE_CREDENTIALS_JSON_BASE64}
+JWT_SECRET_KEY=${JWT_SECRET_KEY}
 
 ENV=prod
 """.trim()
@@ -104,22 +106,37 @@ ENV=prod
         }
       }
       stages {
+        stage('Prepare Android Directory') {
+          steps {
+            sh '''
+              # Docker 이미지 캐시 정리
+              docker image prune -f
+              
+              # 권한 문제 해결을 위해 root 사용자로 디렉토리 구조 설정
+              sudo mkdir -p ${FRONTEND_DIR}/android/app/keystore
+              sudo chmod -R 777 ${FRONTEND_DIR}/android
+              
+              echo "== Android 디렉토리 준비 완료 =="
+            '''
+          }
+        }
+        
         stage('Frontend Setup') {
           steps {
             dir(env.FRONTEND_DIR) {
-              // 1) google-services.json 호스트에 복사 (권한 보장)
+              // 1) google-services.json 파일 직접 복사
               withCredentials([ file(credentialsId: 'google-services-json', variable: 'GOOGLE_SERVICES_JSON') ]) {
                 sh '''
-                  mkdir -p android/app
-                  cp "$GOOGLE_SERVICES_JSON" android/app/google-services.json
-                  chmod 644 android/app/google-services.json
+                  # root 권한으로 파일 복사
+                  sudo cp "$GOOGLE_SERVICES_JSON" android/app/google-services.json
+                  sudo chmod 644 android/app/google-services.json
                 '''
               }
-              // 2) npm install inside Docker as current user, bind only project dir
+              
+              // 2) npm install inside Docker (root 사용자로 실행)
               sh '''
                 echo "== npm install =="
                 docker run --rm \
-                  -u $(id -u):$(id -g) \
                   -v "${WORKSPACE}/${FRONTEND_DIR}:/app" \
                   -w /app \
                   node:${NODE_VERSION} \
@@ -139,21 +156,31 @@ ENV=prod
                 string(credentialsId: 'KEY_ALIAS',             variable: 'KEY_ALIAS'),
                 string(credentialsId: 'KEY_PASSWORD',          variable: 'KEY_PASSWORD')
               ]) {
+                // 키스토어 파일을 root 권한으로 복사
                 sh '''
-                  mkdir -p android/app/keystore
-                  cp "$KEYSTORE_FILE" android/app/keystore/release.keystore
+                  sudo cp "$KEYSTORE_FILE" android/app/keystore/release.keystore
+                  sudo chmod 644 android/app/keystore/release.keystore
                 '''
               }
               sh '''
                 echo "== Android build =="
                 docker run --rm \
-                  -u $(id -u):$(id -g) \
                   -v "${WORKSPACE}/${FRONTEND_DIR}:/app" \
                   -w /app \
                   cimg/android:2023.08.1 \
-                  bash -c "cd android && echo MYAPP_RELEASE_STORE_FILE=keystore/release.keystore >> gradle.properties && echo MYAPP_RELEASE_KEY_ALIAS=${KEY_ALIAS} >> gradle.properties && echo MYAPP_RELEASE_STORE_PASSWORD=${KEYSTORE_PASSWORD} >> gradle.properties && echo MYAPP_RELEASE_KEY_PASSWORD=${KEY_PASSWORD} >> gradle.properties && ./gradlew assembleRelease"
-                echo "== Android build complete =="
+                  bash -c "cd android && echo MYAPP_RELEASE_STORE_FILE=keystore/release.keystore >> gradle.properties && echo MYAPP_RELEASE_KEY_ALIAS=${KEY_ALIAS} >> gradle.properties && echo MYAPP_RELEASE_STORE_PASSWORD=${KEYSTORE_PASSWORD} >> gradle.properties && echo MYAPP_RELEASE_KEY_PASSWORD=${KEY_PASSWORD} >> gradle.properties && chmod +x ./gradlew && ./gradlew --no-daemon clean assembleRelease"
+                
+                # 빌드 결과 확인
+                if [ -f "android/app/build/outputs/apk/release/app-release.apk" ]; then
+                  # 빌드 번호를 포함한 이름으로 APK 파일 복사
+                  cp android/app/build/outputs/apk/release/app-release.apk android/app/build/outputs/apk/release/moca-app-${BUILD_NUMBER}.apk
+                  echo "== APK 생성 성공: moca-app-${BUILD_NUMBER}.apk =="
+                else
+                  echo "ERROR: APK 파일이 생성되지 않았습니다."
+                  exit 1
+                fi
               '''
+              // 생성된 APK 파일을 Jenkins 아티팩트로 보관
               archiveArtifacts artifacts: "android/app/build/outputs/apk/release/*.apk", fingerprint: true
             }
           }
@@ -169,10 +196,22 @@ ENV=prod
               ]) {
                 sh '''
                   echo "== Firebase deploy =="
-                  APK_FILE=$(find android/app/build/outputs/apk/release -name "*.apk" | head -1)
-                  cp "$FIREBASE_SA" firebase-key.json
-                  npm install -g firebase-tools
-                  firebase appdistribution:distribute $APK_FILE --app $FIREBASE_APP_ID --token $FIREBASE_TOKEN --groups testers --release-notes "Jenkins build #${BUILD_NUMBER}"
+                  APK_FILE=$(find android/app/build/outputs/apk/release -name "moca-app-${BUILD_NUMBER}.apk" | head -1)
+                  
+                  # Firebase 서비스 계정 JSON 파일 복사
+                  sudo cp "$FIREBASE_SA" firebase-key.json
+                  sudo chmod 644 firebase-key.json
+                  
+                  # Firebase CLI를 Docker 컨테이너 내에서 실행하여 배포
+                  docker run --rm \
+                    -v "${WORKSPACE}/${FRONTEND_DIR}:/app" \
+                    -w /app \
+                    -e FIREBASE_TOKEN="$FIREBASE_TOKEN" \
+                    -e FIREBASE_APP_ID="$FIREBASE_APP_ID" \
+                    -e BUILD_NUMBER="$BUILD_NUMBER" \
+                    node:${NODE_VERSION} \
+                    bash -c "npm install -g firebase-tools && firebase appdistribution:distribute $APK_FILE --app \$FIREBASE_APP_ID --token \$FIREBASE_TOKEN --groups testers --release-notes \"Jenkins build #\${BUILD_NUMBER}\""
+                  
                   echo "== Firebase deploy complete =="
                 '''
               }
@@ -206,7 +245,10 @@ ENV=prod
     always {
       sh 'rm -f .env.prod gcp-key.json back/rag/gcp-key.json ${FRONTEND_DIR}/.env'
     }
-    success { echo '빌드 및 배포 성공 🎉' }
+    success { 
+      echo '빌드 및 배포 성공 🎉' 
+      echo 'APK 파일은 Jenkins 빌드 아티팩트에서 다운로드하실 수 있으며, Firebase App Distribution으로도 배포되었습니다.'
+    }
     failure { echo '빌드 또는 배포 실패 ❗' }
   }
 }

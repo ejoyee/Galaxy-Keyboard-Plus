@@ -5,6 +5,8 @@ logging:
   level:
     com.gateway.filter: INFO
 
+jwt:
+  secret: ${JWT_SECRET_KEY}
 
 spring:
   application:
