@@ -124,7 +124,7 @@ ENV=prod
           steps {
             dir(env.FRONTEND_DIR) {
               sh 'echo "Current directory" && pwd && ls -la'
-              sh 'chmod -R 755 .'
+              // 권한 변경 제거됨
               sh '''
                 echo "== npm 설치 시작 =="
                 docker run --rm \
