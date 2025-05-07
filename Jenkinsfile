@@ -129,32 +129,13 @@ ENV=prod
         }
       }
       stages {
-        stage('Setup Tools') {
-          steps {
-            sh '''
-              # Node.js 설치 확인 및 필요시 설치
-              if ! command -v node &> /dev/null; then
-                curl -sL https://deb.nodesource.com/setup_${NODE_VERSION}.x | bash -
-                apt-get install -y nodejs
-              fi
-              
-              # Android SDK 설치 확인 및 필요시 설치
-              if [ ! -d "$ANDROID_HOME" ]; then
-                apt-get update && apt-get install -y openjdk-11-jdk wget unzip
-                wget https://dl.google.com/android/repository/commandlinetools-linux-8512546_latest.zip
-                mkdir -p $ANDROID_HOME
-                unzip commandlinetools-linux-8512546_latest.zip -d $ANDROID_HOME
-                export PATH=$ANDROID_HOME/cmdline-tools/bin:$PATH
-                yes | sdkmanager --sdk_root=$ANDROID_HOME "platform-tools" "platforms;android-33" "build-tools;33.0.0"
-              fi
-            '''
-          }
-        }
-        
         stage('Frontend Setup') {
           steps {
             dir('front/frontend') {
-              sh 'npm install --no-audit --no-fund'
+              // 로컬 node_modules 사용 대신 Docker 컨테이너 내에서 빌드
+              sh '''
+                docker run --rm -v $(pwd):/app -w /app node:18 npm install --no-audit --no-fund
+              '''
               
               // google-services.json 파일 생성
               withCredentials([
@@ -169,39 +150,18 @@ ENV=prod
         
         stage('Android Build') {
           steps {
-            dir('front/frontend') {
-              // 안드로이드 키스토어 파일 준비
-              withCredentials([
-                file(credentialsId: 'android-release-keystore', variable: 'KEYSTORE_FILE'),
-                string(credentialsId: 'KEYSTORE_PASSWORD', variable: 'KEYSTORE_PASSWORD'),
-                string(credentialsId: 'KEY_ALIAS', variable: 'KEY_ALIAS'),
-                string(credentialsId: 'KEY_PASSWORD', variable: 'KEY_PASSWORD')
-              ]) {
-                sh 'mkdir -p android/app/keystore'
-                sh 'cp $KEYSTORE_FILE android/app/keystore/release.keystore'
-                
-                // gradle.properties 파일에 서명 설정 추가
-                sh """
-                cat >> android/gradle.properties << EOF
-                MYAPP_RELEASE_STORE_FILE=keystore/release.keystore
-                MYAPP_RELEASE_KEY_ALIAS=$KEY_ALIAS
-                MYAPP_RELEASE_STORE_PASSWORD=$KEYSTORE_PASSWORD
-                MYAPP_RELEASE_KEY_PASSWORD=$KEY_PASSWORD
-                EOF
-                """
-              }
-              
-              // 안드로이드 앱 빌드
-              sh '''
-                export PATH=$ANDROID_HOME/cmdline-tools/bin:$ANDROID_HOME/platform-tools:$PATH
-                cd android
-                chmod +x ./gradlew
-                ./gradlew assembleRelease
-              '''
-              
-              // 빌드된 APK 저장
-              archiveArtifacts artifacts: 'android/app/build/outputs/apk/release/*.apk', fingerprint: true
-            }
+            // 안드로이드 빌드를 위한 Docker 이미지 사용
+            sh '''
+              docker run --rm \
+                -v $(pwd)/front/frontend:/app \
+                -w /app \
+                -e ANDROID_HOME=/opt/android-sdk \
+                cimg/android:2023.08.1 \
+                sh -c "cd android && chmod +x ./gradlew && ./gradlew assembleRelease"
+            '''
+            
+            // 빌드된 APK 저장
+            archiveArtifacts artifacts: 'front/frontend/android/app/build/outputs/apk/release/*.apk', fingerprint: true
           }
         }
         
@@ -213,19 +173,16 @@ ENV=prod
                 string(credentialsId: 'FIREBASE_TOKEN', variable: 'FIREBASE_TOKEN'),
                 string(credentialsId: 'FIREBASE_APP_ID', variable: 'FIREBASE_APP_ID')
               ]) {
+                // Docker 컨테이너를 사용하여 Firebase 배포
                 sh '''
-                  # Firebase CLI 설치
-                  npm install -g firebase-tools
-                  
-                  # Firebase 서비스 계정 설정
-                  export GOOGLE_APPLICATION_CREDENTIALS=$FIREBASE_SA
-                  
-                  # Firebase에 배포
-                  firebase appdistribution:distribute $APK_PATH \
-                    --app $FIREBASE_APP_ID \
-                    --token $FIREBASE_TOKEN \
-                    --groups "testers" \
-                    --release-notes "Jenkins 빌드 #${BUILD_NUMBER} - $(date)"
+                  docker run --rm \
+                    -v $(pwd):/app \
+                    -v $FIREBASE_SA:/app/firebase-key.json \
+                    -w /app \
+                    -e GOOGLE_APPLICATION_CREDENTIALS=/app/firebase-key.json \
+                    -e FIREBASE_TOKEN=$FIREBASE_TOKEN \
+                    node:18 \
+                    sh -c "npm install -g firebase-tools && firebase appdistribution:distribute $APK_PATH --app $FIREBASE_APP_ID --token $FIREBASE_TOKEN --groups 'testers' --release-notes 'Jenkins 빌드 #${BUILD_NUMBER} - $(date)'"
                 '''
                 
                 // 배포 링크 생성 및 출력
