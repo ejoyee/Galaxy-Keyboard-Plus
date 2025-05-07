@@ -79,7 +79,8 @@ async def upload_image(
                         # ISO 8601 포맷을 datetime 객체로 파싱
                         dt_obj = datetime.fromisoformat(schedule_result["datetime"])
                         # 🛠 백엔드 요구 포맷으로 변경 (주의: 콜론(:) 구분자)
-                        formatted_time = dt_obj.strftime("%Y:%m:%d %H:%M:%S")
+                        # formatted_time = dt_obj.strftime("%Y:%m:%d %H:%M:%S")
+                        formatted_time = dt_obj.isoformat()
                     except Exception as time_err:
                         logger.warning(f"⚠️ 날짜 포맷 변환 실패: {time_err}")
                         formatted_time = schedule_result["datetime"]  # fallback
