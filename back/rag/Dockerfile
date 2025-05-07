@@ -1,7 +1,7 @@
 # back/rag/Dockerfile
 
 FROM python:3.11-slim
-
+ENV GOOGLE_APPLICATION_CREDENTIALS=/app/gcp-key.json
 # 파이썬 설정
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
