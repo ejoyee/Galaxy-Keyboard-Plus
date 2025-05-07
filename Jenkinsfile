@@ -14,7 +14,9 @@ pipeline {
   stages {
     /* 0) Checkout */
     stage('Checkout') {
-      steps { checkout scm }
+      steps {
+        checkout scm
+      }
     }
 
     /* 1) .env.prod 생성 */
@@ -83,7 +85,7 @@ ENV=prod
                         ? params.FORCE_SERVICES.split(',').collect{ it.trim() }
                         : []
 
-          // 우선순위: 파라미터 지정 > 자동 감지
+          // 파라미터 지정이 있다면 우선, 없으면 자동 감지 목록
           def targets = (forced ?: changed) as Set
           env.CHANGED_SERVICES = targets.join(',')
 
@@ -106,7 +108,8 @@ ENV=prod
         }
       }
       steps {
-        // TODO: React Native / Kotlin 앱 빌드·릴리즈 단계 추가
+        // TODO: React Native / Kotlin 모바일 앱의 CI/CD 단계 구현
+        echo '⏳ Frontend CI/CD 단계는 아직 구현되지 않았습니다. Placeholder 동작입니다.'
       }
     }
 
@@ -118,8 +121,8 @@ ENV=prod
           env.CHANGED_SERVICES.split(',').each { svc ->
             echo "▶  Building & deploying: ${svc}"
             sh """
-              docker compose -f \"${COMPOSE_FILE}\" --env-file \"${ENV_FILE}\" build ${svc}
-              docker compose -f \"${COMPOSE_FILE}\" --env-file \"${ENV_FILE}\" up -d --no-deps ${svc}
+              docker compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" build ${svc}
+              docker compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" up -d --no-deps ${svc}
             """
           }
         }
