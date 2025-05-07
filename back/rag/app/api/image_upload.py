@@ -1,5 +1,6 @@
 import logging
 import httpx
+import json
 from datetime import datetime
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 from app.utils.image_classifier import classify_image_from_bytes
@@ -60,6 +61,10 @@ async def upload_image(
         async with httpx.AsyncClient() as client:
             # Step 3: 이미지 정보 저장
             logger.info(f"📤 이미지 정보 전송 → payload: {image_payload}")
+            logger.info(
+                f"📤 이미지 전송 바디(JSON):\n{json.dumps(image_payload, ensure_ascii=False, indent=2)}"
+            )
+
             image_response = await client.post(
                 "http://backend-service:8083/api/v1/images", json=image_payload
             )
@@ -95,6 +100,10 @@ async def upload_image(
                         "imageId": image_id,
                     }
                     logger.info(f"📤 일정 등록 전송 → payload: {plan_payload}")
+                    logger.info(
+                        f"📤 일정 전송 바디(JSON):\n{json.dumps(plan_payload, ensure_ascii=False, indent=2)}"
+                    )
+
                     plan_response = await client.post(
                         "http://backend-service:8083/api/v1/plans", json=plan_payload
                     )
