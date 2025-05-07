@@ -5,6 +5,7 @@ import com.backend.global.common.response.BaseResponseStatus;
 import com.backend.image.application.out.ImageThumbnailOutDto;
 import com.backend.image.domain.entity.Image;
 import com.backend.image.repository.ImageRepository;
+import com.backend.plan.application.in.PlanAlarmToggleInDto;
 import com.backend.plan.application.in.SavePlanInDto;
 import com.backend.plan.application.out.ImageInfo;
 import com.backend.plan.application.out.PlanDetailOutDto;
@@ -124,6 +125,14 @@ public class PlanService {
                 .orElseThrow(() -> new BaseException(BaseResponseStatus.NO_EXIST_PLAN));
 
         planRepository.delete(plan);
+    }
+
+    public void updateAlarmTF(PlanAlarmToggleInDto inDto){
+        Plan plan = planRepository.findById(inDto.getPlanId())
+                .orElseThrow(() -> new BaseException(BaseResponseStatus.NO_EXIST_PLAN));
+
+        plan.setAlarmTf(inDto.isAlarmTf());
+        planRepository.save(plan);
     }
 
 

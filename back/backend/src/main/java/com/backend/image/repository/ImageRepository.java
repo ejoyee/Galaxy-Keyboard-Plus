@@ -20,5 +20,8 @@ public interface ImageRepository extends JpaRepository<Image, UUID> {
     //즐겨찾기 프리뷰로 보여줄 즐겨찾기 사진 k개
     List<Image> findTop3ByUser_UserIdAndStarTrueOrderByImageTimeDesc(UUID userId);
 
+    //해당 액세스 아이디로 저장된 이미지가 있는지 확인
+    boolean existsByUser_UserIdAndAccessId(UUID userId, String accessId);
+
 
 }

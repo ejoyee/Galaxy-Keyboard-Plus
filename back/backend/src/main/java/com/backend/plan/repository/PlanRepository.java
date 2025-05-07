@@ -14,4 +14,6 @@ public interface PlanRepository extends JpaRepository<Plan, UUID> {
     List<Plan> findTop3ByUser_UserIdOrderByPlanTimeDesc(UUID userId);
 
     Page<Plan> findByUser_UserIdOrderByPlanTimeDesc(UUID userId, Pageable pageable);
+
+    List<Plan> findAllByAlarmTfTrue();
 }

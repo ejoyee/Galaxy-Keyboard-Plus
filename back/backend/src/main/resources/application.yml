@@ -34,3 +34,7 @@ management:
   endpoint:
     health:
       show-details: always
+
+firebase:
+  credentials:
+    json-base64: ${FIREBASE_CREDENTIALS_JSON_BASE64}
