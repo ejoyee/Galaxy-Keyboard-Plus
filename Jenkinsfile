@@ -134,7 +134,7 @@ ENV=prod
                 echo "== npm 설치 완료 =="
               '''
 
-              // copy google-services.json inside Docker to avoid host permission issues
+              // copy google-services.json via Docker, file or directory
               withCredentials([
                 file(credentialsId: 'google-services-json', variable: 'GOOGLE_SERVICES_JSON')
               ]) {
@@ -145,7 +145,7 @@ ENV=prod
                     -v "${GOOGLE_SERVICES_JSON}:/tmp/google-services.json:ro" \
                     -w "${WORKSPACE}/${FRONTEND_DIR}/android/app" \
                     node:${NODE_VERSION} \
-                    /bin/sh -c "cp /tmp/google-services.json google-services.json && ls -la"
+                    /bin/sh -c "if [ -d /tmp/google-services.json ]; then cp /tmp/google-services.json/* google-services.json; else cp /tmp/google-services.json google-services.json; fi && ls -la"
                   echo "== Copy completed =="
                 '''
               }
