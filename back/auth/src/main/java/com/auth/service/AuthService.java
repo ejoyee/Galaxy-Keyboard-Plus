@@ -8,6 +8,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
@@ -20,35 +21,8 @@ public class AuthService {
     private final AuthTokenRepository tokenRepo;
     private final JwtTokenProvider jwt;
 
-//    public Map<String,String> login(String code) {
-//
-//        String kakaoAT = kakao.fetchAccessToken(code);
-//        String email   = kakao.fetchEmail(kakaoAT);
-//
-//        UserInfo user = userRepo.findByKakaoEmail(email)
-//                .orElseGet(() -> userRepo.save(
-//                        UserInfo.builder()
-//                                .id(UUID.randomUUID())
-//                                .kakaoEmail(email)
-//                                .build()));
-//
-//        String at = jwt.access(user.getId());
-//        String rt = jwt.refresh(user.getId());
-//
-//        tokenRepo.findById(user.getId())
-//                 .ifPresentOrElse(
-//                     t -> t.updateRefreshToken(rt),
-//                     () -> tokenRepo.save(
-//                             AuthTokenEntity.builder()
-//                                            .user(user)
-//                                            .refreshToken(rt)
-//                                            .build()));
-//
-//        return Map.of("accessToken", at, "refreshToken", rt);
-//    }
-
     @Transactional // 트랜잭션 처리를 위해 추가
-    public Map<String, String> loginWithKakaoAccessToken(String kakaoAccessToken) {
+    public Map<String, Object> loginWithKakaoAccessToken(String kakaoAccessToken) {
         // 1. 카카오 Access Token으로 카카오 사용자 정보 조회
         Map<String, Object> kakaoUserProfile = kakao.getKakaoUserProfile(kakaoAccessToken);
 
@@ -94,8 +68,14 @@ public class AuthService {
                                     .build();
                             tokenRepo.save(newAuthTokenEntity);
                         });
+        // 반환할 맵 생성 및 데이터 추가
+        Map<String, Object> response = new HashMap<>();
+        response.put("userId", user.getId()); // Long 타입의 userId 추가
+        response.put("accessToken", appAccessToken);
+        response.put("refreshToken", appRefreshToken);
 
-        return Map.of("accessToken", appAccessToken, "refreshToken", appRefreshToken);
+        return response;
+//        return Map.of("accessToken", appAccessToken, "refreshToken", appRefreshToken);
     }
 
     @Transactional
@@ -116,5 +96,30 @@ public class AuthService {
         return Map.of("accessToken", newAt, "refreshToken", newRt);
     }
 
-    public void logout(String rt) { tokenRepo.deleteById(jwt.parse(rt)); }
+    /**
+     * 회원 탈퇴 처리 (현재 인증된 사용자 기준)
+     * @param userId 탈퇴할 사용자의 ID
+     * @throws RuntimeException 사용자를 찾을 수 없을 경우 (선택적 처리)
+     */
+    @Transactional
+    public void withdrawUser(Long userId) {
+        System.out.println("회원 탈퇴 요청 수신: userId=" + userId);
+
+        // 1. 사용자 존재 여부 확인 (선택적: deleteById는 ID 없어도 오류 발생 안 함)
+        boolean userExists = userRepo.existsById(userId);
+        if (!userExists) {
+            // 사용자가 존재하지 않는 경우, 에러를 던지거나 조용히 종료할 수 있음
+            System.err.println("회원 탈퇴 실패: 사용자를 찾을 수 없습니다. userId=" + userId);
+            throw new RuntimeException("User not found for withdrawal with ID: " + userId);
+            // 또는 로깅만 하고 정상 종료 처리 return;
+        }
+
+        // 2. user_info 테이블에서 사용자 삭제
+        // DB 스키마의 auth_token 테이블에 ON DELETE CASCADE 설정으로 인해
+        // user_info 레코드가 삭제되면 auth_token 레코드도 자동으로 삭제됩니다.
+        userRepo.deleteById(userId);
+        System.out.println("사용자 정보 삭제 완료 (UserInfo, AuthToken 자동 삭제됨): userId=" + userId);
+
+    }
+
 }

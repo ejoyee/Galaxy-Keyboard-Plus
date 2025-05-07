@@ -17,9 +17,6 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtFilter;
-    private final JwtTokenProvider jwt;                 // AT·RT 발급기
-    private final KakaoOAuth2UserService kakaoOAuth2UserService; // 이미 구현해 두신 것
-
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
