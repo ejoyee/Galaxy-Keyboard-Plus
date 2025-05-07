@@ -2,17 +2,20 @@ pipeline {
   agent any
 
   environment {
-    COMPOSE_FILE = 'docker-compose-prod.yml'
-    ENV_FILE     = '.env.prod'
-    ANDROID_HOME = '/opt/android-sdk'
-    NODE_VERSION = '18'
-    FRONTEND_DIR = 'front/frontend'
-    APK_PATH     = 'android/app/build/outputs/apk/release/app-release.apk'
+    COMPOSE_FILE    = 'docker-compose-prod.yml'
+    ENV_FILE        = '.env.prod'
+    ANDROID_HOME    = '/opt/android-sdk'
+    NODE_VERSION    = '18'
+    FRONTEND_DIR    = 'front/frontend'
+    APK_PATH        = 'android/app/build/outputs/apk/release/app-release.apk'
   }
 
   parameters {
-    string(name: 'FORCE_SERVICES', defaultValue: '',
-      description: '콤마(,)로 지정 시 해당 서비스만 빌드·배포 (예: gateway,auth,backend,rag,frontend)')
+    string(
+      name: 'FORCE_SERVICES', 
+      defaultValue: '',
+      description: '콤마(,)로 지정 시 해당 서비스만 빌드·배포 (예: gateway,auth,backend,rag,frontend)'
+    )
   }
 
   stages {
@@ -38,26 +41,18 @@ pipeline {
           file(  credentialsId: 'moca-457801-bfa12690864b.json', variable: 'GCP_KEY_FILE'),
           string(credentialsId: 'CLAUDE_API_KEY',           variable: 'CLAUDE_API_KEY'),
           string(credentialsId: 'OPENAI_API_KEY',           variable: 'OPENAI'),
-          // 프론트엔드 환경 변수 추가
-          string(credentialsId: 'FRONTEND_API_URL',        variable: 'API_URL')
+          string(credentialsId: 'FRONTEND_API_URL',         variable: 'API_URL')
         ]) {
-          // GCP 키 파일을 workspace 로 복사
           sh '''
             cp "$GCP_KEY_FILE" gcp-key.json
             chmod 644 gcp-key.json
-            
-            # 파일이 디렉토리가 아님을 확인
             if [ -d gcp-key.json ]; then
               echo "오류: gcp-key.json이 디렉토리로 생성되었습니다. 파일이어야 합니다."
               exit 1
             fi
-            
-            # RAG 서비스 디렉토리로 키 파일 복사
             mkdir -p back/rag
             cp gcp-key.json back/rag/
           '''
-
-          // .env.prod 파일 생성
           writeFile file: '.env.prod', text: """
 POSTGRES_AUTH_USER=${AUTH_USER}
 POSTGRES_AUTH_PASSWORD=${AUTH_PW}
@@ -74,8 +69,6 @@ CLAUDE_API_KEY=${CLAUDE_API_KEY}
 
 ENV=prod
 """.trim()
-
-          // 프론트엔드 환경 변수 파일 생성
           sh "mkdir -p ${FRONTEND_DIR}"
           writeFile file: "${FRONTEND_DIR}/.env", text: """
 API_URL=${API_URL}
@@ -93,7 +86,6 @@ ENV=prod
             script: "git diff --name-only ${env.GIT_PREVIOUS_SUCCESSFUL_COMMIT ?: 'HEAD~1'} ${env.GIT_COMMIT}",
             returnStdout: true
           ).trim()
-
           def changed = diff.split('\n')
                             .findAll { it }
                             .collect { it.trim() }
@@ -104,14 +96,11 @@ ENV=prod
                             : null
                             }
                             .unique()
-
           def forced = params.FORCE_SERVICES?.trim()
                         ? params.FORCE_SERVICES.split(',').collect{ it.trim() }
                         : []
-
           def targets = (forced ?: changed) as Set
           env.CHANGED_SERVICES = targets.join(',')
-
           if (!env.CHANGED_SERVICES) {
             echo 'No service changes.'
             currentBuild.result = 'SUCCESS'
@@ -133,155 +122,114 @@ ENV=prod
       stages {
         stage('Frontend Setup') {
           steps {
-            // 프론트엔드 디렉토리로 이동
             dir(env.FRONTEND_DIR) {
-              // 프로젝트 정보 출력
+              // 프로젝트 정보
               sh 'echo "Current directory" && pwd && ls -la'
-              
-              // 디렉토리 권한 수정
               sh 'chmod -R 755 .'
-              
-              // 로컬 디렉토리에서 직접 작업하는 방식으로 변경
+              // npm 설치 via Docker
               sh '''
                 echo "== npm 설치 시작 =="
-                
-                # 절대 경로 사용
-                CURRENT_DIR=$(pwd)
-                echo "현재 디렉토리 절대 경로: $CURRENT_DIR"
-                
-                # Docker 컨테이너에서 npm 실행
+                FE_DIR="${WORKSPACE}/${FRONTEND_DIR}"
                 docker run --rm \
-                  -v "$CURRENT_DIR:/app" \
+                  -v "${FE_DIR}:/app:delegated" \
                   -w /app \
-                  node:18 \
-                  /bin/sh -c "echo '컨테이너 내부 디렉토리 내용:' && ls -la && npm install --no-audit --no-fund"
-                
+                  node:${NODE_VERSION} \
+                  /bin/sh -c "ls -la /app && npm install --no-audit --no-fund"
                 echo "== npm 설치 완료 =="
               '''
-              
-              // google-services.json 파일 생성
+              // google-services.json 복사
               withCredentials([
                 file(credentialsId: 'google-services-json', variable: 'GOOGLE_SERVICES_JSON')
               ]) {
-                sh 'mkdir -p android/app'
-                sh 'cp "$GOOGLE_SERVICES_JSON" android/app/google-services.json'
-                sh 'ls -la android/app'
+                sh '''
+                  mkdir -p android/app
+                  cp "$GOOGLE_SERVICES_JSON" android/app/google-services.json
+                  ls -la android/app
+                '''
               }
             }
           }
         }
-        
+
         stage('Android Build') {
           steps {
             dir(env.FRONTEND_DIR) {
-              // 안드로이드 빌드 준비
               withCredentials([
                 file(credentialsId: 'android-release-keystore', variable: 'KEYSTORE_FILE'),
-                string(credentialsId: 'KEYSTORE_PASSWORD', variable: 'KEYSTORE_PASSWORD'),
-                string(credentialsId: 'KEY_ALIAS', variable: 'KEY_ALIAS'),
-                string(credentialsId: 'KEY_PASSWORD', variable: 'KEY_PASSWORD')
+                string(credentialsId: 'KEYSTORE_PASSWORD',     variable: 'KEYSTORE_PASSWORD'),
+                string(credentialsId: 'KEY_ALIAS',             variable: 'KEY_ALIAS'),
+                string(credentialsId: 'KEY_PASSWORD',          variable: 'KEY_PASSWORD')
               ]) {
-                sh 'mkdir -p android/app/keystore'
-                sh 'cp "$KEYSTORE_FILE" android/app/keystore/release.keystore'
-                sh 'ls -la android/app/keystore'
-                
-                // gradle.properties 파일에 서명 설정 추가
-                sh """
-                cat >> android/gradle.properties << EOF
-                MYAPP_RELEASE_STORE_FILE=keystore/release.keystore
-                MYAPP_RELEASE_KEY_ALIAS=$KEY_ALIAS
-                MYAPP_RELEASE_STORE_PASSWORD=$KEYSTORE_PASSWORD
-                MYAPP_RELEASE_KEY_PASSWORD=$KEY_PASSWORD
-                EOF
-                cat android/gradle.properties
-                """
+                sh '''
+                  mkdir -p android/app/keystore
+                  cp "$KEYSTORE_FILE" android/app/keystore/release.keystore
+                  cat >> android/gradle.properties << EOF
+MYAPP_RELEASE_STORE_FILE=keystore/release.keystore
+MYAPP_RELEASE_KEY_ALIAS=$KEY_ALIAS
+MYAPP_RELEASE_STORE_PASSWORD=$KEYSTORE_PASSWORD
+MYAPP_RELEASE_KEY_PASSWORD=$KEY_PASSWORD
+EOF
+                '''
               }
-              
-              // 안드로이드 빌드
               sh '''
                 echo "== Android 빌드 시작 =="
-                
-                # 절대 경로 사용
-                CURRENT_DIR=$(pwd)
-                
-                # 로컬 디렉토리에서 직접 빌드
+                FE_DIR="${WORKSPACE}/${FRONTEND_DIR}"
                 docker run --rm \
-                  -v "$CURRENT_DIR:/app" \
+                  -v "${FE_DIR}:/app:delegated" \
                   -w /app \
                   cimg/android:2023.08.1 \
-                  /bin/sh -c "echo '컨테이너 내부 디렉토리 내용:' && ls -la && cd android && chmod +x ./gradlew && ./gradlew assembleRelease"
-                
+                  /bin/sh -c "cd android && chmod +x ./gradlew && ./gradlew assembleRelease"
                 echo "== Android 빌드 완료 =="
-                echo "빌드 결과물:"
-                find android -name "*.apk" || echo "APK 파일을 찾을 수 없습니다"
               '''
-              
-              // 빌드된 APK 저장
               archiveArtifacts artifacts: "android/app/build/outputs/apk/release/*.apk", fingerprint: true, allowEmptyArchive: true
             }
           }
         }
-        
+
         stage('Deploy to Firebase') {
           steps {
             dir(env.FRONTEND_DIR) {
               withCredentials([
                 file(credentialsId: 'firebase-service-account', variable: 'FIREBASE_SA'),
-                string(credentialsId: 'FIREBASE_TOKEN', variable: 'FIREBASE_TOKEN'),
-                string(credentialsId: 'FIREBASE_APP_ID', variable: 'FIREBASE_APP_ID')
+                string(credentialsId: 'FIREBASE_TOKEN',           variable: 'FIREBASE_TOKEN'),
+                string(credentialsId: 'FIREBASE_APP_ID',         variable: 'FIREBASE_APP_ID')
               ]) {
-                // Firebase 배포
                 sh '''
                   echo "== Firebase 배포 시작 =="
-                  
-                  # 절대 경로 사용
-                  CURRENT_DIR=$(pwd)
-                  
-                  # APK 파일 찾기
-                  APK_FILE=$(find android/app/build/outputs/apk/release -name "*.apk" 2>/dev/null | head -1)
-                  
+                  FE_DIR="${WORKSPACE}/${FRONTEND_DIR}"
+                  APK_FILE=$(find "${FE_DIR}/android/app/build/outputs/apk/release" -name "*.apk" 2>/dev/null | head -1)
                   if [ -z "$APK_FILE" ]; then
                     echo "ERROR: APK 파일을 찾을 수 없습니다!"
-                    find android -name "*.apk" || echo "APK 파일 없음"
                     exit 1
                   fi
-                  
-                  echo "배포할 APK 파일: $APK_FILE"
-                  
-                  # Firebase 서비스 계정 키 복사
                   cp "$FIREBASE_SA" firebase-key.json
                   chmod 644 firebase-key.json
-                  
-                  # Firebase 배포
                   docker run --rm \
-                    -v "$CURRENT_DIR:/app" \
+                    -v "${FE_DIR}:/app:delegated" \
                     -w /app \
                     -e GOOGLE_APPLICATION_CREDENTIALS=/app/firebase-key.json \
                     -e FIREBASE_TOKEN="$FIREBASE_TOKEN" \
                     -e FIREBASE_APP_ID="$FIREBASE_APP_ID" \
                     -e BUILD_NUMBER="$BUILD_NUMBER" \
-                    node:18 \
+                    node:${NODE_VERSION} \
                     /bin/sh -c "npm install -g firebase-tools && firebase appdistribution:distribute $APK_FILE --app $FIREBASE_APP_ID --token $FIREBASE_TOKEN --groups 'testers' --release-notes 'Jenkins 빌드 #${BUILD_NUMBER} - $(date)'"
-                  
-                  # 서비스 계정 키 파일 삭제
                   rm -f firebase-key.json
-                  
                   echo "== Firebase 배포 완료 =="
                 '''
-                
-                // 배포 링크 생성 및 출력
                 script {
-                  def apkPath = sh(script: "find ${env.FRONTEND_DIR}/android/app/build/outputs/apk/release -name '*.apk' 2>/dev/null | head -1", returnStdout: true).trim()
-                  
+                  def apkPath = sh(
+                    script: "find ${env.FRONTEND_DIR}/android/app/build/outputs/apk/release -name '*.apk' 2>/dev/null | head -1",
+                    returnStdout: true
+                  ).trim()
                   if (apkPath) {
                     echo """
-                    ======================================================
-                    앱 배포가 완료되었습니다!
-                    
-                    1. Firebase App Distribution에서 테스터 초대를 확인하세요.
-                    2. 직접 APK 다운로드: ${BUILD_URL}artifact/${apkPath}
-                    ======================================================
-                    """
+======================================================
+앱 배포가 완료되었습니다!
+
+1. Firebase App Distribution에서 테스터 초대를 확인하세요.
+2. 직접 APK 다운로드: ${BUILD_URL}artifact/${apkPath}
+======================================================
+"""
                   } else {
                     echo "WARNING: 배포가 완료되었지만 APK 파일 경로를 찾을 수 없습니다."
                   }
@@ -298,7 +246,7 @@ ENV=prod
       when { 
         expression { 
           env.CHANGED_SERVICES?.trim() && 
-          env.CHANGED_SERVICES.split(',').any { !it.equals('frontend') } 
+          env.CHANGED_SERVICES.split(',').any { it != 'frontend' } 
         }
       }
       steps {
