@@ -27,10 +27,11 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(cfg -> cfg.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/auth/**", "/oauth2/**",          // OAuth2 엔드포인트
+                        .requestMatchers("/auth/**",
+//                                "/oauth2/**",          // OAuth2 엔드포인트
                                 "/login/**","/error").permitAll()
                         .anyRequest().authenticated())
-                .oauth2Login(Customizer.withDefaults())
+//                .oauth2Login(Customizer.withDefaults())
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
