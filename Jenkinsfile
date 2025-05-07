@@ -88,7 +88,6 @@ ENV=prod
           ).trim()
           def changed = diff.split('\n')
                             .findAll { it }
-                            .collect { it.trim() }
                             .findAll { it.startsWith('back/') || it.startsWith('front/frontend/') }
                             .collect { path ->
                               path.startsWith('back/')           ? path.tokenize('/')[1]
@@ -99,8 +98,7 @@ ENV=prod
           def forced = params.FORCE_SERVICES?.trim()
                         ? params.FORCE_SERVICES.split(',').collect{ it.trim() }
                         : []
-          def targets = (forced ?: changed) as Set
-          env.CHANGED_SERVICES = targets.join(',')
+          env.CHANGED_SERVICES = (forced ?: changed).toSet().join(',')
           if (!env.CHANGED_SERVICES) {
             echo 'No service changes.'
             currentBuild.result = 'SUCCESS'
@@ -124,6 +122,8 @@ ENV=prod
           steps {
             dir(env.FRONTEND_DIR) {
               sh 'echo "Current directory" && pwd && ls -la'
+
+              // npm install via Docker
               sh '''
                 echo "== npm 설치 시작 =="
                 docker run --rm \
@@ -133,13 +133,20 @@ ENV=prod
                   /bin/sh -c "ls -la . && npm install --no-audit --no-fund"
                 echo "== npm 설치 완료 =="
               '''
+
+              // copy google-services.json inside Docker to avoid host permission issues
               withCredentials([
                 file(credentialsId: 'google-services-json', variable: 'GOOGLE_SERVICES_JSON')
               ]) {
                 sh '''
-                  mkdir -p android/app
-                  cp "$GOOGLE_SERVICES_JSON" android/app/google-services.json
-                  ls -la android/app
+                  echo "== Copy google-services.json via Docker =="
+                  docker run --rm \
+                    --volumes-from $(hostname) \
+                    -v "${GOOGLE_SERVICES_JSON}:/tmp/google-services.json:ro" \
+                    -w "${WORKSPACE}/${FRONTEND_DIR}/android/app" \
+                    node:${NODE_VERSION} \
+                    /bin/sh -c "cp /tmp/google-services.json google-services.json && ls -la"
+                  echo "== Copy completed =="
                 '''
               }
             }
@@ -166,7 +173,6 @@ MYAPP_RELEASE_KEY_PASSWORD=$KEY_PASSWORD
 EOF
                 '''
               }
-              // chmod 제거: gradlew 권한 변경 없이 바로 실행
               sh '''
                 echo "== Android 빌드 시작 =="
                 docker run --rm \
@@ -210,24 +216,6 @@ EOF
                   rm -f firebase-key.json
                   echo "== Firebase 배포 완료 =="
                 '''
-                script {
-                  def apkPath = sh(
-                    script: "find ${env.FRONTEND_DIR}/android/app/build/outputs/apk/release -name '*.apk' | head -1",
-                    returnStdout: true
-                  ).trim()
-                  if (apkPath) {
-                    echo """
-======================================================
-앱 배포가 완료되었습니다!
-
-1. Firebase App Distribution에서 테스터 초대를 확인하세요.
-2. 직접 APK 다운로드: ${BUILD_URL}artifact/${apkPath}
-======================================================
-"""
-                  } else {
-                    echo "WARNING: 배포가 완료되었지만 APK 파일 경로를 찾을 수 없습니다."
-                  }
-                }
               }
             }
           }
