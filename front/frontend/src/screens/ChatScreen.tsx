@@ -73,7 +73,8 @@ export default function ChatScreen() {
       formData.append('query', trimmedInput);
 
       // axios를 사용하여 API 호출
-      const response = await axios.post('https://k12e201.p.ssafy.io/rag/search', formData, {
+      const response = await axios.post('http://localhost:9000/rag/search', formData, {
+      // const response = await axios.post('https://k12e201.p.ssafy.io/rag/search', formData, {
         headers: {
           // axios는 URLSearchParams를 보낼 때 자동으로 Content-Type을 설정하지만,
           // 명시적으로 지정하는 것이 좋을 수 있습니다.
