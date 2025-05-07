@@ -1,23 +1,27 @@
-import React, {useEffect, useState} from 'react';
 import {
-  View,
-  Image,
-  TouchableOpacity,
-  Text,
-  Modal,
   ActivityIndicator,
+  Image,
+  Modal,
+  StatusBar,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
+import React, {useEffect, useState} from 'react';
+import {RouteProp, useNavigation, useRoute} from '@react-navigation/native';
+
 import Icon from 'react-native-vector-icons/Ionicons';
-import {useRoute, useNavigation, RouteProp} from '@react-navigation/native';
-import {StackNavigationProp} from '@react-navigation/stack';
 import {RootStackParamList} from '../types/types';
-// import {generateUriFromAccessId} from '../types/imageTypes';
+import {StackNavigationProp} from '@react-navigation/stack';
+import dummyImage from '../assets/sample.png'; // 예시 이미지
 import tw from '../utils/tw';
 import {useImageDetailStore} from '../stores/useImageDetailStore';
+
+// import {generateUriFromAccessId} from '../types/imageTypes';
+
 // import {getImageDetail} from '../services/imageService';
 
 // 더미
-import dummyImage from '../assets/sample.png'; // 예시 이미지
 
 const ImageDetailScreen = () => {
   const route = useRoute<RouteProp<RootStackParamList, 'ImageDetail'>>();
@@ -68,8 +72,13 @@ const ImageDetailScreen = () => {
 
   return (
     <View style={tw`flex-1 bg-white`}>
+      <StatusBar
+        translucent
+        backgroundColor="transparent"
+        barStyle="dark-content"
+      />
       {/* Custom Header */}
-      <View style={tw`h-12 px-4 bg-orange-100 justify-center`}>
+      <View style={tw`h-22 px-4 pt-8 bg-orange-100 justify-center`}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Icon name="chevron-back" size={24} color="black" />
         </TouchableOpacity>

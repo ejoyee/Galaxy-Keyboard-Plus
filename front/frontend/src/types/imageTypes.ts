@@ -12,3 +12,10 @@ export interface DetailedImageItem extends BasicImageItem {
 export function generateUriFromAccessId(accessId: string): string {
   return `file:///storage/emulated/0/DCIM/Screenshots/${accessId}.jpg`;
 }
+
+export type ScreenshotImage = {
+  uri: string;
+  contentId: string | null;
+  filename: string;
+  timestamp: number;
+};

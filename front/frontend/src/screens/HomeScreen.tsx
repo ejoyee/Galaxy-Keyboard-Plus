@@ -1,8 +1,11 @@
+import {Button, StyleSheet, Text, View} from 'react-native';
 import React, {useEffect} from 'react';
-import {View, Text, Button, StyleSheet} from 'react-native';
-import {requestStoragePermission} from '../utils/permissions';
-import {useNavigation} from '@react-navigation/native';
+
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
+import {requestStoragePermission} from '../utils/permissions';
+import {uploadImagesToServer} from '../utils/uploadHelper';
+import {useNavigation} from '@react-navigation/native';
+import {useUserStore} from '../stores/useUserStore.ts';
 
 type RootStackParamList = {
   Home: undefined;
@@ -17,9 +20,25 @@ type HomeScreenNavigationProp = NativeStackNavigationProp<
 export default function HomeScreen() {
   const navigation = useNavigation<HomeScreenNavigationProp>();
 
+  const {userId, setUserId} = useUserStore();
+
   useEffect(() => {
     requestStoragePermission();
-  }, []);
+    setUserId('dajeong');
+  }, [setUserId]);
+
+  // const handleTestUpload = () => {
+  //   // 🍧
+  //   const dummyImages = [
+  //     {
+  //       uri: 'content://media/external/images/media/1234',
+  //       contentId: '1234',
+  //       filename: 'test-image.jpg',
+  //       timestamp: Date.now(),
+  //     },
+  //   ];
+  //   uploadImagesToServer(dummyImages, userId);
+  // };
 
   return (
     <View style={styles.container}>
@@ -28,6 +47,7 @@ export default function HomeScreen() {
         title="사진 모아보기로 이동"
         onPress={() => navigation.navigate('PhotoGallery')}
       />
+      {/* <Button title="업로드 테스트" onPress={handleTestUpload} /> */}
     </View>
   );
 }
