@@ -1,5 +1,6 @@
 import logging
 import httpx
+from datetime import datetime
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 from app.utils.image_classifier import classify_image_from_bytes
 from app.utils.image_captioner import generate_image_caption
@@ -74,11 +75,18 @@ async def upload_image(
                 if schedule_result.get("is_schedule") and schedule_result.get(
                     "datetime"
                 ):
+                    try:
+                        # ISO 8601 포맷을 datetime 객체로 파싱
+                        dt_obj = datetime.fromisoformat(schedule_result["datetime"])
+                        # MySQL/PostgreSQL에서 일반적으로 사용하는 포맷으로 변환
+                        formatted_time = dt_obj.strftime("%Y-%m-%d %H:%M:%S")
+                    except Exception as time_err:
+                        logger.warning(f"⚠️ 날짜 포맷 변환 실패: {time_err}")
+                        formatted_time = schedule_result["datetime"]  # fallback
+
                     plan_payload = {
                         "userId": user_id,
-                        "planTime": schedule_result["datetime"]
-                        .replace("T", " ")
-                        .split(".")[0],
+                        "planTime": formatted_time,
                         "planContent": schedule_result.get("event", content),
                         "imageId": image_id,
                     }
