@@ -136,16 +136,31 @@ ENV=prod
             dir(env.FRONTEND_DIR) {
               // 프로젝트 정보 출력
               sh 'echo "Current directory" && pwd && ls -la'
+              sh 'cat package.json || echo "package.json 파일을 찾을 수 없습니다"'
               
-              // Node.js Docker 이미지로 npm 패키지 설치
-              sh 'docker run --rm -v "$(pwd):/app" -w /app node:18 npm install --no-audit --no-fund'
+              // Docker 대신 로컬에서 npm 사용 시도
+              sh '''
+                if command -v npm &> /dev/null; then
+                  echo "로컬 npm으로 패키지 설치 시도"
+                  npm install --no-audit --no-fund
+                else
+                  echo "로컬 npm을 찾을 수 없습니다. Docker를 사용하여 패키지 설치 시도"
+                  # Docker 볼륨 마운트 테스트
+                  echo "Docker 볼륨 테스트:"
+                  docker run --rm -v "$(pwd):/app" -w /app ubuntu:20.04 ls -la /app
+                  
+                  # Node.js Docker 이미지로 npm 패키지 설치
+                  docker run --rm -v "$(pwd):/app" -w /app node:18 bash -c "ls -la && cat package.json && npm install --no-audit --no-fund"
+                fi
+              '''
               
               // google-services.json 파일 생성
               withCredentials([
                 file(credentialsId: 'google-services-json', variable: 'GOOGLE_SERVICES_JSON')
               ]) {
                 sh 'mkdir -p android/app'
-                sh 'cp $GOOGLE_SERVICES_JSON android/app/google-services.json'
+                sh 'cp "$GOOGLE_SERVICES_JSON" android/app/google-services.json'
+                sh 'ls -la android/app'
               }
             }
           }
@@ -162,7 +177,8 @@ ENV=prod
                 string(credentialsId: 'KEY_PASSWORD', variable: 'KEY_PASSWORD')
               ]) {
                 sh 'mkdir -p android/app/keystore'
-                sh 'cp $KEYSTORE_FILE android/app/keystore/release.keystore'
+                sh 'cp "$KEYSTORE_FILE" android/app/keystore/release.keystore'
+                sh 'ls -la android/app/keystore'
                 
                 // gradle.properties 파일에 서명 설정 추가
                 sh """
@@ -172,6 +188,7 @@ ENV=prod
                 MYAPP_RELEASE_STORE_PASSWORD=$KEYSTORE_PASSWORD
                 MYAPP_RELEASE_KEY_PASSWORD=$KEY_PASSWORD
                 EOF
+                cat android/gradle.properties
                 """
               }
               
@@ -182,14 +199,15 @@ ENV=prod
                 
                 # Android 빌드
                 docker run --rm \
+                  -u root \
                   -v "$(pwd):/app" \
                   -w /app \
                   -e ANDROID_SDK_ROOT=/opt/android/sdk \
                   cimg/android:2023.08.1 \
-                  sh -c "cd android && chmod +x ./gradlew && ./gradlew assembleRelease"
+                  bash -c "ls -la && cd android && chmod +x ./gradlew && ./gradlew assembleRelease"
                 
                 echo "Build output directory:"
-                find android -name "*.apk"
+                find android -name "*.apk" || echo "APK 파일을 찾을 수 없습니다"
               '''
               
               // 빌드된 APK 저장
@@ -209,11 +227,11 @@ ENV=prod
                 // Firebase 배포
                 sh '''
                   # APK 파일 찾기
-                  APK_FILE=$(find android/app/build/outputs/apk/release -name "*.apk" | head -1)
+                  APK_FILE=$(find android/app/build/outputs/apk/release -name "*.apk" 2>/dev/null | head -1)
                   
                   if [ -z "$APK_FILE" ]; then
                     echo "ERROR: APK 파일을 찾을 수 없습니다!"
-                    find android -name "*.apk"
+                    find android -name "*.apk" || echo "APK 파일 없음"
                     exit 1
                   fi
                   
@@ -221,16 +239,19 @@ ENV=prod
                   
                   # Firebase 서비스 계정 키 복사
                   cp "$FIREBASE_SA" firebase-key.json
+                  chmod 644 firebase-key.json
                   
                   # Firebase 배포
                   docker run --rm \
+                    -u root \
                     -v "$(pwd):/app" \
-                    -v "$(pwd)/firebase-key.json:/app/firebase-key.json" \
                     -w /app \
                     -e GOOGLE_APPLICATION_CREDENTIALS=/app/firebase-key.json \
                     -e FIREBASE_TOKEN="$FIREBASE_TOKEN" \
+                    -e FIREBASE_APP_ID="$FIREBASE_APP_ID" \
+                    -e BUILD_NUMBER="$BUILD_NUMBER" \
                     node:18 \
-                    sh -c "npm install -g firebase-tools && firebase appdistribution:distribute $APK_FILE --app $FIREBASE_APP_ID --token $FIREBASE_TOKEN --groups 'testers' --release-notes 'Jenkins 빌드 #${BUILD_NUMBER} - $(date)'"
+                    bash -c "ls -la && npm install -g firebase-tools && firebase appdistribution:distribute $APK_FILE --app $FIREBASE_APP_ID --token $FIREBASE_TOKEN --groups 'testers' --release-notes 'Jenkins 빌드 #${BUILD_NUMBER} - $(date)'"
                   
                   # 서비스 계정 키 파일 삭제
                   rm -f firebase-key.json
@@ -238,16 +259,20 @@ ENV=prod
                 
                 // 배포 링크 생성 및 출력
                 script {
-                  def apkPath = sh(script: "find ${env.FRONTEND_DIR}/android/app/build/outputs/apk/release -name '*.apk' | head -1", returnStdout: true).trim()
+                  def apkPath = sh(script: "find ${env.FRONTEND_DIR}/android/app/build/outputs/apk/release -name '*.apk' 2>/dev/null | head -1", returnStdout: true).trim()
                   
-                  echo """
-                  ======================================================
-                  앱 배포가 완료되었습니다!
-                  
-                  1. Firebase App Distribution에서 테스터 초대를 확인하세요.
-                  2. 직접 APK 다운로드: ${BUILD_URL}artifact/${apkPath}
-                  ======================================================
-                  """
+                  if (apkPath) {
+                    echo """
+                    ======================================================
+                    앱 배포가 완료되었습니다!
+                    
+                    1. Firebase App Distribution에서 테스터 초대를 확인하세요.
+                    2. 직접 APK 다운로드: ${BUILD_URL}artifact/${apkPath}
+                    ======================================================
+                    """
+                  } else {
+                    echo "WARNING: 배포가 완료되었지만 APK 파일 경로를 찾을 수 없습니다."
+                  }
                 }
               }
             }
