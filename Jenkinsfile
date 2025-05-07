@@ -19,14 +19,10 @@ pipeline {
   }
 
   stages {
-    /* 0) Checkout */
     stage('Checkout') {
-      steps {
-        checkout scm
-      }
+      steps { checkout scm }
     }
 
-    /* 1) .env.prod 생성 */
     stage('Create .env.prod') {
       steps {
         withCredentials([
@@ -46,10 +42,6 @@ pipeline {
           sh '''
             cp "$GCP_KEY_FILE" gcp-key.json
             chmod 644 gcp-key.json
-            if [ -d gcp-key.json ]; then
-              echo "오류: gcp-key.json이 디렉토리로 생성되었습니다. 파일이어야 합니다."
-              exit 1
-            fi
             mkdir -p back/rag
             cp gcp-key.json back/rag/
           '''
@@ -78,7 +70,6 @@ ENV=prod
       }
     }
 
-    /* 2) 변경 서비스 감지 */
     stage('Detect Changed Services') {
       steps {
         script {
@@ -92,8 +83,7 @@ ENV=prod
                             .collect { path ->
                               path.startsWith('back/')           ? path.tokenize('/')[1]
                             : path.startsWith('front/frontend/') ? 'frontend'
-                            : null
-                            }
+                            : null }
                             .unique()
           def forced = params.FORCE_SERVICES?.trim()
                         ? params.FORCE_SERVICES.split(',').collect{ it.trim() }
@@ -109,7 +99,6 @@ ENV=prod
       }
     }
 
-    /* 3) Frontend CI/CD */
     stage('Frontend CI/CD') {
       when {
         anyOf {
@@ -121,34 +110,28 @@ ENV=prod
         stage('Frontend Setup') {
           steps {
             dir(env.FRONTEND_DIR) {
+              // 1) 프로젝트 디렉토리 확인
               sh 'echo "Current directory" && pwd && ls -la'
 
-              // npm install via Docker
+              // 2) google-services.json 호스트에서 복사 (컨테이너 전 권한 문제 회피)
+              withCredentials([ file(credentialsId: 'google-services-json', variable: 'GOOGLE_SERVICES_JSON') ]) {
+                sh '''
+                  mkdir -p android/app
+                  cp "$GOOGLE_SERVICES_JSON" android/app/google-services.json
+                  ls -la android/app
+                '''
+              }
+
+              // 3) npm 설치 (docker run)
               sh '''
                 echo "== npm 설치 시작 =="
                 docker run --rm \
                   --volumes-from $(hostname) \
                   -w "${WORKSPACE}/${FRONTEND_DIR}" \
                   node:${NODE_VERSION} \
-                  /bin/sh -c "ls -la . && npm install --no-audit --no-fund"
+                  npm install --no-audit --no-fund
                 echo "== npm 설치 완료 =="
               '''
-
-              // copy google-services.json via Docker, file or directory
-              withCredentials([
-                file(credentialsId: 'google-services-json', variable: 'GOOGLE_SERVICES_JSON')
-              ]) {
-                sh '''
-                  echo "== Copy google-services.json via Docker =="
-                  docker run --rm \
-                    --volumes-from $(hostname) \
-                    -v "${GOOGLE_SERVICES_JSON}:/tmp/google-services.json:ro" \
-                    -w "${WORKSPACE}/${FRONTEND_DIR}/android/app" \
-                    node:${NODE_VERSION} \
-                    /bin/sh -c "if [ -d /tmp/google-services.json ]; then cp /tmp/google-services.json/* google-services.json; else cp /tmp/google-services.json google-services.json; fi && ls -la"
-                  echo "== Copy completed =="
-                '''
-              }
             }
           }
         }
@@ -179,10 +162,10 @@ EOF
                   --volumes-from $(hostname) \
                   -w "${WORKSPACE}/${FRONTEND_DIR}" \
                   cimg/android:2023.08.1 \
-                  /bin/sh -c "cd android && ./gradlew assembleRelease"
+                  ./gradlew -p android assembleRelease
                 echo "== Android 빌드 완료 =="
               '''
-              archiveArtifacts artifacts: "android/app/build/outputs/apk/release/*.apk", fingerprint: true, allowEmptyArchive: true
+              archiveArtifacts artifacts: "android/app/build/outputs/apk/release/*.apk", fingerprint: true
             }
           }
         }
@@ -197,23 +180,9 @@ EOF
               ]) {
                 sh '''
                   echo "== Firebase 배포 시작 =="
-                  APK_FILE=$(find "${WORKSPACE}/${FRONTEND_DIR}/android/app/build/outputs/apk/release" -name "*.apk" | head -1)
-                  if [ -z "$APK_FILE" ]; then
-                    echo "ERROR: APK 파일을 찾을 수 없습니다!"
-                    exit 1
-                  fi
-                  cp "$FIREBASE_SA" firebase-key.json
-                  chmod 644 firebase-key.json
-                  docker run --rm \
-                    --volumes-from $(hostname) \
-                    -w "${WORKSPACE}/${FRONTEND_DIR}" \
-                    -e GOOGLE_APPLICATION_CREDENTIALS=/app/firebase-key.json \
-                    -e FIREBASE_TOKEN="$FIREBASE_TOKEN" \
-                    -e FIREBASE_APP_ID="$FIREBASE_APP_ID" \
-                    -e BUILD_NUMBER="$BUILD_NUMBER" \
-                    node:${NODE_VERSION} \
-                    /bin/sh -c "npm install -g firebase-tools && firebase appdistribution:distribute $APK_FILE --app $FIREBASE_APP_ID --token $FIREBASE_TOKEN --groups 'testers' --release-notes 'Jenkins 빌드 #${BUILD_NUMBER} - $(date)'"
-                  rm -f firebase-key.json
+                  APK_FILE=$(find android/app/build/outputs/apk/release -name "*.apk" | head -1)
+                  firebase-service-account 파일로 인증
+                  firebase appdistribution:distribute $APK_FILE --app $FIREBASE_APP_ID --token $FIREBASE_TOKEN --groups testers --release-notes "Jenkins 빌드 #${BUILD_NUMBER}"
                   echo "== Firebase 배포 완료 =="
                 '''
               }
@@ -223,19 +192,17 @@ EOF
       }
     }
 
-    /* 4) Build & Deploy Backend Services */
-    stage('Build & Deploy') {
+    stage('Build & Deploy Backend') {
       when {
         expression {
-          env.CHANGED_SERVICES?.trim() &&
-          env.CHANGED_SERVICES.split(',').any { it != 'frontend' }
+          env.CHANGED_SERVICES?.split(',').any { it != 'frontend' }
         }
       }
       steps {
         script {
           env.CHANGED_SERVICES.split(',').each { svc ->
             if (svc != 'frontend') {
-              echo "▶  Building & deploying: ${svc}"
+              echo "▶ Building & deploying ${svc}"
               sh """
                 docker compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" build ${svc}
                 docker compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" up -d --no-deps ${svc}
@@ -249,16 +216,9 @@ EOF
 
   post {
     always {
-      sh 'shred -u .env.prod || rm -f .env.prod'
-      sh 'rm -f gcp-key.json'
-      sh 'rm -f back/rag/gcp-key.json || true'
-      sh "rm -f ${FRONTEND_DIR}/.env || true"
+      sh 'rm -f .env.prod gcp-key.json back/rag/gcp-key.json ${FRONTEND_DIR}/.env'
     }
-    success {
-      echo '빌드 및 배포가 성공적으로 완료되었습니다!'
-    }
-    failure {
-      echo 'Build failed. (메일 설정이 없으면 생략)'
-    }
+    success { echo '빌드 및 배포 성공🎉' }
+    failure { echo '빌드 또는 배포 실패❗' }
   }
 }
