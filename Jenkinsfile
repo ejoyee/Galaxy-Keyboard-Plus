@@ -31,7 +31,8 @@ pipeline {
           string(credentialsId: 'PINECONE_INDEX_NAME',      variable: 'PINECONE_INDEX_NAME'),
           file(  credentialsId: 'moca-457801-bfa12690864b.json', variable: 'GCP_KEY_FILE'),
           string(credentialsId: 'CLAUDE_API_KEY',           variable: 'CLAUDE_API_KEY'),
-          string(credentialsId: 'OPENAI_API_KEY',           variable: 'OPENAI')
+          string(credentialsId: 'OPENAI_API_KEY',           variable: 'OPENAI'),
+          string(credentialsId: 'FIREBASE_CREDENTIALS_JSON_BASE64',           variable: 'FIREBASE_CREDENTIALS_JSON_BASE64')
         ]) {
           // GCP 키 파일 복사
           sh 'cp "$GCP_KEY_FILE" gcp-key.json'
@@ -50,6 +51,7 @@ OPENAI_API_KEY=${OPENAI}
 PINECONE_KEY=${PINECONE_API_KEY}
 PINECONE_INDEX_NAME=${PINECONE_INDEX_NAME}
 CLAUDE_API_KEY=${CLAUDE_API_KEY}
+FIREBASE_CREDENTIALS_JSON_BASE64=${FIREBASE_CREDENTIALS_JSON_BASE64}
 
 # GCP 서비스 계정 키 파일 경로 (절대경로)
 GOOGLE_APPLICATION_CREDENTIALS=${env.WORKSPACE}/gcp-key.json
