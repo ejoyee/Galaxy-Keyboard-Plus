@@ -124,7 +124,6 @@ ENV=prod
           steps {
             dir(env.FRONTEND_DIR) {
               sh 'echo "Current directory" && pwd && ls -la'
-              // 권한 변경 제거됨
               sh '''
                 echo "== npm 설치 시작 =="
                 docker run --rm \
@@ -167,13 +166,14 @@ MYAPP_RELEASE_KEY_PASSWORD=$KEY_PASSWORD
 EOF
                 '''
               }
+              // chmod 제거: gradlew 권한 변경 없이 바로 실행
               sh '''
                 echo "== Android 빌드 시작 =="
                 docker run --rm \
                   --volumes-from $(hostname) \
                   -w "${WORKSPACE}/${FRONTEND_DIR}" \
                   cimg/android:2023.08.1 \
-                  /bin/sh -c "cd android && chmod +x ./gradlew && ./gradlew assembleRelease"
+                  /bin/sh -c "cd android && ./gradlew assembleRelease"
                 echo "== Android 빌드 완료 =="
               '''
               archiveArtifacts artifacts: "android/app/build/outputs/apk/release/*.apk", fingerprint: true, allowEmptyArchive: true
