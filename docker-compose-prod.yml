@@ -26,7 +26,7 @@ services:
       - "--spring.profiles.active=prod"
     env_file: .env.prod
     ports:
-      - "127.0.0.1:8000:8000"
+      - "0.0.0.0:8000:8000"
     restart: always
     networks:
       - web
@@ -44,7 +44,7 @@ services:
     depends_on:
       - postgres_auth
     ports:
-      - "127.0.0.1:8082:8082"
+      - "0.0.0.0:8082:8082"
     restart: always
     networks:
       - internal
@@ -61,7 +61,7 @@ services:
     depends_on:
       - postgres_sched
     ports:
-      - "127.0.0.1:8083:8083"
+      - "0.0.0.0:8083:8083"
     restart: always
     networks:
       - internal
