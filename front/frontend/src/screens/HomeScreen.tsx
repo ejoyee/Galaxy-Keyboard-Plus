@@ -8,6 +8,7 @@ type RootStackParamList = {
   Home: undefined;
   PhotoGallery: undefined;
   ChatScreen: undefined;
+  LoginScreen: undefined;
 };
 
 type HomeScreenNavigationProp = NativeStackNavigationProp<
@@ -22,12 +23,8 @@ export default function HomeScreen() {
     requestStoragePermission();
   }, []);
 
-  const goToChatScreen = () => {
-    navigation.navigate('ChatScreen');
-    // 만약 ChatScreen으로 파라미터를 전달해야 한다면:
-    // navigation.navigate('ChatScreen', { userId: '123' }); // RootStackParamList에 맞게 정의 필요
-  };
-
+  // 만약 ChatScreen으로 파라미터를 전달해야 한다면:
+  // navigation.navigate('ChatScreen', { userId: '123' });
   return (
     <View style={styles.container}>
       <Text style={styles.title}>홈 화면입니다</Text>
@@ -35,7 +32,11 @@ export default function HomeScreen() {
         title="사진 모아보기로 이동"
         onPress={() => navigation.navigate('PhotoGallery')}
       />
-      <Button title="채팅방으로 이동하기" onPress={goToChatScreen}
+      <Button title="채팅방으로 이동하기"
+      onPress={() => navigation.navigate('ChatScreen')}
+      />
+      <Button title="카카오 로그인 페이지 이동"
+      onPress={() => navigation.navigate('LoginScreen')}
       />
     </View>
   );

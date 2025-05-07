@@ -1,6 +1,21 @@
-pluginManagement { includeBuild("../node_modules/@react-native/gradle-plugin") }
-plugins { id("com.facebook.react.settings") }
-extensions.configure(com.facebook.react.ReactSettingsExtension){ ex -> ex.autolinkLibrariesFromCommand() }
+pluginManagement {
+    repositories {
+        google()           // 🔥 Google 저장소 - 필수
+        mavenCentral()     // Maven Central 저장소
+        gradlePluginPortal() // Gradle Plugin Portal
+    }
+
+    includeBuild("../node_modules/@react-native/gradle-plugin")
+}
+
+plugins {
+    id("com.facebook.react.settings")
+}
+
+extensions.configure(com.facebook.react.ReactSettingsExtension) {
+    ex -> ex.autolinkLibrariesFromCommand()
+}
+
 rootProject.name = 'frontend'
 include ':app'
 includeBuild('../node_modules/@react-native/gradle-plugin')
