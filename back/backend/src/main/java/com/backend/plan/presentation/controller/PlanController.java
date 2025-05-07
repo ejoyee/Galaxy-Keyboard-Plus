@@ -1,10 +1,12 @@
 package com.backend.plan.presentation.controller;
 
 import com.backend.global.common.response.BaseResponse;
+import com.backend.plan.application.in.PlanAlarmToggleInDto;
 import com.backend.plan.application.in.SavePlanInDto;
 import com.backend.plan.application.out.PlanDetailOutDto;
 import com.backend.plan.application.out.PlanThumbnailOutDto;
 import com.backend.plan.application.service.PlanService;
+import com.backend.plan.presentation.request.PlanAlarmToggleRequest;
 import com.backend.plan.presentation.request.SavePlanRequest;
 import com.backend.plan.presentation.response.PlanDetailResponse;
 import com.backend.plan.presentation.response.PlanListResponse;
@@ -73,6 +75,17 @@ public class PlanController {
     @DeleteMapping("/{planId}")
     public BaseResponse<Void> deletePlan(@PathVariable UUID planId) {
         planService.deletePlan(planId);
+        return new BaseResponse<>();
+    }
+
+    @PostMapping("/{planId}/alarm")
+    public BaseResponse<Void> togglePlanAlarm(
+            @PathVariable UUID planId,
+            @RequestBody PlanAlarmToggleRequest request
+    ) {
+        PlanAlarmToggleInDto inDto = new PlanAlarmToggleInDto(planId, request.isAlarmTf());
+
+        planService.updateAlarmTF(inDto);
         return new BaseResponse<>();
     }
 }

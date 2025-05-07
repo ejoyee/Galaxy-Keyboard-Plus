@@ -19,12 +19,21 @@ spring:
 
   jackson:
     time-zone: Asia/Seoul
+    serialization:
+      indent_output: true
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
 
 logging:
   level:
-    root: INFO
-    org.springframework.web: DEBUG
+    org.springframework: INFO
     com.backend: DEBUG
+  file:
+    name: logs/backend.log
 
 management:
   endpoints:
@@ -34,3 +43,7 @@ management:
   endpoint:
     health:
       show-details: always
+
+firebase:
+  credentials:
+    json-base64: ${FIREBASE_CREDENTIALS_JSON_BASE64}
