@@ -1,61 +1,68 @@
-// ---------------------------------------------------------------------------
-// zustand + zustand/persist + Expo SecureStore
-// ---------------------------------------------------------------------------
+// stores/authStore.ts
+
 import { create } from 'zustand';
 import { persist, StorageValue } from 'zustand/middleware';
-import * as SecureStore from 'expo-secure-store';
-import { SECURE_KEY } from '@env';          // 환경변수
+import * as Keychain from 'react-native-keychain';
+import { SECURE_KEY } from '@env';
 
-/* ------------------------------------------------------------------ *
- * 상태 타입
- * ------------------------------------------------------------------ */
 interface Tokens {
-  accessToken: string | null;
-  refreshToken: string | null;
-  // 만료 시각 등을 추가하고 싶으면 여기에
+  accessToken: string;
+  refreshToken: string;
 }
-
 interface AuthState extends Tokens {
-  /** 새 토큰 세트 저장 (스토어 + SecureStore) */
-  setTokens: (payload: Tokens) => void;
-  /** 모든 토큰 삭제(로그아웃) */
+  userId: string | null;
+
+  /** 로그인·리프레시 시 토큰/유저ID 업데이트 */
+  setTokens: (payload: Partial<Tokens & { userId: string }>) => void;
+  /** 로그아웃 시 초기화 */
   clear: () => void;
 }
 
-/* ------------------------------------------------------------------ *
- * SecureStore 를 zustand persist 스토리지 어댑터로 래핑
- * ------------------------------------------------------------------ */
-const secureZustandStorage = {
-  // getItem: JSON 문자열 → 객체
+const keychainStorage = {
   getItem: async (key: string): Promise<StorageValue<AuthState> | null> => {
-    const raw = await SecureStore.getItemAsync(key);
-    return raw ? JSON.parse(raw) : null;
+    const creds = await Keychain.getGenericPassword({ service: key });
+    if (!creds) return null;
+    try {
+      return JSON.parse(creds.password);
+    } catch {
+      return null;
+    }
   },
-  // setItem: 객체 → JSON 문자열
   setItem: async (key: string, value: StorageValue<AuthState>) => {
-    await SecureStore.setItemAsync(key, JSON.stringify(value));
+    const json = JSON.stringify(value);
+    await Keychain.setGenericPassword('auth', json, { service: key });
   },
-  removeItem: (key: string) => SecureStore.deleteItemAsync(key),
+  removeItem: async (key: string) => {
+    await Keychain.resetGenericPassword({ service: key });
+  },
 };
 
-/* ------------------------------------------------------------------ *
- * zustand 스토어 정의
- * ------------------------------------------------------------------ */
 export const useAuthStore = create<AuthState>()(
   persist(
-    (set) => ({
-      accessToken: null,
-      refreshToken: null,
+    (set, get) => ({
+      accessToken: '',
+      refreshToken: '',
+      userId: null,
 
-      setTokens: ({ accessToken, refreshToken }) =>
-        set({ accessToken, refreshToken }),
+      setTokens: ({ accessToken, refreshToken, userId }) =>
+        set((state) => ({
+          // 전달된 필드만 덮어쓰고, userId는 값 없으면 기존 유지
+          accessToken: accessToken ?? state.accessToken,
+          refreshToken: refreshToken ?? state.refreshToken,
+          userId: userId ?? state.userId,
+        })),
 
-      clear: () => set({ accessToken: null, refreshToken: null }),
+      clear: () =>
+        set({
+          accessToken: '',
+          refreshToken: '',
+          userId: null,
+        }),
     }),
     {
       name: `${SECURE_KEY}:auth`,
-      storage: secureZustandStorage,
+      storage: keychainStorage,
       version: 1,
-    },
-  ),
+    }
+  )
 );
