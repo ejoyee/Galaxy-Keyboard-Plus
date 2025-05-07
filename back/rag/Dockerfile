@@ -11,6 +11,9 @@ WORKDIR /app
 COPY requirements.txt .  
 RUN pip install --no-cache-dir -r requirements.txt
 
+# GCP 키 파일을 컨테이너 내부로 복사
+COPY gcp-key.json /app/gcp-key.json
+
 COPY app/ ./app
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8090"]

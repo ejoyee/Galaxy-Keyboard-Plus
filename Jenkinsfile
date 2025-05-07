@@ -39,21 +39,16 @@ pipeline {
           sh '''
             cp "$GCP_KEY_FILE" gcp-key.json
             chmod 644 gcp-key.json
-            # 파일이 디렉토리가 아님을 확인 (file 명령어 사용하지 않음)
+            
+            # 파일이 디렉토리가 아님을 확인
             if [ -d gcp-key.json ]; then
               echo "오류: gcp-key.json이 디렉토리로 생성되었습니다. 파일이어야 합니다."
               exit 1
             fi
-            # 파일 크기 확인 (0보다 커야 함)
-            if [ ! -s gcp-key.json ]; then
-              echo "오류: gcp-key.json 파일이 비어 있습니다."
-              exit 1
-            fi
-            # 파일 내용 첫 줄이 JSON 형식인지 확인
-            head -1 gcp-key.json | grep -q "{"
-            if [ $? -ne 0 ]; then
-              echo "경고: gcp-key.json이 JSON 형식이 아닐 수 있습니다."
-            fi
+            
+            # RAG 서비스 디렉토리로 키 파일 복사
+            mkdir -p back/rag
+            cp gcp-key.json back/rag/
           '''
 
           // .env.prod 파일 생성 (GCP 경로 설정은 Dockerfile에서 처리)
@@ -148,6 +143,7 @@ ENV=prod
     always {
       sh 'shred -u .env.prod || rm -f .env.prod'
       sh 'rm -f gcp-key.json'
+      sh 'rm -f back/rag/gcp-key.json || true'
     }
     failure {
       echo 'Build failed. (메일 설정이 없으면 생략)'
