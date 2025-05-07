@@ -21,7 +21,10 @@ import {useImageDetailStore} from '../stores/useImageDetailStore';
 
 // import {getImageDetail} from '../services/imageService';
 
-// 더미
+/**
+ * 현재 임시 이미지를 띄워놓게 되어있고, api 호출을 연결하지 않아서
+ * 대충 퍼블리싱과 더미 이미지가 뜨게 되어있음 필요하다면 수정 예정
+ */
 
 const ImageDetailScreen = () => {
   const route = useRoute<RouteProp<RootStackParamList, 'ImageDetail'>>();

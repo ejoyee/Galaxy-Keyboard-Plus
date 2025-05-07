@@ -1,10 +1,13 @@
-// 📂 src/utils/fetchScreenshotImages.ts 또는 적절한 파일
-
 import {PERMISSIONS, RESULTS, request} from 'react-native-permissions';
 
 import {Platform} from 'react-native';
 import RNFS from 'react-native-fs';
 import {ScreenshotImage} from '../types/imageTypes';
+
+/**
+ * 파일시스템 속 screenshot 폴더를 접근하는 방식으로 이미지 불러오는 utils
+ * 현재는 전체 uris를 보내는 형식으로 되어있어 업로드 시 사용되고 있음
+ */
 
 const screenshotDirs = [
   '/storage/emulated/0/DCIM/Screenshots',

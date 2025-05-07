@@ -3,7 +3,7 @@ import React, {useEffect} from 'react';
 
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import {requestStoragePermission} from '../utils/permissions';
-import {uploadImagesToServer} from '../utils/uploadHelper';
+import {uploadTop50Screenshots} from '../utils/testUploader';
 import {useNavigation} from '@react-navigation/native';
 import {useUserStore} from '../stores/useUserStore.ts';
 
@@ -19,26 +19,12 @@ type HomeScreenNavigationProp = NativeStackNavigationProp<
 
 export default function HomeScreen() {
   const navigation = useNavigation<HomeScreenNavigationProp>();
-
-  const {userId, setUserId} = useUserStore();
+  const {setUserId} = useUserStore();
 
   useEffect(() => {
     requestStoragePermission();
     setUserId('dajeong');
   }, [setUserId]);
-
-  // const handleTestUpload = () => {
-  //   // 🍧
-  //   const dummyImages = [
-  //     {
-  //       uri: 'content://media/external/images/media/1234',
-  //       contentId: '1234',
-  //       filename: 'test-image.jpg',
-  //       timestamp: Date.now(),
-  //     },
-  //   ];
-  //   uploadImagesToServer(dummyImages, userId);
-  // };
 
   return (
     <View style={styles.container}>
@@ -47,7 +33,14 @@ export default function HomeScreen() {
         title="사진 모아보기로 이동"
         onPress={() => navigation.navigate('PhotoGallery')}
       />
-      {/* <Button title="업로드 테스트" onPress={handleTestUpload} /> */}
+
+      {/* 🍧 테스트 업로드 버튼 추가 */}
+      <View style={{marginTop: 20}}>
+        <Button
+          title="🧪 스크린샷 50장 업로드 테스트"
+          onPress={uploadTop50Screenshots}
+        />
+      </View>
     </View>
   );
 }

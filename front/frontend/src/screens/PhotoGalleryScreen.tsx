@@ -12,7 +12,6 @@ import {BasicImageItem} from '../types/imageTypes';
 import {GalleryHeader} from '../components/GalleryHeader';
 import {ImageThumbnail} from '../components/ImageThumbnail';
 import {RootStackParamList} from '../types/types';
-import {Section} from '../components/Section';
 import {StackNavigationProp} from '@react-navigation/stack';
 import {fetchScreenshotImageUris} from '../utils/fetchScreenshotImages';
 import tw from '../utils/tw';
@@ -20,18 +19,20 @@ import {useImagePreviewStore} from '../stores/useImagePreviewStore';
 import {useNavigation} from '@react-navigation/native';
 import uuid from 'react-native-uuid';
 
-uuid.v4() as string;
+// import {Section} from '../components/Section';
 
-// import {dummyPhotos} from '../components/dummyPhotos';
+/**
+ * 현재 스크린샷 폴더에 있는 이미지를 잘 불러오는지 테스트 하기 위해 section도 지워뒀고
+ * 스크린샷 폴더에 있는 이미지들을 썸네일로 출력되도록 구현되어 있음
+ *
+ */
+
+uuid.v4() as string;
 
 const PhotoGalleryScreen = () => {
   const {images, appendImages} = useImagePreviewStore();
 
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
-
-  // useLayoutEffect(() => {
-  //   navigation.navigate('ImageDetail', {imageId: 'dummy-001'});
-  // }, [navigation]);
 
   useEffect(() => {
     const loadImages = async () => {
@@ -46,13 +47,13 @@ const PhotoGalleryScreen = () => {
         star: false,
       }));
 
-      appendImages(converted); // 이제 타입 일치
+      appendImages(converted);
     };
 
     loadImages();
-  }, []);
+  }, [appendImages]);
 
-  const favorites = images.filter(img => img.star);
+  // const favorites = images.filter(img => img.star);
 
   const handleImagePress = (image: BasicImageItem) => {
     navigation.navigate('ImageDetail', {imageId: image.imageId});

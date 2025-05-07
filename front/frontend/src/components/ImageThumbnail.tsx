@@ -1,5 +1,3 @@
-// components/ImageThumbnail.tsx
-
 import {Image, View} from 'react-native';
 
 import {BasicImageItem} from '../types/imageTypes';
@@ -16,7 +14,7 @@ type Props = {
 export const ImageThumbnail = ({item, size = 'large'}: Props) => {
   const imageSize = size === 'small' ? 'w-22 h-22' : 'w-28 h-28';
 
-  // ✅ uri가 있으면 그걸 쓰고, 없으면 accessId 기반으로 조합
+  //  uri가 있으면 그걸 쓰고, 없으면 accessId 기반으로 조합 << (포토갤러리스크린에서 임시로 스크린샷 폴더에 있는 이미지를 불러오게 해두려고 이런 코드 추가해둠 만약 db 상에서 조회하는 걸로 바뀌면 그냥 액세스아이디로만 조합할 듯)
   const uri = (item as any).uri ?? generateUriFromAccessId(item.accessId);
 
   console.log('🍧 uri : ', uri);
