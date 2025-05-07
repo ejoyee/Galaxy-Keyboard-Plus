@@ -100,4 +100,3 @@ dependencies {
    android/app/src/main/assets/fonts/ 로 복사
    (Gradle 빌드 시 자동 실행)
 */
-apply from: "../../node_modules/react-native-vector-icons/fonts.gradle"
