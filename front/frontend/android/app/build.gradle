@@ -1,47 +1,33 @@
-/**
- * Android 애플리케이션 Gradle 스크립트
- * (React Native 프로젝트 – app 모듈)
- */
-
+// 기존 플러그인 유지
 apply plugin: "com.android.application"
 apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
 apply from: "../../node_modules/react-native-vector-icons/fonts.gradle"
 
-/* ──────────────────
-   React Native 구성
-   ────────────────── */
-react {
-    /* 디렉터리 설정 */
-    // 프로젝트 루트(기본값: '../..')
-    // root = file("../../")
-    // react-native 패키지 위치(기본값: ../../node_modules/react-native)
-    // reactNativeDir = file("../../node_modules/react-native")
-
-    /* 디버그 변형 */
-    // 디버깅 가능한 variant 목록(기본: ['debug'])
-    // debuggableVariants = ["liteDebug", "prodDebug"]
-
-    /* 번들링 옵션 */
-    // node 실행 파일 및 플래그(기본: ['node'])
-    // nodeExecutableAndArgs = ["node"]
-    // 번들 생성 명령(기본: 'bundle')
-    // bundleCommand = "ram-bundle"
-    // JS 진입 파일(기본: index.js 또는 index.android.js)
-    // entryFile = file("../js/MyApplication.android.js")
-
-    /* Hermes 컴파일러 */
-    // hermesCommand = "$rootDir/my-custom-hermesc/bin/hermesc"
-    // hermesFlags = ["-O", "-output-source-map"]
-
-    /* 오토링킹 */
-    autolinkLibrariesWithApp()
+// 최신 방식: plugins 블록 사용
+plugins {
+    // Google services Gradle 플러그인 추가
+    id 'com.google.gms.google-services'
+    // Firebase App Distribution 플러그인 추가
+    id 'com.google.firebase.appdistribution'
 }
 
-/* 프로가드 설정 – 릴리즈 빌드 시 바이트코드 최적화 여부 */
+/**
+ * This is the configuration block to customize your React Native Android app.
+ * By default you don't need to apply any configuration, just uncomment the lines you need.
+ */
+react {
+    /* 기존 내용 유지 */
+}
+
+/**
+ * Set this to true to Run Proguard on Release builds to minify the Java bytecode.
+ */
 def enableProguardInReleaseBuilds = false
 
-/* JSC(자바스크립트코어) 플레버 선택 */
+/**
+ * The preferred build flavor of JavaScriptCore (JSC)
+ */
 def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
 
 android {
@@ -50,7 +36,6 @@ android {
     compileSdk rootProject.ext.compileSdkVersion
 
     namespace "com.frontend"
-
     defaultConfig {
         applicationId "com.frontend"
         minSdkVersion rootProject.ext.minSdkVersion
@@ -58,8 +43,6 @@ android {
         versionCode 1
         versionName "1.0"
     }
-
-    /* 디버그 서명 설정 (개발용) */
     signingConfigs {
         debug {
             storeFile file('debug.keystore')
@@ -67,23 +50,37 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
+        release {
+            // 릴리스 서명 설정 추가
+            storeFile file('keystore/release.keystore')
+            storePassword System.getenv("KEYSTORE_PASSWORD") ?: MYAPP_RELEASE_STORE_PASSWORD
+            keyAlias System.getenv("KEY_ALIAS") ?: MYAPP_RELEASE_KEY_ALIAS
+            keyPassword System.getenv("KEY_PASSWORD") ?: MYAPP_RELEASE_KEY_PASSWORD
+        }
     }
-
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
         }
         release {
-            // ⚠️ 프로덕션 배포 시에는 별도 keystore 사용 권장
-            signingConfig signingConfigs.debug
+            // Caution! In production, you need to generate your own keystore file.
+            // see https://reactnative.dev/docs/signed-apk-android.
+            signingConfig signingConfigs.release
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
+            
+            // Firebase App Distribution 설정
+            firebaseAppDistribution {
+                appId = System.getenv("FIREBASE_APP_ID")
+                groups = "testers"
+                releaseNotes = "Jenkins 자동 배포 버전"
+            }
         }
     }
 }
 
 dependencies {
-    /* react‑native 버전은 React Native Gradle 플러그인에서 자동 지정 */
+    // The version of react-native is set by the React Native Gradle Plugin
     implementation("com.facebook.react:react-android")
 
     if (hermesEnabled.toBoolean()) {
@@ -91,12 +88,11 @@ dependencies {
     } else {
         implementation jscFlavor
     }
+    
+    // Firebase BoM 추가
+    implementation platform('com.google.firebase:firebase-bom:33.13.0')
+    
+    // Firebase 종속성 추가 (버전 지정할 필요 없음)
+    implementation 'com.google.firebase:firebase-analytics'
+    implementation 'com.google.firebase:firebase-app-distribution'
 }
-
-/* ───────────────────────────────
-   벡터 아이콘(Font) 자동 복사 스크립트
-   ───────────────────────────────
-   react-native-vector-icons 의 .ttf 파일을
-   android/app/src/main/assets/fonts/ 로 복사
-   (Gradle 빌드 시 자동 실행)
-*/

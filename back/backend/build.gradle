@@ -46,6 +46,12 @@ dependencies {
 	implementation 'org.hibernate.validator:hibernate-validator:8.0.1.Final'
 	// model mapper
 	implementation 'org.modelmapper:modelmapper:3.1.1'
+	// dotenv-java 환경 변수 주입
+	implementation 'io.github.cdimascio:java-dotenv:5.2.2'
+	// firebase - fcm
+	implementation 'com.google.firebase:firebase-admin:9.1.1'
+	// health 체킹 위한 actuator
+	implementation 'org.springframework.boot:spring-boot-starter-actuator'
 }
 
 tasks.named('test') {
