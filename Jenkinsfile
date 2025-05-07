@@ -104,26 +104,44 @@ ENV=prod
         }
       }
       stages {
+        stage('Clean Cache') {
+          steps {
+            sh '''
+              # 이전 빌드의 Docker 이미지 캐시 정리
+              docker image prune -f
+              
+              # 워크스페이스 내 android 디렉토리 정리
+              echo "== 이전 캐시 정리 =="
+              rm -rf ${FRONTEND_DIR}/android || true
+              rm -rf ${FRONTEND_DIR}/node_modules || true
+              
+              # 필요한 디렉토리 다시 생성 및 권한 설정
+              mkdir -p ${FRONTEND_DIR}/android/app ${FRONTEND_DIR}/android/app/keystore
+              chmod -R 777 ${FRONTEND_DIR}/android
+              echo "== 캐시 정리 완료 =="
+            '''
+          }
+        }
+        
         stage('Frontend Setup') {
           steps {
             dir(env.FRONTEND_DIR) {
-              // 1) google-services.json을 Docker 컨테이너 내에서 복사 (권한 문제 해결)
+              // 1) google-services.json 파일 직접 복사
               withCredentials([ file(credentialsId: 'google-services-json', variable: 'GOOGLE_SERVICES_JSON') ]) {
                 sh '''
-                  docker run --rm \
-                    -u $(id -u):$(id -g) \
-                    -v "${WORKSPACE}/${FRONTEND_DIR}:/app" \
-                    -v "$GOOGLE_SERVICES_JSON:/tmp/google-services.json" \
-                    -w /app \
-                    node:${NODE_VERSION} \
-                    bash -c "mkdir -p android/app && cp /tmp/google-services.json android/app/google-services.json && chmod 644 android/app/google-services.json"
+                  # 호스트에서 직접 복사
+                  cp "$GOOGLE_SERVICES_JSON" android/app/google-services.json
+                  chmod 644 android/app/google-services.json
+                  
+                  # 디렉토리 권한 재확인
+                  chmod -R 777 android
                 '''
               }
-              // 2) npm install inside Docker as current user, bind only project dir
+              
+              // 2) npm install inside Docker
               sh '''
                 echo "== npm install =="
                 docker run --rm \
-                  -u $(id -u):$(id -g) \
                   -v "${WORKSPACE}/${FRONTEND_DIR}:/app" \
                   -w /app \
                   node:${NODE_VERSION} \
@@ -143,25 +161,22 @@ ENV=prod
                 string(credentialsId: 'KEY_ALIAS',             variable: 'KEY_ALIAS'),
                 string(credentialsId: 'KEY_PASSWORD',          variable: 'KEY_PASSWORD')
               ]) {
-                // 키스토어 파일도 Docker 내에서 복사하도록 수정
+                // 키스토어 파일을 직접 복사
                 sh '''
-                  docker run --rm \
-                    -u $(id -u):$(id -g) \
-                    -v "${WORKSPACE}/${FRONTEND_DIR}:/app" \
-                    -v "$KEYSTORE_FILE:/tmp/release.keystore" \
-                    -w /app \
-                    node:${NODE_VERSION} \
-                    bash -c "mkdir -p android/app/keystore && cp /tmp/release.keystore android/app/keystore/release.keystore && chmod 644 android/app/keystore/release.keystore"
+                  cp "$KEYSTORE_FILE" android/app/keystore/release.keystore
+                  chmod 644 android/app/keystore/release.keystore
+                  
+                  # 디렉토리 권한 재확인
+                  chmod -R 777 android
                 '''
               }
               sh '''
                 echo "== Android build =="
                 docker run --rm \
-                  -u $(id -u):$(id -g) \
                   -v "${WORKSPACE}/${FRONTEND_DIR}:/app" \
                   -w /app \
                   cimg/android:2023.08.1 \
-                  bash -c "cd android && echo MYAPP_RELEASE_STORE_FILE=keystore/release.keystore >> gradle.properties && echo MYAPP_RELEASE_KEY_ALIAS=${KEY_ALIAS} >> gradle.properties && echo MYAPP_RELEASE_STORE_PASSWORD=${KEYSTORE_PASSWORD} >> gradle.properties && echo MYAPP_RELEASE_KEY_PASSWORD=${KEY_PASSWORD} >> gradle.properties && ./gradlew assembleRelease"
+                  bash -c "cd android && echo MYAPP_RELEASE_STORE_FILE=keystore/release.keystore >> gradle.properties && echo MYAPP_RELEASE_KEY_ALIAS=${KEY_ALIAS} >> gradle.properties && echo MYAPP_RELEASE_STORE_PASSWORD=${KEYSTORE_PASSWORD} >> gradle.properties && echo MYAPP_RELEASE_KEY_PASSWORD=${KEY_PASSWORD} >> gradle.properties && chmod +x ./gradlew && ./gradlew --no-daemon clean assembleRelease"
                 echo "== Android build complete =="
               '''
               archiveArtifacts artifacts: "android/app/build/outputs/apk/release/*.apk", fingerprint: true
@@ -177,22 +192,12 @@ ENV=prod
                 string(credentialsId: 'FIREBASE_TOKEN',            variable: 'FIREBASE_TOKEN'),
                 string(credentialsId: 'FIREBASE_APP_ID',           variable: 'FIREBASE_APP_ID')
               ]) {
-                // Firebase 배포도 Docker 내에서 수행
                 sh '''
                   echo "== Firebase deploy =="
                   APK_FILE=$(find android/app/build/outputs/apk/release -name "*.apk" | head -1)
-                  
-                  docker run --rm \
-                    -u $(id -u):$(id -g) \
-                    -v "${WORKSPACE}/${FRONTEND_DIR}:/app" \
-                    -v "$FIREBASE_SA:/tmp/firebase-key.json" \
-                    -e FIREBASE_TOKEN="$FIREBASE_TOKEN" \
-                    -e FIREBASE_APP_ID="$FIREBASE_APP_ID" \
-                    -e BUILD_NUMBER="$BUILD_NUMBER" \
-                    -w /app \
-                    node:${NODE_VERSION} \
-                    bash -c "cp /tmp/firebase-key.json firebase-key.json && npm install -g firebase-tools && firebase appdistribution:distribute $APK_FILE --app \$FIREBASE_APP_ID --token \$FIREBASE_TOKEN --groups testers --release-notes \"Jenkins build #\${BUILD_NUMBER}\""
-                  
+                  cp "$FIREBASE_SA" firebase-key.json
+                  npm install -g firebase-tools
+                  firebase appdistribution:distribute $APK_FILE --app $FIREBASE_APP_ID --token $FIREBASE_TOKEN --groups testers --release-notes "Jenkins build #${BUILD_NUMBER}"
                   echo "== Firebase deploy complete =="
                 '''
               }
