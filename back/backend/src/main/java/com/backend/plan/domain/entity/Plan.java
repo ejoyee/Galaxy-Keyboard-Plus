@@ -38,4 +38,9 @@ public class Plan {
 
     @Column(name = "alarm_tf")
     private boolean alarmTf = true;
+
+    // 이미지 즐겨찾기 등록/해제
+    public void setAlarmTf(Boolean alarmTf) {
+        this.alarmTf = alarmTf;
+    }
 }
