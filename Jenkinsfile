@@ -136,22 +136,14 @@ ENV=prod
             dir(env.FRONTEND_DIR) {
               // 프로젝트 정보 출력
               sh 'echo "Current directory" && pwd && ls -la'
-              sh 'cat package.json || echo "package.json 파일을 찾을 수 없습니다"'
+              sh 'cat package.json'
               
-              // Docker 대신 로컬에서 npm 사용 시도
+              // 도커로 패키지 설치 - 명시적 이미지 풀
               sh '''
-                if command -v npm &> /dev/null; then
-                  echo "로컬 npm으로 패키지 설치 시도"
-                  npm install --no-audit --no-fund
-                else
-                  echo "로컬 npm을 찾을 수 없습니다. Docker를 사용하여 패키지 설치 시도"
-                  # Docker 볼륨 마운트 테스트
-                  echo "Docker 볼륨 테스트:"
-                  docker run --rm -v "$(pwd):/app" -w /app ubuntu:20.04 ls -la /app
-                  
-                  # Node.js Docker 이미지로 npm 패키지 설치
-                  docker run --rm -v "$(pwd):/app" -w /app node:18 bash -c "ls -la && cat package.json && npm install --no-audit --no-fund"
-                fi
+                echo "Docker로 Node.js 패키지 설치 시작"
+                docker pull node:18
+                docker run --rm -v "$(pwd):/app" -w /app node:18 npm install --no-audit --no-fund
+                echo "Node.js 패키지 설치 완료"
               '''
               
               // google-services.json 파일 생성
@@ -192,20 +184,20 @@ ENV=prod
                 """
               }
               
-              // 안드로이드 빌드 수행
+              // 안드로이드 빌드 수행 - 명시적 이미지 풀
               sh '''
-                echo "Android directory contents:"
-                ls -la android
+                echo "Android 빌드 시작"
+                docker pull cimg/android:2023.08.1
                 
                 # Android 빌드
                 docker run --rm \
                   -u root \
                   -v "$(pwd):/app" \
                   -w /app \
-                  -e ANDROID_SDK_ROOT=/opt/android/sdk \
                   cimg/android:2023.08.1 \
                   bash -c "ls -la && cd android && chmod +x ./gradlew && ./gradlew assembleRelease"
                 
+                echo "Android 빌드 완료"
                 echo "Build output directory:"
                 find android -name "*.apk" || echo "APK 파일을 찾을 수 없습니다"
               '''
@@ -224,7 +216,7 @@ ENV=prod
                 string(credentialsId: 'FIREBASE_TOKEN', variable: 'FIREBASE_TOKEN'),
                 string(credentialsId: 'FIREBASE_APP_ID', variable: 'FIREBASE_APP_ID')
               ]) {
-                // Firebase 배포
+                // Firebase 배포 - 명시적 이미지 풀
                 sh '''
                   # APK 파일 찾기
                   APK_FILE=$(find android/app/build/outputs/apk/release -name "*.apk" 2>/dev/null | head -1)
@@ -241,6 +233,9 @@ ENV=prod
                   cp "$FIREBASE_SA" firebase-key.json
                   chmod 644 firebase-key.json
                   
+                  # Node.js 이미지 미리 가져오기
+                  docker pull node:18
+                  
                   # Firebase 배포
                   docker run --rm \
                     -u root \
@@ -251,7 +246,7 @@ ENV=prod
                     -e FIREBASE_APP_ID="$FIREBASE_APP_ID" \
                     -e BUILD_NUMBER="$BUILD_NUMBER" \
                     node:18 \
-                    bash -c "ls -la && npm install -g firebase-tools && firebase appdistribution:distribute $APK_FILE --app $FIREBASE_APP_ID --token $FIREBASE_TOKEN --groups 'testers' --release-notes 'Jenkins 빌드 #${BUILD_NUMBER} - $(date)'"
+                    bash -c "npm install -g firebase-tools && firebase appdistribution:distribute $APK_FILE --app $FIREBASE_APP_ID --token $FIREBASE_TOKEN --groups 'testers' --release-notes 'Jenkins 빌드 #${BUILD_NUMBER} - $(date)'"
                   
                   # 서비스 계정 키 파일 삭제
                   rm -f firebase-key.json
