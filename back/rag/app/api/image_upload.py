@@ -33,7 +33,6 @@ async def upload_image(
         text_score = classify_image_from_bytes(image_bytes)
         logger.info(f"🔍 이미지 분류 점수: {text_score:.3f} (access_id={access_id})")
 
-        # Step 1: 설명 또는 텍스트 추출
         if text_score < 0.1:
             description = generate_image_caption(image_bytes)
             target = "photo"
@@ -45,12 +44,10 @@ async def upload_image(
             content = extracted_text
             logger.info(f"📝 텍스트 추출 완료 - {extracted_text}")
 
-        # Step 2: 벡터 저장
         text_for_embedding = f"{access_id} ({image_time}): {content}"
         namespace = save_text_to_pinecone(user_id, text_for_embedding, target)
         logger.info(f"✅ 벡터 저장 완료 - namespace={namespace}")
 
-        # Step 3: 이미지 정보 저장 API 호출
         image_payload = {
             "userId": user_id,
             "accessId": access_id,
@@ -60,36 +57,39 @@ async def upload_image(
         }
 
         async with httpx.AsyncClient() as client:
+            # Step 3: 이미지 정보 저장
             image_response = await client.post(
                 "http://backend-service:8083/api/v1/images", json=image_payload
             )
 
-        if image_response.status_code != 200:
-            logger.error(f"❌ 이미지 정보 저장 실패: {image_response.text}")
-            raise HTTPException(status_code=500, detail="이미지 정보 저장 실패")
+            if image_response.status_code != 200:
+                logger.error(f"❌ 이미지 정보 저장 실패: {image_response.text}")
+                raise HTTPException(status_code=500, detail="이미지 정보 저장 실패")
 
-        image_id = image_response.json().get("result", {}).get("imageId")
+            image_id = image_response.json().get("result", {}).get("imageId")
 
-        # Step 4: 일정 여부 판별 및 일정 등록 (type == "info"일 때만)
-        if target == "info":
-            schedule_result = extract_schedule(content)
-            if schedule_result.get("is_schedule") and schedule_result.get("datetime"):
-                plan_payload = {
-                    "userId": user_id,
-                    "planTime": schedule_result["datetime"]
-                    .replace("T", " ")
-                    .split(".")[0],  # ISO → "yyyy:MM:dd HH:mm:ss"
-                    "planContent": schedule_result.get("event", content),
-                    "imageId": image_id,
-                }
-                plan_response = await client.post(
-                    "http://backend-service:8083/api/v1/plans", json=plan_payload
-                )
+            # Step 4: 일정 등록까지 함께 처리
+            if target == "info":
+                schedule_result = extract_schedule(content)
+                if schedule_result.get("is_schedule") and schedule_result.get(
+                    "datetime"
+                ):
+                    plan_payload = {
+                        "userId": user_id,
+                        "planTime": schedule_result["datetime"]
+                        .replace("T", " ")
+                        .split(".")[0],
+                        "planContent": schedule_result.get("event", content),
+                        "imageId": image_id,
+                    }
+                    plan_response = await client.post(
+                        "http://backend-service:8083/api/v1/plans", json=plan_payload
+                    )
 
-                if plan_response.status_code != 200:
-                    logger.warning(f"⚠️ 일정 등록 실패: {plan_response.text}")
-                else:
-                    logger.info(f"📅 일정 등록 완료: {plan_payload}")
+                    if plan_response.status_code != 200:
+                        logger.warning(f"⚠️ 일정 등록 실패: {plan_response.text}")
+                    else:
+                        logger.info(f"📅 일정 등록 완료: {plan_payload}")
 
         return {
             "access_id": access_id,
