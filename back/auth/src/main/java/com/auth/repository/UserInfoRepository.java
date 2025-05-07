@@ -5,7 +5,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.*;
 
-public interface UserInfoRepository extends JpaRepository<UserInfo, java.util.UUID> {
+public interface UserInfoRepository extends JpaRepository<UserInfo, Long> {
     Optional<UserInfo> findByKakaoEmail(String kakaoEmail);
 }
 

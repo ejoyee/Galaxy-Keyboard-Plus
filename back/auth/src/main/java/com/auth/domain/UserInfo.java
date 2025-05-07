@@ -3,21 +3,20 @@ package com.auth.domain;
 import jakarta.persistence.*;
 import lombok.*;
 
-@Entity @Table(name = "user_info")
-@Getter @NoArgsConstructor(access = AccessLevel.PROTECTED)
+@Entity
+@Table(name = "user_info")
+@Getter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
 public class UserInfo {
 
     @Id
-    @GeneratedValue(generator = "UUID")
-    @Column(name = "user_id")
-    private java.util.UUID id;
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "user_id", updatable = false, nullable = false) // id는 DB에서 생성되므로 앱에서 업데이트하지 않음
+    private Long id;
 
     @Column(name = "kakao_email", nullable = false, unique = true)
     private String kakaoEmail;
 
-    @Builder
-    private UserInfo(java.util.UUID id, String kakaoEmail) {
-        this.id = id;
-        this.kakaoEmail = kakaoEmail;
-    }
 }

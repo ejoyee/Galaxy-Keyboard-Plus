@@ -4,17 +4,20 @@ import jakarta.persistence.*;
 import lombok.*;
 
 @Entity @Table(name = "auth_token")
-@Getter @NoArgsConstructor(access = AccessLevel.PROTECTED)
+@Getter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
 public class AuthTokenEntity {
 
     @Id @Column(name = "user_id")
-    private java.util.UUID userId;
+    private Long userId;
 
     @MapsId @OneToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id")
     private UserInfo user;
 
-    @Column(columnDefinition = "TEXT", nullable = false)
+    @Column(name="refresh_token", columnDefinition = "TEXT", nullable = false)
     private String refreshToken;
 
     @Builder
