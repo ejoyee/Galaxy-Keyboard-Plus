@@ -79,7 +79,7 @@ services:
     env_file: .env.prod
     environment:
       - GOOGLE_APPLICATION_CREDENTIALS=/app/gcp-key.json
-    # volumes 섹션 제거 (Dockerfile에서 직접 복사)
+      - PINECONE_API_KEY=${PINECONE_API_KEY}  # 여기서 명시적으로 환경 변수 지정
     ports:
       - "127.0.0.1:8090:8090"
     restart: always
