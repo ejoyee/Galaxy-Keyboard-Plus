@@ -61,7 +61,7 @@ async def upload_image(
 
         async with httpx.AsyncClient() as client:
             image_response = await client.post(
-                "http://backend:8083/api/v1/images", json=image_payload
+                "http://backend-service:8083/api/v1/images", json=image_payload
             )
 
         if image_response.status_code != 200:
@@ -83,7 +83,7 @@ async def upload_image(
                     "imageId": image_id,
                 }
                 plan_response = await client.post(
-                    "http://backend:8083/api/v1/plans", json=plan_payload
+                    "http://backend-service:8083/api/v1/plans", json=plan_payload
                 )
 
                 if plan_response.status_code != 200:
