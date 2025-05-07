@@ -76,6 +76,7 @@ ENV=prod
 """.trim()
 
           // 프론트엔드 환경 변수 파일 생성
+          sh "mkdir -p ${FRONTEND_DIR}"
           writeFile file: "${FRONTEND_DIR}/.env", text: """
 API_URL=${API_URL}
 ENV=prod
@@ -125,7 +126,7 @@ ENV=prod
     stage('Frontend CI/CD') {
       when {
         anyOf {
-          expression { env.CHANGED_SERVICES.split(',').contains('frontend') }
+          expression { env.CHANGED_SERVICES?.split(',')?.contains('frontend') }
           expression { params.FORCE_SERVICES?.split(',')?.contains('frontend') }
         }
       }
@@ -137,16 +138,23 @@ ENV=prod
               // 프로젝트 정보 출력
               sh 'echo "Current directory" && pwd && ls -la'
               
+              // 디렉토리 권한 수정
+              sh 'chmod -R 755 .'
+              
               // 로컬 디렉토리에서 직접 작업하는 방식으로 변경
               sh '''
                 echo "== npm 설치 시작 =="
                 
+                # 절대 경로 사용
+                CURRENT_DIR=$(pwd)
+                echo "현재 디렉토리 절대 경로: $CURRENT_DIR"
+                
                 # Docker 컨테이너에서 npm 실행
                 docker run --rm \
-                  -v "$(pwd):/app" \
+                  -v "$CURRENT_DIR:/app" \
                   -w /app \
                   node:18 \
-                  /bin/sh -c "echo '컨테이너 내부 디렉토리 내용:' && ls -la && cat package.json && npm install --no-audit --no-fund"
+                  /bin/sh -c "echo '컨테이너 내부 디렉토리 내용:' && ls -la && npm install --no-audit --no-fund"
                 
                 echo "== npm 설치 완료 =="
               '''
@@ -193,9 +201,12 @@ ENV=prod
               sh '''
                 echo "== Android 빌드 시작 =="
                 
+                # 절대 경로 사용
+                CURRENT_DIR=$(pwd)
+                
                 # 로컬 디렉토리에서 직접 빌드
                 docker run --rm \
-                  -v "$(pwd):/app" \
+                  -v "$CURRENT_DIR:/app" \
                   -w /app \
                   cimg/android:2023.08.1 \
                   /bin/sh -c "echo '컨테이너 내부 디렉토리 내용:' && ls -la && cd android && chmod +x ./gradlew && ./gradlew assembleRelease"
@@ -206,7 +217,7 @@ ENV=prod
               '''
               
               // 빌드된 APK 저장
-              archiveArtifacts artifacts: 'android/app/build/outputs/apk/release/*.apk', fingerprint: true, allowEmptyArchive: true
+              archiveArtifacts artifacts: "android/app/build/outputs/apk/release/*.apk", fingerprint: true, allowEmptyArchive: true
             }
           }
         }
@@ -222,6 +233,9 @@ ENV=prod
                 // Firebase 배포
                 sh '''
                   echo "== Firebase 배포 시작 =="
+                  
+                  # 절대 경로 사용
+                  CURRENT_DIR=$(pwd)
                   
                   # APK 파일 찾기
                   APK_FILE=$(find android/app/build/outputs/apk/release -name "*.apk" 2>/dev/null | head -1)
@@ -240,7 +254,7 @@ ENV=prod
                   
                   # Firebase 배포
                   docker run --rm \
-                    -v "$(pwd):/app" \
+                    -v "$CURRENT_DIR:/app" \
                     -w /app \
                     -e GOOGLE_APPLICATION_CREDENTIALS=/app/firebase-key.json \
                     -e FIREBASE_TOKEN="$FIREBASE_TOKEN" \
