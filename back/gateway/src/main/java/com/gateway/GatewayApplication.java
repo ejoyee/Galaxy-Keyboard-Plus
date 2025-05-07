@@ -24,7 +24,6 @@ public class GatewayApplication {
 					System.setProperty(entry.getKey(), System.getProperty(entry.getKey(), entry.getValue()))
 			);
 		}
-
 		SpringApplication.run(GatewayApplication.class, args);
 	}
 
