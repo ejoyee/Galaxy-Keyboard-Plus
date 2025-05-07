@@ -35,8 +35,18 @@ pipeline {
           string(credentialsId: 'CLAUDE_API_KEY',           variable: 'CLAUDE_API_KEY'),
           string(credentialsId: 'OPENAI_API_KEY',           variable: 'OPENAI')
         ]) {
-          // GCP 키 파일을 workspace 로 복사
-          sh 'cp "$GCP_KEY_FILE" gcp-key.json'
+          // GCP 키 파일을 workspace 로 복사하고 권한 설정
+          sh '''
+            cp "$GCP_KEY_FILE" gcp-key.json
+            chmod 644 gcp-key.json
+            # 파일이 디렉토리가 아님을 확인
+            if [ -d gcp-key.json ]; then
+              echo "오류: gcp-key.json이 디렉토리로 생성되었습니다. 파일이어야 합니다."
+              exit 1
+            fi
+            # 파일 유형 확인
+            file gcp-key.json
+          '''
 
           // .env.prod 파일 생성 (GCP 경로 설정은 Dockerfile에서 처리)
           writeFile file: '.env.prod', text: """

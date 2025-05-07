@@ -77,8 +77,14 @@ services:
       - "--port"
       - "8090"
     env_file: .env.prod
+    environment:
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/gcp-key.json
     volumes:
-      - ./gcp-key.json:/app/gcp-key.json:ro
+      # 명시적으로 파일을 파일로 마운트 (디렉토리 대신)
+      - type: bind
+        source: ./gcp-key.json
+        target: /app/gcp-key.json
+        read_only: true
     ports:
       - "127.0.0.1:8090:8090"
     restart: always
