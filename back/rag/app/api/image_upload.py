@@ -59,9 +59,12 @@ async def upload_image(
 
         async with httpx.AsyncClient() as client:
             # Step 3: 이미지 정보 저장
+            logger.info(f"📤 이미지 정보 전송 → payload: {image_payload}")
             image_response = await client.post(
                 "http://backend-service:8083/api/v1/images", json=image_payload
             )
+            logger.info(f"📥 이미지 응답 상태: {image_response.status_code}")
+            logger.debug(f"📥 이미지 응답 내용: {image_response.text}")
 
             if image_response.status_code != 200:
                 logger.error(f"❌ 이미지 정보 저장 실패: {image_response.text}")
@@ -91,9 +94,12 @@ async def upload_image(
                         "planContent": schedule_result.get("event", content),
                         "imageId": image_id,
                     }
+                    logger.info(f"📤 일정 등록 전송 → payload: {plan_payload}")
                     plan_response = await client.post(
                         "http://backend-service:8083/api/v1/plans", json=plan_payload
                     )
+                    logger.info(f"📥 일정 응답 상태: {plan_response.status_code}")
+                    logger.debug(f"📥 일정 응답 내용: {plan_response.text}")
 
                     if plan_response.status_code != 200:
                         logger.warning(f"⚠️ 일정 등록 실패: {plan_response.text}")
