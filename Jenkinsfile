@@ -40,6 +40,9 @@ pipeline {
           string(credentialsId: 'FIREBASE_CREDENTIALS_JSON_BASE64',           variable: 'FIREBASE_CREDENTIALS_JSON_BASE64'),
           string(credentialsId: 'JWT_SECRET_KEY',         variable: 'JWT_SECRET_KEY'),
           string(credentialsId: 'FRONTEND_API_URL', variable: 'API_URL'),
+          string(credentialsId: 'KAKAO_CLIENT_ID', variable: 'KAKAO_CLIENT_ID'),
+          string(credentialsId: 'JWT_AT_VALIDITY', variable: 'JWT_AT_VALIDITY'),
+          string(credentialsId: 'JWT_RT_VALIDITY', variable: 'JWT_RT_VALIDITY'),
         ]) {
           sh '''
             cp "$GCP_KEY_FILE" gcp-key.json
@@ -62,6 +65,9 @@ PINECONE_INDEX_NAME=${PINECONE_INDEX_NAME}
 CLAUDE_API_KEY=${CLAUDE_API_KEY}
 FIREBASE_CREDENTIALS_JSON_BASE64=${FIREBASE_CREDENTIALS_JSON_BASE64}
 JWT_SECRET_KEY=${JWT_SECRET_KEY}
+KAKAO_CLIENT_ID=${KAKAO_CLIENT_ID}
+JWT_AT_VALIDITY=${JWT_AT_VALIDITY}
+JWT_RT_VALIDITY=${JWT_RT_VALIDITY}
 
 ENV=prod
 """.trim()
