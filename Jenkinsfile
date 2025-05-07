@@ -38,7 +38,8 @@ pipeline {
           string(credentialsId: 'CLAUDE_API_KEY',           variable: 'CLAUDE_API_KEY'),
           string(credentialsId: 'OPENAI_API_KEY',           variable: 'OPENAI'),
           string(credentialsId: 'FIREBASE_CREDENTIALS_JSON_BASE64',           variable: 'FIREBASE_CREDENTIALS_JSON_BASE64'),
-          string(credentialsId: 'JWT_SECRET_KEY',         variable: 'JWT_SECRET_KEY')
+          string(credentialsId: 'JWT_SECRET_KEY',         variable: 'JWT_SECRET_KEY'),
+          string(credentialsId: 'FRONTEND_API_URL', variable: 'API_URL'),
         ]) {
           sh '''
             cp "$GCP_KEY_FILE" gcp-key.json
