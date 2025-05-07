@@ -12,7 +12,7 @@ pipeline {
 
   parameters {
     string(
-      name: 'FORCE_SERVICES', 
+      name: 'FORCE_SERVICES',
       defaultValue: '',
       description: '콤마(,)로 지정 시 해당 서비스만 빌드·배포 (예: gateway,auth,backend,rag,frontend)'
     )
@@ -123,21 +123,17 @@ ENV=prod
         stage('Frontend Setup') {
           steps {
             dir(env.FRONTEND_DIR) {
-              // 프로젝트 정보
               sh 'echo "Current directory" && pwd && ls -la'
               sh 'chmod -R 755 .'
-              // npm 설치 via Docker
               sh '''
                 echo "== npm 설치 시작 =="
-                FE_DIR="${WORKSPACE}/${FRONTEND_DIR}"
                 docker run --rm \
-                  -v "${FE_DIR}:/app:delegated" \
-                  -w /app \
+                  --volumes-from $(hostname) \
+                  -w "${WORKSPACE}/${FRONTEND_DIR}" \
                   node:${NODE_VERSION} \
-                  /bin/sh -c "ls -la /app && npm install --no-audit --no-fund"
+                  /bin/sh -c "ls -la . && npm install --no-audit --no-fund"
                 echo "== npm 설치 완료 =="
               '''
-              // google-services.json 복사
               withCredentials([
                 file(credentialsId: 'google-services-json', variable: 'GOOGLE_SERVICES_JSON')
               ]) {
@@ -173,10 +169,9 @@ EOF
               }
               sh '''
                 echo "== Android 빌드 시작 =="
-                FE_DIR="${WORKSPACE}/${FRONTEND_DIR}"
                 docker run --rm \
-                  -v "${FE_DIR}:/app:delegated" \
-                  -w /app \
+                  --volumes-from $(hostname) \
+                  -w "${WORKSPACE}/${FRONTEND_DIR}" \
                   cimg/android:2023.08.1 \
                   /bin/sh -c "cd android && chmod +x ./gradlew && ./gradlew assembleRelease"
                 echo "== Android 빌드 완료 =="
@@ -192,12 +187,11 @@ EOF
               withCredentials([
                 file(credentialsId: 'firebase-service-account', variable: 'FIREBASE_SA'),
                 string(credentialsId: 'FIREBASE_TOKEN',           variable: 'FIREBASE_TOKEN'),
-                string(credentialsId: 'FIREBASE_APP_ID',         variable: 'FIREBASE_APP_ID')
+                string(credentialsId: 'FIREBASE_APP_ID',          variable: 'FIREBASE_APP_ID')
               ]) {
                 sh '''
                   echo "== Firebase 배포 시작 =="
-                  FE_DIR="${WORKSPACE}/${FRONTEND_DIR}"
-                  APK_FILE=$(find "${FE_DIR}/android/app/build/outputs/apk/release" -name "*.apk" 2>/dev/null | head -1)
+                  APK_FILE=$(find "${WORKSPACE}/${FRONTEND_DIR}/android/app/build/outputs/apk/release" -name "*.apk" | head -1)
                   if [ -z "$APK_FILE" ]; then
                     echo "ERROR: APK 파일을 찾을 수 없습니다!"
                     exit 1
@@ -205,8 +199,8 @@ EOF
                   cp "$FIREBASE_SA" firebase-key.json
                   chmod 644 firebase-key.json
                   docker run --rm \
-                    -v "${FE_DIR}:/app:delegated" \
-                    -w /app \
+                    --volumes-from $(hostname) \
+                    -w "${WORKSPACE}/${FRONTEND_DIR}" \
                     -e GOOGLE_APPLICATION_CREDENTIALS=/app/firebase-key.json \
                     -e FIREBASE_TOKEN="$FIREBASE_TOKEN" \
                     -e FIREBASE_APP_ID="$FIREBASE_APP_ID" \
@@ -218,7 +212,7 @@ EOF
                 '''
                 script {
                   def apkPath = sh(
-                    script: "find ${env.FRONTEND_DIR}/android/app/build/outputs/apk/release -name '*.apk' 2>/dev/null | head -1",
+                    script: "find ${env.FRONTEND_DIR}/android/app/build/outputs/apk/release -name '*.apk' | head -1",
                     returnStdout: true
                   ).trim()
                   if (apkPath) {
@@ -243,10 +237,10 @@ EOF
 
     /* 4) Build & Deploy Backend Services */
     stage('Build & Deploy') {
-      when { 
-        expression { 
-          env.CHANGED_SERVICES?.trim() && 
-          env.CHANGED_SERVICES.split(',').any { it != 'frontend' } 
+      when {
+        expression {
+          env.CHANGED_SERVICES?.trim() &&
+          env.CHANGED_SERVICES.split(',').any { it != 'frontend' }
         }
       }
       steps {
