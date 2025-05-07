@@ -3,6 +3,7 @@ package com.backend.image.presentation.controller;
 import com.backend.global.common.response.BaseResponse;
 import com.backend.image.application.in.DeleteImagesInDto;
 import com.backend.image.application.in.SaveImageInDto;
+import com.backend.image.application.out.ImageCheckOutDto;
 import com.backend.image.application.out.ImageOutDto;
 import com.backend.image.application.out.ImageThumbnailOutDto;
 import com.backend.image.application.out.SaveImageOutDto;
@@ -111,5 +112,16 @@ public class ImageController {
     public BaseResponse<Void> unstarImage(@PathVariable UUID imageId) {
         imageService.unstarImage(imageId);
         return new BaseResponse<>();
+    }
+
+    @GetMapping("/check")
+    public BaseResponse<ImageCheckResponse> checkImageExists(
+            @RequestParam UUID userId,
+            @RequestParam String accessId) {
+
+        ImageCheckOutDto exists = imageService.imageExist(userId, accessId);
+
+        ImageCheckResponse response = modelMapper.map(exists, ImageCheckResponse.class);
+        return new BaseResponse<>(response);
     }
 }

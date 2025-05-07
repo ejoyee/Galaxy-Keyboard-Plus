@@ -24,6 +24,8 @@ public enum BaseResponseStatus {
     NO_EXIST_IMAGE(HttpStatus.NOT_FOUND, false, 404, "존재하지 않는 사진입니다."),
     NO_IMAGE_DELETED(HttpStatus.BAD_REQUEST, false, 400, "요청한 이미지가 전부 삭제되지 않았습니다."),
 
+    NO_EXIST_PLAN(HttpStatus.NOT_FOUND, false, 404, "존재하지 않는 일정입니다."),
+
 
     /**
      * 500: 서버 오류

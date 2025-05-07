@@ -4,6 +4,7 @@ import com.backend.global.common.exception.BaseException;
 import com.backend.global.common.response.BaseResponseStatus;
 import com.backend.image.application.in.DeleteImagesInDto;
 import com.backend.image.application.in.SaveImageInDto;
+import com.backend.image.application.out.ImageCheckOutDto;
 import com.backend.image.application.out.ImageOutDto;
 import com.backend.image.application.out.ImageThumbnailOutDto;
 import com.backend.image.application.out.SaveImageOutDto;
@@ -124,5 +125,10 @@ public class ImageService {
                 .orElseThrow(() -> new BaseException(BaseResponseStatus.NO_EXIST_IMAGE));
 
         image.setStar(true);
+    }
+
+    public ImageCheckOutDto imageExist(UUID userId, String accessId) {
+        boolean exist = imageRepository.existsByUser_UserIdAndAccessId(userId, accessId);
+        return new ImageCheckOutDto(exist);
     }
 }

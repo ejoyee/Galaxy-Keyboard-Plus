@@ -37,4 +37,4 @@ app.include_router(search_image_info_router, prefix="/rag")
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=9000)
+    uvicorn.run(app, host="0.0.0.0", port=8090)

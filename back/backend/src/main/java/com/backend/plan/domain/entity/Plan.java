@@ -4,6 +4,7 @@ import com.backend.image.domain.entity.Image;
 import com.backend.user.domain.entity.User;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
@@ -15,6 +16,7 @@ import java.util.UUID;
 @Getter
 @NoArgsConstructor
 @AllArgsConstructor
+@Builder(toBuilder = true)
 public class Plan {
     @Id
     @Column(name = "plan_id", nullable = false)
@@ -35,5 +37,10 @@ public class Plan {
     private Image image;
 
     @Column(name = "alarm_tf")
-    private Boolean alarmTf = true;
+    private boolean alarmTf = true;
+
+    // 이미지 즐겨찾기 등록/해제
+    public void setAlarmTf(Boolean alarmTf) {
+        this.alarmTf = alarmTf;
+    }
 }
