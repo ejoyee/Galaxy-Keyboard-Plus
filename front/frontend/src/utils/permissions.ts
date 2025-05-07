@@ -1,4 +1,10 @@
-import {request, PERMISSIONS, RESULTS, Permission} from 'react-native-permissions';
+import {
+  PERMISSIONS,
+  Permission,
+  RESULTS,
+  request,
+} from 'react-native-permissions';
+
 import {Platform} from 'react-native';
 
 export const requestStoragePermission = async (): Promise<boolean> => {

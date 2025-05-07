@@ -3,4 +3,5 @@ export type RootStackParamList = {
   FavoriteGallery: undefined;
   AlarmGallery: undefined;
   Settings: undefined;
+  ImageDetail: {imageId: string};
 };

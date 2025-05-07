@@ -1,13 +1,15 @@
-import React from 'react';
-import {View, Text, TouchableOpacity, ScrollView} from 'react-native';
+import {ScrollView, Text, TouchableOpacity, View} from 'react-native';
+
 import Icon from 'react-native-vector-icons/Ionicons';
 import {ImageThumbnail} from './ImageThumbnail';
-import {ImageItem} from '../stores/useImageStore';
+import React from 'react';
 import tw from '../utils/tw';
+
+// import {ImageItem} from '../stores/useImageDetailStore';
 
 interface SectionProps {
   title: string;
-  data: ImageItem[];
+  // data: ImageItem[];
   onPressMore: () => void;
 }
 
