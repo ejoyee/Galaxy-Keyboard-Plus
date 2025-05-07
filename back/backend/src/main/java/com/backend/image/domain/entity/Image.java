@@ -1,5 +1,7 @@
 package com.backend.image.domain.entity;
 
+import com.backend.image.domain.converter.ImageTypeConverter;
+import com.backend.image.domain.type.ImageType;
 import com.backend.plan.domain.entity.Plan;
 import com.backend.user.domain.entity.User;
 import jakarta.persistence.*;
@@ -36,8 +38,9 @@ public class Image {
     @Column(name = "upload_time", nullable = false)
     private LocalDateTime uploadTime;
 
+    @Convert(converter = ImageTypeConverter.class)
     @Column(name = "type", nullable = false)
-    private Float type;
+    private ImageType type;
 
     @Column(name = "star")
     private boolean star = false;
