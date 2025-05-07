@@ -136,13 +136,34 @@ ENV=prod
             dir(env.FRONTEND_DIR) {
               // 프로젝트 정보 출력
               sh 'echo "Current directory" && pwd && ls -la'
-              sh 'cat package.json'
               
-              // 도커로 패키지 설치 - 명시적 이미지 풀
+              // 볼륨 마운트 대신 Docker 이미지에 파일 복사 방식 사용
               sh '''
-                echo "Docker로 Node.js 패키지 설치 시작"
-                docker pull node:18
-                docker run --rm -v "$(pwd):/app" -w /app node:18 npm install --no-audit --no-fund
+                echo "Docker 내부에 파일 복사 방식으로 Node.js 패키지 설치 시작"
+                
+                # 임시 디렉토리 생성
+                TEMP_DIR=$(mktemp -d)
+                
+                # 현재 디렉토리 내용을 임시 디렉토리로 복사
+                cp -r * $TEMP_DIR/
+                cp .env $TEMP_DIR/ || true
+                cp .eslintrc.js $TEMP_DIR/ || true
+                cp .prettierrc.js $TEMP_DIR/ || true
+                cp .watchmanconfig $TEMP_DIR/ || true
+                
+                # Docker 컨테이너에서 패키지 설치
+                docker run --rm \
+                  -v $TEMP_DIR:/app \
+                  -w /app \
+                  node:18 \
+                  bash -c "ls -la && npm install --no-audit --no-fund"
+                
+                # 설치된 node_modules를 다시 프로젝트 디렉토리로 복사
+                cp -r $TEMP_DIR/node_modules .
+                
+                # 임시 디렉토리 삭제
+                rm -rf $TEMP_DIR
+                
                 echo "Node.js 패키지 설치 완료"
               '''
               
@@ -184,18 +205,33 @@ ENV=prod
                 """
               }
               
-              // 안드로이드 빌드 수행 - 명시적 이미지 풀
+              // 안드로이드 빌드 수행 - 마운트 대신 복사 방식 사용
               sh '''
-                echo "Android 빌드 시작"
-                docker pull cimg/android:2023.08.1
+                echo "Android 빌드 시작 - 파일 복사 방식 사용"
+                
+                # 임시 디렉토리 생성
+                TEMP_DIR=$(mktemp -d)
+                
+                # 현재 디렉토리 내용을 임시 디렉토리로 복사
+                cp -r * $TEMP_DIR/
+                cp .env $TEMP_DIR/ || true
+                cp .eslintrc.js $TEMP_DIR/ || true
+                cp .prettierrc.js $TEMP_DIR/ || true
+                cp .watchmanconfig $TEMP_DIR/ || true
                 
                 # Android 빌드
                 docker run --rm \
-                  -u root \
-                  -v "$(pwd):/app" \
+                  -v $TEMP_DIR:/app \
                   -w /app \
                   cimg/android:2023.08.1 \
-                  bash -c "ls -la && cd android && chmod +x ./gradlew && ./gradlew assembleRelease"
+                  bash -c "cd android && chmod +x ./gradlew && ./gradlew assembleRelease"
+                
+                # 빌드된 APK를 프로젝트 디렉토리로 복사
+                mkdir -p android/app/build/outputs/apk/release
+                cp -r $TEMP_DIR/android/app/build/outputs/apk/release/* android/app/build/outputs/apk/release/
+                
+                # 임시 디렉토리 삭제
+                rm -rf $TEMP_DIR
                 
                 echo "Android 빌드 완료"
                 echo "Build output directory:"
@@ -216,7 +252,7 @@ ENV=prod
                 string(credentialsId: 'FIREBASE_TOKEN', variable: 'FIREBASE_TOKEN'),
                 string(credentialsId: 'FIREBASE_APP_ID', variable: 'FIREBASE_APP_ID')
               ]) {
-                // Firebase 배포 - 명시적 이미지 풀
+                // Firebase 배포 - 파일 복사 방식 사용
                 sh '''
                   # APK 파일 찾기
                   APK_FILE=$(find android/app/build/outputs/apk/release -name "*.apk" 2>/dev/null | head -1)
@@ -229,27 +265,28 @@ ENV=prod
                   
                   echo "배포할 APK 파일: $APK_FILE"
                   
-                  # Firebase 서비스 계정 키 복사
-                  cp "$FIREBASE_SA" firebase-key.json
-                  chmod 644 firebase-key.json
+                  # 임시 디렉토리 생성
+                  TEMP_DIR=$(mktemp -d)
                   
-                  # Node.js 이미지 미리 가져오기
-                  docker pull node:18
+                  # APK 파일 복사
+                  cp "$APK_FILE" $TEMP_DIR/app-release.apk
+                  
+                  # Firebase 서비스 계정 키 복사
+                  cp "$FIREBASE_SA" $TEMP_DIR/firebase-key.json
                   
                   # Firebase 배포
                   docker run --rm \
-                    -u root \
-                    -v "$(pwd):/app" \
+                    -v $TEMP_DIR:/app \
                     -w /app \
                     -e GOOGLE_APPLICATION_CREDENTIALS=/app/firebase-key.json \
                     -e FIREBASE_TOKEN="$FIREBASE_TOKEN" \
                     -e FIREBASE_APP_ID="$FIREBASE_APP_ID" \
                     -e BUILD_NUMBER="$BUILD_NUMBER" \
                     node:18 \
-                    bash -c "npm install -g firebase-tools && firebase appdistribution:distribute $APK_FILE --app $FIREBASE_APP_ID --token $FIREBASE_TOKEN --groups 'testers' --release-notes 'Jenkins 빌드 #${BUILD_NUMBER} - $(date)'"
+                    bash -c "npm install -g firebase-tools && firebase appdistribution:distribute /app/app-release.apk --app $FIREBASE_APP_ID --token $FIREBASE_TOKEN --groups 'testers' --release-notes 'Jenkins 빌드 #${BUILD_NUMBER} - $(date)'"
                   
-                  # 서비스 계정 키 파일 삭제
-                  rm -f firebase-key.json
+                  # 임시 디렉토리 삭제
+                  rm -rf $TEMP_DIR
                 '''
                 
                 // 배포 링크 생성 및 출력
@@ -306,7 +343,6 @@ ENV=prod
       sh 'rm -f gcp-key.json'
       sh 'rm -f back/rag/gcp-key.json || true'
       sh "rm -f ${FRONTEND_DIR}/.env || true"
-      sh "rm -f ${FRONTEND_DIR}/firebase-key.json || true"
     }
     success {
       echo '빌드 및 배포가 성공적으로 완료되었습니다!'
