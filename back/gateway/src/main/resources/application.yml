@@ -5,6 +5,17 @@ logging:
   level:
     com.gateway.filter: INFO
 
+management:
+  server:
+    base-path: /actuator
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: always
+
 jwt:
   secret: ${JWT_SECRET_KEY}
 
