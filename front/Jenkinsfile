@@ -101,6 +101,10 @@ pipeline {
             exit 1
           fi
           
+          # Android 프로젝트 구조 상세 확인
+          echo "📂 Android 프로젝트 구조:"
+          find front/frontend/android -type d | sort
+          
           echo "===================================================="
         '''
       }
@@ -176,6 +180,28 @@ pipeline {
       }
     }
 
+    stage('Debug Environment') {
+      when { expression { env.BUILD_FRONTEND == 'true' } }
+      steps {
+        sh '''
+          echo "===================================================="
+          echo "🔍 Docker 환경 디버깅"
+          echo "===================================================="
+          
+          # Docker 버전 확인
+          docker --version
+          
+          # 이미지 목록 확인
+          docker images | grep my-android-ci
+          
+          # 테스트로 Docker 컨테이너 실행
+          docker run --rm ${DOCKER_IMAGE} bash -c 'echo "Docker 컨테이너 테스트" && java -version && node -version || node --version'
+          
+          echo "===================================================="
+        '''
+      }
+    }
+
     stage('Build with Docker') {
       when { expression { env.BUILD_FRONTEND == 'true' } }
       steps {
@@ -198,29 +224,49 @@ pipeline {
             -e KEY_PASSWORD="$KEY_PASSWORD" \
             ${DOCKER_IMAGE} \
             bash -c '
+              set -x  # 실행 명령어 출력
+              
               cd /workspace/front/frontend
+              
+              echo "📂 현재 디렉토리: $(pwd)"
+              ls -la
               
               echo "🔧 Node 모듈 설치"
               yarn install
               
               echo "🔧 Android 디렉토리로 이동"
               cd android
+              ls -la
               
               echo "🔧 local.properties 생성"
               echo "sdk.dir=/opt/android-sdk" > local.properties
+              cat local.properties
               
               echo "🔧 Gradle 프로퍼티 설정"
-              cat >> gradle.properties << EOF
+              cat >> gradle.properties << EOL
               
               # CI 환경 키스토어 설정
               KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD
               KEY_ALIAS=$KEY_ALIAS
               KEY_PASSWORD=$KEY_PASSWORD
-              EOF
+              EOL
+              
+              cat gradle.properties
+              
+              echo "🔧 Android SDK 환경 확인"
+              echo "ANDROID_HOME: $ANDROID_HOME"
+              ls -la $ANDROID_HOME || echo "Android SDK 디렉토리에 접근할 수 없습니다"
+              
+              echo "🔧 Gradle 버전 확인"
+              ./gradlew --version
               
               echo "🔧 Gradle 빌드 실행"
               chmod +x ./gradlew
-              ./gradlew clean assembleDebug --stacktrace
+              ./gradlew clean --info
+              ./gradlew assembleDebug --info
+              
+              echo "🔧 빌드 결과 확인"
+              find . -name "*.apk"
             '
           
           # 빌드 결과물 복사
@@ -229,7 +275,8 @@ pipeline {
           
           # 빌드 결과 확인
           echo "📂 빌드 결과 확인:"
-          find apk -name "*.apk" || echo "❌ APK 파일이 생성되지 않았습니다"
+          find front/frontend/android -name "*.apk" || echo "❌ Android 프로젝트 내에 APK 파일이 생성되지 않았습니다"
+          find apk -name "*.apk" || echo "❌ APK 디렉토리에 APK 파일이 복사되지 않았습니다"
           
           echo "===================================================="
         '''
