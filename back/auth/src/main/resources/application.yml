@@ -13,9 +13,9 @@ spring:
   application:
     name: auth
   datasource:
-    url: ${DB_URL}
-    username: ${DB_USER}
-    password: ${DB_PASS}
+    url: ${POSTGRES_AUTH_USER}
+    username: ${POSTGRES_AUTH_DB_NAME}
+    password: ${POSTGRES_AUTH_PASSWORD}
   jpa:
     hibernate:
       ddl-auto: validate   # 생산 단계는 validate, 개발 초기엔 create
@@ -40,7 +40,7 @@ spring:
             user-info-uri: https://kapi.kakao.com/v2/user/me
             user-name-attribute: id
 jwt:
-  secret: ${JWT_SECRET}
+  secret: ${JWT_SECRET_KEY}
   access-token-validity: ${JWT_AT_VALIDITY:900000}
   refresh-token-validity: ${JWT_RT_VALIDITY:604800000}
 
