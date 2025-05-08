@@ -10,6 +10,8 @@ pipeline {
     FIREBASE_TOKEN   = credentials('FIREBASE_TOKEN')
     // Firebase 앱 ID
     FIREBASE_APP_ID  = '1:189536895445:android:783ed885fd7c4b896bfd5c'
+    // 빌드 강제 실행 여부
+    FORCE_BUILD      = 'true'
   }
 
   stages {
@@ -42,8 +44,15 @@ pipeline {
           echo "${diff}"
           echo "=========================="
           
-          // front/frontend/ 하위 파일 변경이 있으면 빌드
-          env.BUILD_FRONTEND = diff.split('\n').any { it.startsWith('front/frontend/') } ? 'true' : 'false'
+          // "front/" 하위 파일 변경이 있으면 빌드 (조건 완화)
+          env.BUILD_FRONTEND = diff.split('\n').any { it.startsWith('front/') } ? 'true' : 'false'
+          
+          // 강제 빌드 옵션이 true이면 무조건 빌드
+          if (env.FORCE_BUILD == 'true') {
+            env.BUILD_FRONTEND = 'true'
+            echo "🔧 강제 빌드 옵션이 활성화되어 있습니다."
+          }
+          
           echo env.BUILD_FRONTEND=='true'
                ? "▶ Frontend 변경 감지: 빌드합니다"
                : "▶ Frontend 변경 없음: 스킵합니다"
@@ -170,33 +179,48 @@ EOL
           echo "===================================================="
         '''
         
-        // APK 빌드 실패 시 React Native 빌드 환경 준비
+        // React Native 앱 디렉토리 확인 및 빌드 시도
         sh '''
           echo "===================================================="
-          echo "🔧 React Native 빌드 환경 준비"
+          echo "🔧 React Native 빌드 시도"
           echo "===================================================="
           
           # React Native 디렉토리로 이동
           cd front/frontend
           
-          # 패키지 구조 확인
-          echo "📂 React Native 프로젝트 구조:"
+          # 프로젝트 확인
+          echo "📂 현재 디렉토리: $(pwd)"
+          echo "📂 디렉토리 내용:"
           ls -la
           
-          # package.json 확인
+          # Node.js 환경 설정
+          NODE_VERSION=$(node -v || echo "node 없음")
+          NPM_VERSION=$(npm -v || echo "npm 없음")
+          YARN_VERSION=$(yarn -v || echo "yarn 없음")
+          
+          echo "🔍 Node.js 버전: $NODE_VERSION"
+          echo "🔍 npm 버전: $NPM_VERSION"
+          echo "🔍 yarn 버전: $YARN_VERSION"
+          
+          # React Native 의존성 설치
           if [ -f "package.json" ]; then
-            echo "✅ package.json 파일 존재"
+            echo "📦 의존성 설치 중..."
+            npm install || { echo "⚠️ npm install 실패, yarn 시도..."; yarn install || echo "⚠️ yarn install 실패"; }
+            
+            # Android 빌드 시도
+            if [ -f "node_modules/.bin/react-native" ]; then
+              echo "📱 React Native 빌드 시도..."
+              npx react-native build-android || echo "⚠️ React Native 빌드 실패"
+            else
+              echo "⚠️ react-native CLI를 찾을 수 없습니다"
+            fi
           else
-            echo "❌ package.json 파일이 없습니다"
+            echo "❌ package.json 파일이 없어 React Native 빌드를 실행할 수 없습니다"
           fi
           
-          # 빌드 스크립트 확인
-          ANDROID_BUILD_SCRIPT=$(grep "\"android\"" package.json | grep -o "\"[^\"]*\"" | tail -1 | tr -d \")
-          if [ ! -z "$ANDROID_BUILD_SCRIPT" ]; then
-            echo "✅ Android 빌드 스크립트: $ANDROID_BUILD_SCRIPT"
-          else
-            echo "⚠️ package.json에서 Android 빌드 스크립트를 찾을 수 없습니다"
-          fi
+          # APK 확인
+          echo "📂 APK 파일 확인:"
+          find android -name "*.apk" || echo "❌ APK 파일이 생성되지 않았습니다"
           
           echo "===================================================="
         '''
@@ -217,6 +241,11 @@ EOL
             
             # APK 파일 찾기
             APK_FILE=$(find front/frontend/android -name "*.apk" | head -1)
+            
+            if [ -z "$APK_FILE" ]; then
+              # React Native 디렉토리에서도 찾기
+              APK_FILE=$(find front/frontend/android -name "*.apk" | head -1)
+            fi
             
             if [ -z "$APK_FILE" ]; then
               echo "❌ APK 파일을 찾을 수 없어 Firebase 업로드를 건너뜁니다"
@@ -257,7 +286,7 @@ EOL
           echo "===================================================="
           
           # APK 파일 존재 확인
-          APK_FILES=$(find front/frontend/android -name "*.apk" 2>/dev/null)
+          APK_FILES=$(find front/frontend -name "*.apk" 2>/dev/null)
           APK_COUNT=$(echo "$APK_FILES" | grep -c .)
           
           if [ $APK_COUNT -gt 0 ]; then
@@ -266,7 +295,7 @@ EOL
             
             # 모든 APK 파일을 하나의 디렉토리로 복사
             mkdir -p apk-archive
-            find front/frontend/android -name "*.apk" -exec cp {} apk-archive/ \\;
+            find front/frontend -name "*.apk" -exec cp {} apk-archive/ \\;
           else
             echo "❌ APK 파일을 찾을 수 없습니다"
             mkdir -p apk-archive
