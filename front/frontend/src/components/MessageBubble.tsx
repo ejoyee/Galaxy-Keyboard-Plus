@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Image, Text } from 'react-native';
+import { View, Image, Text, TouchableOpacity } from 'react-native';
 import tw from 'twrnc';
 import PhotoThumb from './PhotoThumb';
 
@@ -22,20 +22,20 @@ export interface Message {
   sender: 'user' | 'bot';
   timestamp: Date;
   query_type?: 'photo' | 'info' | 'ambiguous';
-  answer?: string;
+  answer?: string;  
   photo_results?: PhotoResult[];
   info_results?: InfoResult[];
 }
 
 const MessageBubble: React.FC<{ item: Message }> = ({ item }) => {
   const isUser = item.sender === 'user';
+  const [showInfoPhotos, setShowInfoPhotos] = React.useState(false);
 
-  const showInfoList =
+  const isBotInfoWithResults =
     item.sender === 'bot' &&
     item.query_type === 'info' &&
     item.info_results &&
     item.info_results.length > 0;
-
   const showPhotoGrid =
     item.sender === 'bot' && item.photo_results?.length;
 
@@ -61,26 +61,35 @@ const MessageBubble: React.FC<{ item: Message }> = ({ item }) => {
               <PhotoThumb
                 key={`${item.id}-photo-${photo.id}-${idx}`}
                 id={photo.id}
-                score={photo.score}
               />
             ))}
           </View>
         )}
 
         {/* ---- info 결과 ---- */}
-        {showInfoList && (
-          <View style={tw`mt-[10px] pt-[8px] border-t border-[#EEE]`}>
-            {item.info_results!.map(info => (
-              <View key={`${item.id}-info-${info.id}`} style={tw`bg-[#f7f7f7] p-[10px] rounded-[6px] mb-[6px]`}>
-                <Text style={tw`text-[13px] leading-[18px] text-[#333]`}>{info.text}</Text>
-                <Text style={tw`text-[10px] text-[#555] text-right mt-[4px]`}>
-                  {info.score.toFixed(2)}
-                </Text>
+        {isBotInfoWithResults && (
+          <View style={tw`mt-[10px] pt-[8px] border-t border-gray-200`}>
+            <TouchableOpacity
+              onPress={() => setShowInfoPhotos(prev => !prev)}
+              style={tw`bg-gray-100 p-[8px] rounded-[6px] items-center mb-[8px]`}
+            >
+              <Text style={tw`text-blue-600 font-semibold text-[13px]`}>
+                {showInfoPhotos ? '사진 숨기기' : '내 사진보기'}
+              </Text>
+            </TouchableOpacity>
+
+            {showInfoPhotos && (
+              <View style={tw`flex-row flex-wrap`}>
+                {item.info_results!.map((info, idx) => (
+                  <PhotoThumb
+                    key={`${item.id}-info-${info.id}-${idx}`}
+                    id={info.id}
+                  />
+                ))}
               </View>
-            ))}
+            )}
           </View>
         )}
-
         <Text style={tw`text-[10px] text-[#999] self-end mt-[4px]`}>
           {item.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
         </Text>
