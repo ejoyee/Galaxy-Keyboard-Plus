@@ -37,6 +37,9 @@ dependencies {
 	// Jackson 기반 Claims 처리 (JSON 직렬화/역직렬화용)
 	implementation "io.jsonwebtoken:jjwt-jackson:${jjwtVersion}"
 
+	implementation 'org.springframework.boot:spring-boot-starter-actuator'
+	implementation 'org.springframework.boot:spring-boot-starter-webflux'
+
 }
 
 dependencyManagement {
