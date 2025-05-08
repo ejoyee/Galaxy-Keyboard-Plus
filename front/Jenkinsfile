@@ -46,7 +46,7 @@ pipeline {
           echo "${diff}"
           echo "=========================="
           
-          // "front/" 하위 파일 변경이 있으면 빌드 (조건 완화)
+          // "front/" 하위 파일 변경이 있으면 빌드
           env.BUILD_FRONTEND = diff.split('\n').any { it.startsWith('front/') } ? 'true' : 'false'
           
           // 강제 빌드 옵션이 true이면 무조건 빌드
@@ -76,7 +76,7 @@ pipeline {
           echo "📂 front/frontend 디렉토리 확인:"
           ls -la front/frontend || { echo "❌ front/frontend 디렉토리가 없습니다"; exit 1; }
           
-          echo "📂 front/frontend/package.json 확인:"
+          # package.json 확인
           if [ -f "front/frontend/package.json" ]; then
             echo "✅ package.json 파일 존재"
             cat front/frontend/package.json | grep "name\\|version"
@@ -125,37 +125,33 @@ pipeline {
       }
     }
 
-    stage('Build with Docker') {
+    stage('Build Android Only') {
       when { expression { env.BUILD_FRONTEND == 'true' } }
       steps {
         sh '''
           echo "===================================================="
-          echo "🐳 Docker를 사용한 React Native 빌드"
+          echo "🐳 Docker를 사용한 Android 전용 빌드"
           echo "===================================================="
           
           # 작업 디렉토리
           WORKSPACE_DIR="$(pwd)"
-          RN_DIR="${WORKSPACE_DIR}/front/frontend"
+          ANDROID_DIR="${WORKSPACE_DIR}/front/frontend/android"
           
           # 디렉토리 존재 확인
-          if [ ! -d "$RN_DIR" ]; then
-            echo "❌ React Native 디렉토리가 존재하지 않습니다: $RN_DIR"
+          if [ ! -d "$ANDROID_DIR" ]; then
+            echo "❌ Android 디렉토리가 존재하지 않습니다: $ANDROID_DIR"
             exit 1
           fi
           
-          # package.json 확인
-          if [ ! -f "$RN_DIR/package.json" ]; then
-            echo "❌ package.json 파일이 존재하지 않습니다: $RN_DIR/package.json"
-            exit 1
-          fi
-          
-          echo "📂 React Native 디렉토리: $RN_DIR"
+          echo "📂 Android 디렉토리: $ANDROID_DIR"
           echo "🔍 Docker 이미지: ${DOCKER_IMAGE}"
           
-          # Docker 컨테이너에서 React Native 빌드 실행
+          # Docker 컨테이너에서 직접 Android 빌드만 실행
           docker run --rm \
-            -v "$RN_DIR:/app" \
+            -v "$ANDROID_DIR:/app" \
             -w /app \
+            -e ANDROID_SDK_ROOT=/opt/android-sdk \
+            -e ANDROID_HOME=/opt/android-sdk \
             -e KEYSTORE_PASSWORD="$KEYSTORE_PASSWORD" \
             -e KEY_ALIAS="$KEY_ALIAS" \
             -e KEY_PASSWORD="$KEY_PASSWORD" \
@@ -167,21 +163,9 @@ pipeline {
               pwd
               ls -la
               
-              echo "==== React Native 환경 확인 ===="
-              node -v
-              npm -v
-              
-              echo "==== package.json 확인 ===="
-              if [ ! -f "package.json" ]; then
-                echo "❌ package.json 파일이 없습니다."
-                exit 1
-              fi
-              
-              echo "==== 의존성 설치 ===="
-              npm install
-              
-              echo "==== Android 빌드 실행 ===="
-              cd android
+              echo "==== Android 환경 확인 ===="
+              echo "ANDROID_SDK_ROOT: $ANDROID_SDK_ROOT"
+              echo "ANDROID_HOME: $ANDROID_HOME"
               
               if [ ! -f "./gradlew" ]; then
                 echo "❌ gradlew 파일이 없습니다."
@@ -228,11 +212,8 @@ pipeline {
             echo "🔥 Firebase 배포"
             echo "===================================================="
             
-            # React Native 디렉토리
-            RN_DIR="$(pwd)/front/frontend"
-            
-            # APK 파일 찾기
-            APK_FILE=$(find "$RN_DIR" -name "*.apk" | head -1)
+            # APK 파일 찾기 - 전체 경로 지정
+            APK_FILE=$(find "$(pwd)/front/frontend/android" -name "*.apk" | head -1)
             
             if [ -z "$APK_FILE" ]; then
               echo "❌ APK 파일을 찾을 수 없어 Firebase 배포를 건너뜁니다"
@@ -241,26 +222,31 @@ pipeline {
             
             echo "✅ 업로드할 APK 파일: $APK_FILE"
             
-            # 별도 Docker 컨테이너에서 Firebase CLI 실행
+            # Docker에서 Firebase 배포 실행
             docker run --rm \
               -v "$(pwd):/workspace" \
               -w /workspace \
               -e FIREBASE_TOKEN="$FIREBASE_TOKEN" \
               -e FIREBASE_APP_ID="$FIREBASE_APP_ID" \
+              -e APK_FILE="$APK_FILE" \
               node:14 \
               bash -c '
+                echo "==== Node.js 버전 확인 ===="
+                node -v
+                npm -v
+                
                 echo "==== Firebase CLI 설치 ===="
                 npm install -g firebase-tools
                 
                 echo "==== APK 파일 확인 ===="
-                APK_FILE="$(find front/frontend -name "*.apk" | head -1)"
+                echo "APK 파일 경로: $APK_FILE"
                 
-                if [ -z "$APK_FILE" ]; then
-                  echo "❌ APK 파일을 찾을 수 없습니다."
+                if [ ! -f "$APK_FILE" ]; then
+                  echo "❌ Docker 내부에서 APK 파일을 찾을 수 없습니다."
+                  echo "Docker 컨테이너 디렉토리 내용:"
+                  find /workspace -name "*.apk"
                   exit 1
                 fi
-                
-                echo "✅ APK 파일: $APK_FILE"
                 
                 echo "==== Firebase 배포 ===="
                 firebase appdistribution:distribute "$APK_FILE" \
@@ -274,10 +260,12 @@ pipeline {
             
             if [ $DEPLOY_RESULT -ne 0 ]; then
               echo "❌ Firebase 배포 실패 (결과 코드: $DEPLOY_RESULT)"
-              exit $DEPLOY_RESULT
+              # 배포 실패해도 빌드 과정 계속 진행
+              echo "⚠️ 배포 실패했지만 빌드 과정은 계속 진행합니다."
+            else
+              echo "✅ Firebase 배포 완료"
             fi
             
-            echo "✅ Firebase 배포 완료"
             echo "===================================================="
           '''
         }
@@ -292,19 +280,16 @@ pipeline {
           echo "📦 APK 아카이브"
           echo "===================================================="
           
-          # React Native 디렉토리
-          RN_DIR="$(pwd)/front/frontend"
-          
           # APK 파일 존재 확인
-          APK_COUNT=$(find "$RN_DIR" -name "*.apk" 2>/dev/null | wc -l || echo "0")
+          APK_COUNT=$(find "$(pwd)/front/frontend/android" -name "*.apk" 2>/dev/null | wc -l || echo "0")
           
           if [ "$APK_COUNT" -gt 0 ]; then
             echo "✅ $APK_COUNT 개의 APK 파일 발견:"
-            find "$RN_DIR" -name "*.apk" 2>/dev/null
+            find "$(pwd)/front/frontend/android" -name "*.apk" 2>/dev/null
             
             # 모든 APK 파일을 하나의 디렉토리로 복사
             mkdir -p apk-archive
-            find "$RN_DIR" -name "*.apk" -exec cp {} apk-archive/ \\;
+            find "$(pwd)/front/frontend/android" -name "*.apk" -exec cp {} apk-archive/ \\; || true
           else
             echo "❌ APK 파일을 찾을 수 없습니다"
             mkdir -p apk-archive
