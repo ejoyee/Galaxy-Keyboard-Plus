@@ -1,16 +1,20 @@
 import {format} from 'date-fns';
+import { useAuthStore } from '../stores/authStore';
 
 /**
- * rag에 이미지 업로드 하는 api를 호출하는 메소드
- * service로 빼야 할 거 같기도 한데 일단 utils에 작성
- * 해당 메소드를 사용하여 auth hook이든 test용 uploader에서 사용
+ * rag에 이미지 업로드 하는 api를 병렬로 호출하는 메소드
  */
-
 export const uploadImagesToServer = async (
   images: {uri: string; filename: string; timestamp: number | Date}[],
-  userId = 'dajeong',
 ) => {
-  for (const image of images) {
+  // 1) zustand에서 userId 꺼내기
+  const { userId } = useAuthStore.getState();
+  if (!userId) {
+    throw new Error('로그인이 필요합니다.');
+  }
+
+  // 2) 각 이미지에 대해 formData 구성 & fetch
+  const uploadPromises = images.map(async image => {
     const accessId = image.filename.replace(/\.[^/.]+$/, '');
     const imageTime = format(image.timestamp, 'yyyy:MM:dd HH:mm:ss');
 
@@ -37,7 +41,6 @@ export const uploadImagesToServer = async (
         {
           method: 'POST',
           body: formData,
-          // Content-Type 생략: 자동 생성되게 둬야 boundary가 포함됨!
         },
       );
 
@@ -46,5 +49,8 @@ export const uploadImagesToServer = async (
     } catch (error) {
       console.error(`❌ fetch 업로드 오류 (${image.filename}):`, error);
     }
-  }
+  });
+
+  // 병렬 실행
+  await Promise.all(uploadPromises);
 };
