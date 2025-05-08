@@ -10,11 +10,6 @@ from app.utils.vector_store import save_text_to_pinecone
 from app.utils.schedule_parser import extract_schedule
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
-console_handler = logging.StreamHandler()
-formatter = logging.Formatter("[%(asctime)s] %(levelname)s - %(message)s")
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
 
 router = APIRouter()
 
@@ -23,17 +18,53 @@ router = APIRouter()
 async def upload_image(
     user_id: str = Form(...),
     access_id: str = Form(...),
-    image_time: datetime = Form(...),  # ✅ datetime으로 직접 받기
+    image_time: str = Form(...),
     file: UploadFile = File(...),
 ):
     try:
         logger.info(f"📥 이미지 처리 시작 - user_id={user_id}, access_id={access_id}")
 
+        # 문자열로 받은 image_time → datetime 변환
+        try:
+            image_time_obj = datetime.strptime(image_time, "%Y:%m:%d %H:%M:%S")
+        except ValueError as e:
+            logger.error(f"❌ image_time 파싱 실패: {e}")
+            raise HTTPException(
+                status_code=400,
+                detail="날짜 형식이 잘못되었습니다. (예: 2025:05:08 00:00:00)",
+            )
+
+        logger.info(f"📥 이미지 업로드 시작 - user_id={user_id}, access_id={access_id}")
+
+        async with httpx.AsyncClient() as client:
+            # 중복 체크 요청
+            check_url = f"http://backend-service:8083/api/v1/images/check"
+            params = {"userId": user_id, "accessId": access_id}
+
+            check_response = await client.get(check_url, params=params)
+            logger.info(f"🔍 중복 체크 응답: {check_response.status_code}")
+            logger.debug(f"🔍 중복 체크 바디: {check_response.text}")
+
+            if check_response.status_code != 200:
+                raise HTTPException(status_code=500, detail="중복 확인 실패")
+
+            check_result = check_response.json().get("result", {})
+            if check_result.get("exist", False):
+                logger.warning(
+                    f"⚠️ 이미 존재하는 이미지입니다. 업로드 중단 - access_id={access_id}"
+                )
+                return {
+                    "access_id": access_id,
+                    "image_time": image_time,
+                    "status": "skipped",
+                    "message": "이미 등록된 이미지입니다.",
+                }
+
         image_bytes = await file.read()
         text_score = classify_image_from_bytes(image_bytes)
         logger.info(f"🔍 이미지 분류 점수: {text_score:.3f} (access_id={access_id})")
 
-        if text_score < 0.1:
+        if text_score <= 0.09:  # 테스트를 통해 얻은 임계값
             description = generate_image_caption(image_bytes)
             target = "photo"
             content = description
@@ -44,14 +75,14 @@ async def upload_image(
             content = extracted_text
             logger.info(f"📝 텍스트 추출 완료 - {extracted_text}")
 
-        text_for_embedding = f"{access_id} ({image_time.isoformat()}): {content}"
+        text_for_embedding = f"{access_id} ({image_time}): {content}"
         namespace = save_text_to_pinecone(user_id, text_for_embedding, target)
         logger.info(f"✅ 벡터 저장 완료 - namespace={namespace}")
 
         image_payload = {
             "userId": user_id,
             "accessId": access_id,
-            "imageTime": image_time.isoformat(),  # ✅ ISO 포맷으로 직렬화
+            "imageTime": image_time,
             "type": target,
             "content": content,
         }
@@ -59,7 +90,7 @@ async def upload_image(
         async with httpx.AsyncClient() as client:
             logger.info(f"📤 이미지 정보 전송 → payload: {image_payload}")
             logger.info(
-                f"📤 이미지 전송 바디(JSON):\n{json.dumps(image_payload, ensure_ascii=False, indent=2)}"
+                f"📤 JSON:\n{json.dumps(image_payload, ensure_ascii=False, indent=2)}"
             )
 
             image_response = await client.post(
@@ -69,7 +100,6 @@ async def upload_image(
             logger.debug(f"📥 이미지 응답 내용: {image_response.text}")
 
             if image_response.status_code != 200:
-                logger.error(f"❌ 이미지 정보 저장 실패: {image_response.text}")
                 raise HTTPException(status_code=500, detail="이미지 정보 저장 실패")
 
             image_id = image_response.json().get("result", {}).get("imageId")
@@ -81,21 +111,19 @@ async def upload_image(
                 ):
                     plan_payload = {
                         "userId": user_id,
-                        "planTime": schedule_result["datetime"],  # 이미 ISO8601 형식임
+                        "planTime": image_time,
                         "planContent": schedule_result.get("event", content),
                         "imageId": image_id,
                     }
 
                     logger.info(f"📤 일정 등록 전송 → payload: {plan_payload}")
                     logger.info(
-                        f"📤 일정 전송 바디(JSON):\n{json.dumps(plan_payload, ensure_ascii=False, indent=2)}"
+                        f"📤 JSON:\n{json.dumps(plan_payload, ensure_ascii=False, indent=2)}"
                     )
 
                     plan_response = await client.post(
                         "http://backend-service:8083/api/v1/plans", json=plan_payload
                     )
-                    logger.info(f"📥 일정 응답 상태: {plan_response.status_code}")
-                    logger.debug(f"📥 일정 응답 내용: {plan_response.text}")
 
                     if plan_response.status_code != 200:
                         logger.warning(f"⚠️ 일정 등록 실패: {plan_response.text}")
@@ -104,7 +132,7 @@ async def upload_image(
 
         return {
             "access_id": access_id,
-            "image_time": image_time.isoformat(),
+            "image_time": image_time,
             "type": target,
             "namespace": namespace,
             "content": text_for_embedding,
@@ -116,11 +144,7 @@ async def upload_image(
         logger.error(f"❌ 처리 중 오류 발생 (access_id={access_id}): {e}")
         return {
             "access_id": access_id,
-            "image_time": (
-                image_time.isoformat()
-                if isinstance(image_time, datetime)
-                else str(image_time)
-            ),
+            "image_time": image_time,
             "status": "error",
             "message": str(e),
         }

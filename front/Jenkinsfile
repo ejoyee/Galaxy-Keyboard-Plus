@@ -1,0 +1,99 @@
+pipeline {
+  agent any
+
+  environment {
+    ANDROID_SDK_ROOT = '/opt/android-sdk'
+    ANDROID_HOME     = '/opt/android-sdk'
+    PATH             = "${env.PATH}:/opt/android-sdk/cmdline-tools/latest/bin:/opt/android-sdk/platform-tools"
+    FIREBASE_TOKEN   = credentials('FIREBASE_TOKEN')
+  }
+
+  stages {
+    stage('Checkout') {
+      steps {
+        checkout scm
+      }
+    }
+
+    stage('Detect Frontend Changes') {
+      steps {
+        script {
+          def diff = sh(
+            script: "git diff --name-only ${env.GIT_PREVIOUS_SUCCESSFUL_COMMIT ?: 'HEAD~1'} ${env.GIT_COMMIT}",
+            returnStdout: true
+          ).trim()
+          def changed = diff.split('\n').findAll { it.startsWith('front/frontend/') }
+          env.BUILD_FRONTEND = changed ? 'true' : 'false'
+          echo env.BUILD_FRONTEND=='true' 
+               ? "▶ Frontend 변경 감지: 빌드합니다" 
+               : "▶ Frontend 변경 없음: 스킵합니다"
+        }
+      }
+    }
+
+    stage('Build & Distribute Frontend') {
+      when {
+        expression { env.BUILD_FRONTEND == 'true' }
+      }
+      steps {
+        script {
+          // 한 번만 컨테이너 띄워서 모든 작업 수행
+          docker.image('my-android-ci:latest')
+                .inside('--rm -u root:root') {
+            // 1) 시크릿 복사
+            withCredentials([
+              file(credentialsId: 'android-release-keystore', variable: 'KEYSTORE_FILE'),
+              string(credentialsId: 'KEYSTORE_PASSWORD', variable: 'KEYSTORE_PASSWORD'),
+              string(credentialsId: 'KEY_ALIAS',       variable: 'KEY_ALIAS'),
+              string(credentialsId: 'KEY_PASSWORD',    variable: 'KEY_PASSWORD'),
+              file(credentialsId: 'google-services-json', variable: 'GOOGLE_SERVICES_JSON'),
+              file(credentialsId: 'firebase-service-account', variable: 'FIREBASE_SERVICE_ACCOUNT')
+            ]) {
+              sh '''
+                mkdir -p front/frontend/android/app/keystore
+                cp "$KEYSTORE_FILE" front/frontend/android/app/keystore/release.keystore
+                cp "$GOOGLE_SERVICES_JSON" front/frontend/android/app/google-services.json
+                cp "$FIREBASE_SERVICE_ACCOUNT" front/frontend/android/firebase_service_account.json
+              '''
+            }
+
+            // 2) 의존성 설치
+            sh '''
+              cd front/frontend/android
+              yarn install
+              bundle install --path vendor/bundle
+              bundle exec fastlane install_plugins
+            '''
+
+            // 3) 릴리즈 빌드 & Firebase App Distribution
+            sh '''
+              cd front/frontend/android
+              bundle exec fastlane release groups:"testers" notes:"CI 자동 배포 빌드"
+            '''
+          }
+        }
+      }
+    }
+
+    stage('Archive APK') {
+      when {
+        expression { env.BUILD_FRONTEND == 'true' }
+      }
+      steps {
+        archiveArtifacts artifacts: 'front/frontend/android/app/build/outputs/**/*.apk', fingerprint: true
+      }
+    }
+  }
+
+  post {
+    always {
+      cleanWs()
+    }
+    success {
+      echo '✅ Frontend CI/CD 성공 🎉'
+    }
+    failure {
+      echo '❌ Frontend CI/CD 실패 ❗'
+    }
+  }
+}

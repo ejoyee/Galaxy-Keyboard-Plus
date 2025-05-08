@@ -1,16 +1,18 @@
 import {format} from 'date-fns';
-
-/**
- * rag에 이미지 업로드 하는 api를 호출하는 메소드
- * service로 빼야 할 거 같기도 한데 일단 utils에 작성
- * 해당 메소드를 사용하여 auth hook이든 test용 uploader에서 사용
- */
+import {useAuthStore} from '../stores/authStore';
+import {useBackupStore} from '../stores/useBackupStore';
 
 export const uploadImagesToServer = async (
   images: {uri: string; filename: string; timestamp: number | Date}[],
-  userId = 'dajeong',
+  onSuccess?: (filename: string) => void,
 ) => {
-  for (const image of images) {
+  const {userId} = useAuthStore.getState();
+  const {setLastUploadedAt} = useBackupStore.getState();
+  if (!userId) throw new Error('로그인이 필요합니다.');
+
+  let latestUploaded = 0;
+
+  const uploadTasks = images.map(async image => {
     const accessId = image.filename.replace(/\.[^/.]+$/, '');
     const imageTime = format(image.timestamp, 'yyyy:MM:dd HH:mm:ss');
 
@@ -24,27 +26,36 @@ export const uploadImagesToServer = async (
       name: image.filename,
     });
 
-    console.log('📤 fetch 업로드 시도:', {
-      uri: image.uri,
-      filename: image.filename,
-      accessId,
-      imageTime,
-    });
-
     try {
       const response = await fetch(
         'http://k12e201.p.ssafy.io:8090/rag/upload-image/',
         {
           method: 'POST',
           body: formData,
-          // Content-Type 생략: 자동 생성되게 둬야 boundary가 포함됨!
         },
       );
 
       const result = await response.json();
-      console.log('✅ fetch 업로드 성공:', result);
+      const filename = image.filename;
+      const timestamp = Number(image.timestamp);
+
+      if (result?.status === 'skipped') {
+        console.warn(`⚠️ 중복된 이미지 스킵됨: ${filename}`);
+        onSuccess?.(filename); // 중복이더라도 backedUp에 추가
+        return;
+      }
+
+      console.log('✅ 업로드 성공:', result);
+      latestUploaded = Math.max(latestUploaded, timestamp);
+      onSuccess?.(filename);
     } catch (error) {
-      console.error(`❌ fetch 업로드 오류 (${image.filename}):`, error);
+      console.error(`❌ 업로드 실패 (${image.filename}):`, error);
     }
+  });
+
+  await Promise.all(uploadTasks);
+
+  if (latestUploaded > 0) {
+    setLastUploadedAt(latestUploaded);
   }
 };

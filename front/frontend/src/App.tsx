@@ -1,12 +1,10 @@
-import {Button, View} from 'react-native';
-
 import AppNavigator from './navigation/AppNavigator';
 import React from 'react';
-import {useUserStore} from './stores/useUserStore';
+import {View} from 'react-native';
+import {useAutoBackup} from './hooks/useAutoBackup';
 
 export default function App() {
-  // const userId = useUserStore(state => state.userId);
-
+  useAutoBackup();
   return (
     <View style={{flex: 1}}>
       <AppNavigator />

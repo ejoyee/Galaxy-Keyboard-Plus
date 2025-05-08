@@ -18,7 +18,7 @@ print(f"DEBUG: PINECONE_INDEX_NAME 존재: {'있음' if pinecone_index_name else
 # 환경 변수가 없는 경우 대비
 if not pinecone_api_key:
     raise ValueError("Pinecone API 키가 환경 변수에 설정되어 있지 않습니다.")
-    
+
 if not pinecone_index_name:
     raise ValueError("Pinecone 인덱스 이름이 환경 변수에 설정되어 있지 않습니다.")
 
