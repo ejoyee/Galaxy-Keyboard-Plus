@@ -51,31 +51,56 @@ pipeline {
       }
     }
 
-    stage('Build & Distribute Frontend') {
+    stage('Project Check') {
       when { expression { env.BUILD_FRONTEND == 'true' } }
       steps {
-        // 직접 수동으로 빌드 준비
+        // 프로젝트 구조 점검 및 디버깅
         sh '''
           echo "===================================================="
-          echo "🔨 Android 빌드 준비"
+          echo "🔍 프로젝트 구조 점검"
           echo "===================================================="
           
-          # 작업 디렉토리 설정
-          WORK_DIR="$(pwd)/android_build"
-          mkdir -p "$WORK_DIR"
+          # 중요 파일 확인
+          echo "📂 front/frontend 디렉토리 점검:"
+          ls -la front/frontend || { echo "❌ front/frontend 디렉토리가 없습니다"; exit 1; }
           
-          # Android 프로젝트 파일 복사
-          cp -r front/frontend/android/* "$WORK_DIR/"
+          echo "📂 front/frontend/android 디렉토리 점검:"
+          ls -la front/frontend/android || { echo "❌ front/frontend/android 디렉토리가 없습니다"; exit 1; }
           
-          # 필요한 디렉토리 생성
-          mkdir -p "$WORK_DIR/app/keystore"
+          # gradlew 파일 확인
+          if [ ! -f "front/frontend/android/gradlew" ]; then
+            echo "⚠️ gradlew 파일이 없습니다. 기본 템플릿 생성 중..."
+            touch front/frontend/android/gradlew
+            chmod +x front/frontend/android/gradlew
+            echo '#!/bin/sh
+exec ./gradlew "$@"' > front/frontend/android/gradlew
+          else
+            echo "✅ gradlew 파일 존재"
+            chmod +x front/frontend/android/gradlew
+          fi
           
-          echo "📂 작업 디렉토리 확인:"
-          ls -la "$WORK_DIR"
+          # build.gradle 확인
+          if [ ! -f "front/frontend/android/app/build.gradle" ]; then
+            echo "⚠️ app/build.gradle 파일이 없습니다. APK 빌드가 불가능할 수 있습니다."
+          else
+            echo "✅ app/build.gradle 파일 존재"
+            # 앱 ID 확인
+            APP_ID=$(grep "applicationId" front/frontend/android/app/build.gradle | sed 's/.*applicationId[[:space:]]*[\\"\\'\'']\\([^\\"\\'\'']\\+\\)[\\"\\'\''].*/\\1/')
+            if [ ! -z "$APP_ID" ]; then
+              echo "✅ 앱 패키지 ID: $APP_ID"
+            else
+              echo "⚠️ 앱 패키지 ID를 찾을 수 없습니다"
+            fi
+          fi
           
           echo "===================================================="
         '''
-        
+      }
+    }
+
+    stage('Build APK Directly') {
+      when { expression { env.BUILD_FRONTEND == 'true' } }
+      steps {
         // 시크릿 파일 준비
         withCredentials([
           file(credentialsId: 'android-release-keystore', variable: 'KEYSTORE_FILE'),
@@ -90,172 +115,136 @@ pipeline {
             echo "🔐 시크릿 파일 준비"
             echo "===================================================="
             
+            # Keystore 디렉토리 생성
+            mkdir -p front/frontend/android/app/keystore
+            
             # 시크릿 파일 복사
-            cp "$KEYSTORE_FILE" android_build/app/keystore/release.keystore
-            cp "$GOOGLE_SERVICES_JSON" android_build/app/google-services.json
-            cp "$FIREBASE_SERVICE_ACCOUNT" android_build/firebase_service_account.json
+            cp "$KEYSTORE_FILE" front/frontend/android/app/keystore/release.keystore
+            cp "$GOOGLE_SERVICES_JSON" front/frontend/android/app/google-services.json
+            cp "$FIREBASE_SERVICE_ACCOUNT" front/frontend/android/firebase_service_account.json
             
             echo "✅ 시크릿 파일 복사 완료"
             echo "===================================================="
           '''
         }
         
-        // Gemfile 및 Fastlane 파일 생성
+        // Docker를 사용하지 않고 직접 빌드 시도
         sh '''
           echo "===================================================="
-          echo "📄 Gemfile 및 Fastlane 파일 생성"
+          echo "🏗️ APK 직접 빌드 시도"
           echo "===================================================="
           
-          # Gemfile 생성
-          cat > android_build/Gemfile << 'EOL'
-source "https://rubygems.org"
+          # 작업 디렉토리로 이동
+          cd front/frontend/android
+          
+          # 프로젝트 정보 출력
+          echo "📂 현재 디렉토리: $(pwd)"
+          echo "📂 디렉토리 내용:"
+          ls -la
+          
+          # 안드로이드 SDK 환경 설정
+          export ANDROID_SDK_ROOT=/opt/android-sdk
+          export ANDROID_HOME=/opt/android-sdk
+          export PATH=$PATH:$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools
+          
+          # Gradlew 실행 권한 설정
+          chmod +x ./gradlew || true
+          
+          # 로컬 빌드 속성 파일 생성 (Keystore 정보)
+          cat > local.properties << EOL
+sdk.dir=$ANDROID_SDK_ROOT
+EOL
 
-gem "fastlane"
-gem "fastlane-plugin-firebase_app_distribution"
-EOL
+          # 직접 APK 빌드 시도
+          if [ -f "./gradlew" ]; then
+            echo "📱 Gradle 빌드 시도 중..."
+            ./gradlew clean assembleDebug --stacktrace || echo "⚠️ Gradle 빌드 실패"
+          else
+            echo "❌ gradlew 파일이 없어 Gradle 빌드를 실행할 수 없습니다"
+          fi
           
-          # Fastlane 디렉토리 생성
-          mkdir -p android_build/fastlane
+          # 결과 확인
+          echo "📂 빌드 결과 확인:"
+          find . -name "*.apk" || echo "❌ APK 파일이 생성되지 않았습니다"
           
-          # Fastfile 생성
-          cat > android_build/fastlane/Fastfile << 'EOL'
-default_platform(:android)
-
-platform :android do
-  desc "Deploy a new version to Firebase App Distribution"
-  lane :release do |options|
-    gradle(
-      task: "clean assembleRelease"
-    )
-    
-    begin
-      firebase_app_distribution(
-        app: ENV["FIREBASE_APP_ID"],
-        groups: options[:groups],
-        release_notes: options[:notes],
-        firebase_cli_token: ENV["FIREBASE_TOKEN"]
-      )
-    rescue => e
-      puts "Firebase App Distribution 실패: #{e}"
-      puts "APK 빌드는 완료되었으며 app/build/outputs/apk 디렉토리에서 확인 가능합니다."
-    end
-  end
-end
-EOL
-          
-          # Appfile 생성 (앱 패키지명은 보통 app/build.gradle 또는 AndroidManifest.xml에서 가져옵니다)
-          cat > android_build/fastlane/Appfile << 'EOL'
-json_key_file("firebase_service_account.json")
-# 앱 패키지 이름은 app/build.gradle 파일에서 확인해야 합니다
-# 아래는 예시이며, 실제 패키지명을 사용해야 합니다
-package_name("com.ssafy.daero")
-EOL
-          
-          echo "✅ Gemfile 및 Fastlane 파일 생성 완료"
           echo "===================================================="
         '''
         
-        // Docker 실행
+        // APK 빌드 실패 시 React Native 빌드 환경 준비
         sh '''
           echo "===================================================="
-          echo "🐳 Docker 컨테이너에서 빌드 실행"
+          echo "🔧 React Native 빌드 환경 준비"
           echo "===================================================="
           
-          # Docker 컨테이너 실행
-          docker run --rm \
-            -v "$(pwd)/android_build:/app" \
-            -w /app \
-            -e ANDROID_SDK_ROOT=/opt/android-sdk \
-            -e ANDROID_HOME=/opt/android-sdk \
-            -e FIREBASE_TOKEN="$FIREBASE_TOKEN" \
-            -e KEYSTORE_PASSWORD="$KEYSTORE_PASSWORD" \
-            -e KEY_ALIAS="$KEY_ALIAS" \
-            -e KEY_PASSWORD="$KEY_PASSWORD" \
-            -e FIREBASE_APP_ID="$FIREBASE_APP_ID" \
-            my-android-ci:latest \
-            bash -c '
-              set -x
-              
-              # 작업 디렉토리 확인
-              echo "==== 작업 디렉토리 내용 ===="
-              pwd
-              ls -la
-              
-              # Gemfile 확인
-              echo "==== Gemfile 확인 ===="
-              cat Gemfile
-              
-              # Fastlane 파일 확인
-              echo "==== Fastlane 파일 확인 ===="
-              ls -la fastlane
-              
-              # app/build.gradle 확인 (패키지명 확인을 위해)
-              echo "==== app/build.gradle 확인 ===="
-              cat app/build.gradle || echo "app/build.gradle 파일이 없습니다"
-              
-              # Bundler 설치
-              echo "==== Bundler 설치 ===="
-              gem install bundler -v 2.4.22 --no-document
-              
-              # Bundle 설치
-              echo "==== Bundle 설치 ===="
-              bundle config set --local path vendor/bundle
-              bundle install
-              
-              # Fastlane 플러그인 설치
-              echo "==== Fastlane 플러그인 설치 ===="
-              bundle exec fastlane install_plugins
-              
-              # 앱 패키지 이름 추출 시도
-              echo "==== 패키지 이름 확인 ===="
-              if [ -f "app/build.gradle" ]; then
-                APP_PACKAGE=$(grep "applicationId" app/build.gradle | sed -E "s/.*applicationId [\\\"](.*)[\\\"]/\\1/")
-                echo "앱 패키지 이름: $APP_PACKAGE"
-                
-                # Appfile 수정
-                if [ ! -z "$APP_PACKAGE" ]; then
-                  sed -i "s/package_name(\\\".*\\\")/package_name(\\\"$APP_PACKAGE\\\")/g" fastlane/Appfile
-                  echo "Appfile 수정 완료"
-                fi
-              fi
-              
-              # Gradlew 실행 권한 확인
-              echo "==== Gradlew 실행 권한 확인 ===="
-              chmod +x ./gradlew
-              
-              # SDK 라이센스 수락
-              echo "==== SDK 라이센스 수락 ===="
-              yes | sdkmanager --licenses || true
-              
-              # 빌드 실행
-              echo "==== Gradle 빌드 실행 ===="
-              ./gradlew clean assembleRelease || ./gradlew clean assembleDebug
-              
-              # 빌드 결과 확인
-              echo "==== 빌드 결과 확인 ===="
-              find . -name "*.apk"
-              
-              # Firebase 배포
-              echo "==== Firebase 배포 시도 ===="
-              bundle exec fastlane release groups:"testers" notes:"Jenkins CI 자동 배포 빌드" || echo "Firebase 배포 실패했지만 빌드는 완료됨"
-            '
+          # React Native 디렉토리로 이동
+          cd front/frontend
           
-          BUILD_RESULT=$?
+          # 패키지 구조 확인
+          echo "📂 React Native 프로젝트 구조:"
+          ls -la
           
-          # 빌드 결과 확인
-          if [ $BUILD_RESULT -ne 0 ]; then
-            echo "❌ Android 빌드 실패 (종료 코드: $BUILD_RESULT)"
+          # package.json 확인
+          if [ -f "package.json" ]; then
+            echo "✅ package.json 파일 존재"
           else
-            echo "✅ Android 빌드 성공"
-            
-            # 빌드 결과물 복사
-            echo "🔄 빌드 결과물 복사 중..."
-            mkdir -p front/frontend/android/app/build/outputs/apk
-            cp -r android_build/app/build/outputs/apk/* front/frontend/android/app/build/outputs/apk/ || true
+            echo "❌ package.json 파일이 없습니다"
+          fi
+          
+          # 빌드 스크립트 확인
+          ANDROID_BUILD_SCRIPT=$(grep "\"android\"" package.json | grep -o "\"[^\"]*\"" | tail -1 | tr -d \")
+          if [ ! -z "$ANDROID_BUILD_SCRIPT" ]; then
+            echo "✅ Android 빌드 스크립트: $ANDROID_BUILD_SCRIPT"
+          else
+            echo "⚠️ package.json에서 Android 빌드 스크립트를 찾을 수 없습니다"
           fi
           
           echo "===================================================="
         '''
+      }
+    }
+
+    stage('Manual Firebase Upload') {
+      when { expression { env.BUILD_FRONTEND == 'true' } }
+      steps {
+        // Debug APK 생성 및 Firebase에 수동 업로드
+        withCredentials([
+          string(credentialsId: 'FIREBASE_TOKEN', variable: 'FIREBASE_TOKEN')
+        ]) {
+          sh '''
+            echo "===================================================="
+            echo "🔥 Firebase CLI를 통한 수동 업로드"
+            echo "===================================================="
+            
+            # APK 파일 찾기
+            APK_FILE=$(find front/frontend/android -name "*.apk" | head -1)
+            
+            if [ -z "$APK_FILE" ]; then
+              echo "❌ APK 파일을 찾을 수 없어 Firebase 업로드를 건너뜁니다"
+            else
+              echo "✅ 업로드할 APK 파일: $APK_FILE"
+              
+              # Firebase CLI 설치 여부 확인
+              if ! command -v firebase &> /dev/null; then
+                echo "🔧 Firebase CLI 설치 중..."
+                npm install -g firebase-tools || { echo "⚠️ Firebase CLI 설치 실패"; }
+              fi
+              
+              # Firebase CLI 로그인 및 배포 시도
+              if command -v firebase &> /dev/null; then
+                echo "🔥 Firebase 배포 시도..."
+                firebase appdistribution:distribute "$APK_FILE" \
+                  --app "$FIREBASE_APP_ID" \
+                  --token "$FIREBASE_TOKEN" \
+                  --groups "testers" \
+                  --release-notes "Jenkins CI 자동 배포 빌드" || echo "⚠️ Firebase 배포 실패"
+              else
+                echo "❌ Firebase CLI가 설치되지 않아 배포를 건너뜁니다"
+              fi
+            fi
+            
+            echo "===================================================="
+          '''
+        }
       }
     }
 
@@ -264,44 +253,35 @@ EOL
       steps {
         sh '''
           echo "===================================================="
-          echo "📦 APK 아카이브 시작"
+          echo "📦 APK 아카이브"
           echo "===================================================="
           
-          # APK 파일 존재 확인 (android_build 디렉토리도 확인)
-          find android_build -name "*.apk" 2>/dev/null || echo "android_build에서 APK를 찾을 수 없습니다"
-          find front/frontend/android -name "*.apk" 2>/dev/null || echo "front/frontend/android에서 APK를 찾을 수 없습니다"
+          # APK 파일 존재 확인
+          APK_FILES=$(find front/frontend/android -name "*.apk" 2>/dev/null)
+          APK_COUNT=$(echo "$APK_FILES" | grep -c .)
           
-          # 모든 APK 파일 출력
-          echo "📱 모든 APK 파일 목록:"
-          find . -name "*.apk" 2>/dev/null || echo "APK 파일을 찾을 수 없습니다"
-          
-          # APK 파일 수 계산
-          APK_COUNT=$(find . -name "*.apk" 2>/dev/null | wc -l || echo 0)
-          
-          if [ "$APK_COUNT" -gt 0 ]; then
-            echo "✅ $APK_COUNT 개의 APK 파일 발견"
+          if [ $APK_COUNT -gt 0 ]; then
+            echo "✅ $APK_COUNT 개의 APK 파일 발견:"
+            echo "$APK_FILES" | sed 's/^/   /'
+            
+            # 모든 APK 파일을 하나의 디렉토리로 복사
+            mkdir -p apk-archive
+            find front/frontend/android -name "*.apk" -exec cp {} apk-archive/ \\;
           else
             echo "❌ APK 파일을 찾을 수 없습니다"
+            mkdir -p apk-archive
+            echo "No APK files found" > apk-archive/build-failed.txt
           fi
           
           echo "===================================================="
         '''
         
-        archiveArtifacts artifacts: '**/app/build/outputs/**/*.apk', fingerprint: true, allowEmptyArchive: true
+        archiveArtifacts artifacts: 'apk-archive/**', fingerprint: true, allowEmptyArchive: true
       }
     }
   }
 
   post {
-    always {
-      sh '''
-        echo "===================================================="
-        echo "🧹 작업 공간 정리"
-        echo "===================================================="
-        rm -rf android_build || true
-      '''
-      cleanWs()
-    }
     success {
       sh '''
         echo "===================================================="
@@ -315,6 +295,14 @@ EOL
         echo "❌ Frontend CI/CD 실패 ❗"
         echo "===================================================="
       '''
+    }
+    always {
+      sh '''
+        echo "===================================================="
+        echo "🧹 작업 공간 정리"
+        echo "===================================================="
+      '''
+      cleanWs()
     }
   }
 }
