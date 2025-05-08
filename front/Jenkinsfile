@@ -66,14 +66,14 @@ pipeline {
           echo 🚀 Docker 빌드 및 배포 시작
 
           docker run --rm \
-            -v $(pwd)/workspace.tar.gz:/tmp/project.tar.gz \
+            -v $(pwd):/app \
             -e FIREBASE_TOKEN=$FIREBASE_TOKEN \
             -e FIREBASE_APP_ID=$FIREBASE_APP_ID \
             cimg/android:2023.08 bash -c "
               set -e
               echo '📂 압축 해제'
               mkdir -p /tmp/project
-              tar -xzf /tmp/project.tar.gz -C /tmp/project
+              tar -xzf /app/workspace.tar.gz -C /tmp/project
               cd /tmp/project
 
               echo '📦 npm install'
