@@ -8,12 +8,27 @@ pipeline {
     PATH             = "${env.PATH}:/opt/android-sdk/cmdline-tools/latest/bin:/opt/android-sdk/platform-tools"
     // Fastlane Firebase App Distribution 토큰
     FIREBASE_TOKEN   = credentials('FIREBASE_TOKEN')
+    // 작업 디렉토리 설정
+    WORKSPACE_DIR    = "${env.WORKSPACE}"
+    // 빌드 정보
+    BUILD_TIME       = sh(script: 'date "+%Y-%m-%d %H:%M:%S"', returnStdout: true).trim()
+    BUILD_ID         = "${env.BUILD_ID}"
   }
 
   stages {
     stage('Checkout') {
       steps {
         checkout scm
+        
+        // 빌드 시작 로그
+        sh """
+          echo "===================================================="
+          echo "🚀 빌드 시작: ${env.BUILD_TIME}"
+          echo "🔍 빌드 ID: ${env.BUILD_ID}"
+          echo "🔍 Git 커밋: ${env.GIT_COMMIT}"
+          echo "🔍 브랜치: ${env.GIT_BRANCH}"
+          echo "===================================================="
+        """
       }
     }
 
@@ -24,6 +39,12 @@ pipeline {
             script: "git diff --name-only ${env.GIT_PREVIOUS_SUCCESSFUL_COMMIT ?: 'HEAD~1'} ${env.GIT_COMMIT}",
             returnStdout: true
           ).trim()
+          
+          // 변경 파일 목록 출력
+          echo "==== 변경된 파일 목록 ===="
+          echo "${diff}"
+          echo "=========================="
+          
           // front/frontend/ 하위 파일 변경이 있으면 빌드
           env.BUILD_FRONTEND = diff.split('\n').any { it.startsWith('front/frontend/') } ? 'true' : 'false'
           echo env.BUILD_FRONTEND=='true'
@@ -36,32 +57,46 @@ pipeline {
     stage('Build & Distribute Frontend') {
       when { expression { env.BUILD_FRONTEND == 'true' } }
       steps {
+        // 빌드 환경 정보 출력
+        sh '''
+          echo "===================================================="
+          echo "📊 빌드 환경 정보"
+          echo "===================================================="
+          echo "🖥️ 호스트명: $(hostname)"
+          echo "🐧 OS 정보: $(cat /etc/os-release | grep PRETTY_NAME)"
+          echo "🐳 Docker 버전: $(docker --version)"
+          echo "🧰 Git 버전: $(git --version)"
+          echo "===================================================="
+        '''
+        
         // 디렉토리 구조 확인 및 디버깅
         sh '''
+          echo "===================================================="
+          echo "📁 디렉토리 구조 확인"
+          echo "===================================================="
+          
           # 시크릿 디렉토리 만들기
           mkdir -p front/frontend/android/app/keystore
+          echo "✅ front/frontend/android/app/keystore 디렉토리 생성 완료"
           
-          # 디렉토리 구조 자세히 확인
-          echo "===== 작업 디렉토리 ====="
-          pwd
+          echo "📂 작업 디렉토리: $(pwd)"
           
-          echo "===== 전체 디렉토리 구조 ====="
-          ls -la
+          echo "📂 전체 디렉토리 구조:"
+          ls -la | sed 's/^/   /'
           
-          echo "===== front 디렉토리 ====="
-          ls -la front
+          echo "📂 front 디렉토리:"
+          ls -la front | sed 's/^/   /'
           
-          echo "===== front/frontend 디렉토리 ====="
-          ls -la front/frontend || echo "front/frontend 디렉토리가 없습니다"
+          echo "📂 front/frontend 디렉토리:"
+          ls -la front/frontend | sed 's/^/   /'
           
-          # android 디렉토리가 없으면 생성
-          if [ ! -d "front/frontend/android" ]; then
-            echo "android 디렉토리가 없습니다. 생성합니다."
-            mkdir -p front/frontend/android
-          fi
+          echo "📂 front/frontend/android 디렉토리:"
+          ls -la front/frontend/android | sed 's/^/   /'
           
-          echo "===== front/frontend/android 디렉토리 ====="
-          ls -la front/frontend/android || echo "front/frontend/android 디렉토리가 없습니다"
+          echo "📂 front/frontend/android/app 디렉토리:"
+          ls -la front/frontend/android/app | sed 's/^/   /'
+          
+          echo "===================================================="
         '''
         
         // 시크릿 파일 준비
@@ -74,47 +109,48 @@ pipeline {
           file(credentialsId: 'firebase-service-account', variable: 'FIREBASE_SERVICE_ACCOUNT')
         ]) {
           sh '''
+            echo "===================================================="
+            echo "🔐 시크릿 파일 준비"
+            echo "===================================================="
+            
             cp "$KEYSTORE_FILE" front/frontend/android/app/keystore/release.keystore
+            echo "✅ Keystore 파일 복사 완료"
+            
             cp "$GOOGLE_SERVICES_JSON" front/frontend/android/app/google-services.json
+            echo "✅ Google Services JSON 파일 복사 완료"
+            
             cp "$FIREBASE_SERVICE_ACCOUNT" front/frontend/android/firebase_service_account.json
+            echo "✅ Firebase Service Account 파일 복사 완료"
+            
+            echo "===================================================="
           '''
         }
         
-        // Docker 명령 실행 - 절대 경로 사용 및 각 명령이 독립적으로 실행되도록 수정
+        // Docker 컨테이너 내부로 필요한 파일 복사하여 작업하는 방식으로 변경
         sh '''
-          echo "===== Docker 컨테이너에서 명령 실행 ====="
+          echo "===================================================="
+          echo "🐳 Docker 컨테이너에서 빌드 시작"
+          echo "===================================================="
           
-          # 1) 의존성 설치
+          # 임시 디렉토리 생성
+          TEMP_DIR=$(mktemp -d)
+          echo "📁 임시 디렉토리 생성: $TEMP_DIR"
+          
+          # 필요한 디렉토리만 복사 (볼륨 마운트 대신)
+          echo "🔄 Android 프로젝트 파일 복사 중..."
+          cp -r front/frontend/android "$TEMP_DIR/"
+          echo "✅ 파일 복사 완료"
+          
+          echo "📂 복사된 파일 확인:"
+          ls -la "$TEMP_DIR/android" | sed 's/^/   /'
+          
+          echo "🚀 Docker 컨테이너 실행..."
+          
+          # Docker 컨테이너에서 빌드 실행
+          set +e  # 오류가 발생해도 계속 진행하도록 설정
           docker run --rm \
-            -v "$(pwd):/workspace" \
-            -w /workspace \
-            -e ANDROID_SDK_ROOT=/opt/android-sdk \
-            -e ANDROID_HOME=/opt/android-sdk \
-            my-android-ci:latest \
-            bash -c "ls -la /workspace/front/frontend && cd /workspace/front/frontend/android && yarn install"
-            
-          # 2) Bundle 설치
-          docker run --rm \
-            -v "$(pwd):/workspace" \
-            -w /workspace \
-            -e ANDROID_SDK_ROOT=/opt/android-sdk \
-            -e ANDROID_HOME=/opt/android-sdk \
-            my-android-ci:latest \
-            bash -c "cd /workspace/front/frontend/android && bundle install --path vendor/bundle"
-            
-          # 3) Fastlane 플러그인 설치
-          docker run --rm \
-            -v "$(pwd):/workspace" \
-            -w /workspace \
-            -e ANDROID_SDK_ROOT=/opt/android-sdk \
-            -e ANDROID_HOME=/opt/android-sdk \
-            my-android-ci:latest \
-            bash -c "cd /workspace/front/frontend/android && bundle exec fastlane install_plugins"
-            
-          # 4) 릴리스 빌드 및 배포
-          docker run --rm \
-            -v "$(pwd):/workspace" \
-            -w /workspace \
+            -v "$TEMP_DIR/android:/app" \
+            -w /app \
             -e ANDROID_SDK_ROOT=/opt/android-sdk \
             -e ANDROID_HOME=/opt/android-sdk \
             -e FIREBASE_TOKEN="$FIREBASE_TOKEN" \
@@ -122,7 +158,145 @@ pipeline {
             -e KEY_ALIAS="$KEY_ALIAS" \
             -e KEY_PASSWORD="$KEY_PASSWORD" \
             my-android-ci:latest \
-            bash -c "cd /workspace/front/frontend/android && bundle exec fastlane release groups:\\"testers\\" notes:\\"CI 자동 배포 빌드\\""
+            bash -c "
+              # 에러 메시지 자세히 출력
+              set -x
+              
+              echo '===================================================='
+              echo '📂 컨테이너 내부 작업 디렉토리:'
+              pwd
+              ls -la
+              
+              echo '===================================================='
+              echo '🧪 이미지 환경 정보:'
+              echo '🔍 Node 버전: '
+              node --version
+              echo '🔍 Yarn 버전: '
+              yarn --version
+              echo '🔍 Ruby 버전: '
+              ruby --version
+              echo '🔍 Fastlane 버전: '
+              fastlane --version
+              echo '===================================================='
+              
+              echo '===================================================='
+              echo '📦 1) 의존성 설치 시작'
+              yarn install --verbose
+              if [ \$? -ne 0 ]; then
+                echo '❌ Yarn 의존성 설치 실패'
+                exit 1
+              fi
+              echo '✅ Yarn 의존성 설치 완료'
+              echo '===================================================='
+              
+              echo '===================================================='
+              echo '📦 2) Bundle 설치 시작'
+              bundle install --path vendor/bundle
+              if [ \$? -ne 0 ]; then
+                echo '❌ Bundle 설치 실패'
+                exit 1
+              fi
+              echo '✅ Bundle 설치 완료'
+              echo '===================================================='
+              
+              echo '===================================================='
+              echo '📦 3) Fastlane 플러그인 설치 시작'
+              bundle exec fastlane install_plugins
+              if [ \$? -ne 0 ]; then
+                echo '❌ Fastlane 플러그인 설치 실패'
+                exit 1
+              fi
+              echo '✅ Fastlane 플러그인 설치 완료'
+              echo '===================================================='
+              
+              echo '===================================================='
+              echo '🏗️ 4) 릴리스 빌드 및 배포 시작'
+              
+              echo '📂 작업 디렉토리 확인:'
+              ls -la
+              
+              echo '📂 app 디렉토리 확인:'
+              ls -la app
+              
+              echo '📂 app/keystore 디렉토리 확인:'
+              ls -la app/keystore
+              
+              echo '📄 google-services.json 확인:'
+              if [ -f app/google-services.json ]; then
+                echo '✅ google-services.json 파일 존재'
+              else
+                echo '❌ google-services.json 파일 없음'
+                exit 1
+              fi
+              
+              echo '📄 firebase_service_account.json 확인:'
+              if [ -f firebase_service_account.json ]; then
+                echo '✅ firebase_service_account.json 파일 존재'
+              else
+                echo '❌ firebase_service_account.json 파일 없음'
+                exit 1
+              fi
+              
+              bundle exec fastlane release groups:\\\"testers\\\" notes:\\\"CI 자동 배포 빌드\\\"
+              BUILD_RESULT=\$?
+              
+              if [ \$BUILD_RESULT -ne 0 ]; then
+                echo '❌ 릴리스 빌드 및 배포 실패 (종료 코드: '\$BUILD_RESULT')'
+                
+                echo '📂 빌드 로그 확인:'
+                ls -la app/build || echo '빌드 디렉토리가 생성되지 않았습니다'
+                
+                # 에러 로그 확인 시도
+                if [ -d app/build/outputs ]; then
+                  echo '📄 빌드 출력 파일:'
+                  ls -la app/build/outputs
+                fi
+                
+                exit \$BUILD_RESULT
+              fi
+              echo '✅ 릴리스 빌드 및 배포 완료'
+              
+              echo '📂 빌드 결과물 확인:'
+              ls -la app/build/outputs/apk || echo '빌드된 APK를 찾을 수 없습니다'
+              echo '===================================================='
+            "
+          BUILD_RESULT=$?
+          
+          echo "Docker 컨테이너 종료 (종료 코드: $BUILD_RESULT)"
+          
+          if [ $BUILD_RESULT -ne 0 ]; then
+            echo "❌ Docker 컨테이너에서 빌드 실패"
+          else
+            echo "✅ Docker 컨테이너에서 빌드 성공"
+          fi
+          
+          # 빌드 결과물 복사 (APK 파일 등)
+          echo "🔄 빌드 결과물 복사 중..."
+          if [ -d "$TEMP_DIR/android/app/build" ]; then
+            mkdir -p front/frontend/android/app/build
+            cp -r "$TEMP_DIR/android/app/build" front/frontend/android/app/
+            echo "✅ 빌드 결과물 복사 완료"
+          else
+            echo "❌ 빌드 결과물 디렉토리를 찾을 수 없습니다"
+          fi
+          
+          # APK 파일 존재 확인
+          if [ -d "front/frontend/android/app/build/outputs/apk" ]; then
+            echo "📂 APK 파일 목록:"
+            find front/frontend/android/app/build/outputs/apk -name "*.apk" | sed 's/^/   /'
+          else
+            echo "❌ APK 출력 디렉토리를 찾을 수 없습니다"
+          fi
+          
+          # 임시 디렉토리 정리
+          echo "🧹 임시 디렉토리 정리 중..."
+          rm -rf "$TEMP_DIR"
+          echo "✅ 정리 완료"
+          
+          echo "===================================================="
+          
+          # 빌드 결과 반환
+          exit $BUILD_RESULT
         '''
       }
     }
@@ -130,20 +304,51 @@ pipeline {
     stage('Archive APK') {
       when { expression { env.BUILD_FRONTEND == 'true' } }
       steps {
-        archiveArtifacts artifacts: 'front/frontend/android/app/build/outputs/**/*.apk', fingerprint: true
+        sh '''
+          echo "===================================================="
+          echo "📦 APK 아카이브 시작"
+          echo "===================================================="
+          
+          # APK 파일 존재 확인
+          APK_COUNT=$(find front/frontend/android/app/build/outputs -name "*.apk" | wc -l)
+          
+          if [ $APK_COUNT -gt 0 ]; then
+            echo "✅ $APK_COUNT 개의 APK 파일 발견"
+            find front/frontend/android/app/build/outputs -name "*.apk" | sed 's/^/   /'
+          else
+            echo "❌ APK 파일을 찾을 수 없습니다"
+          fi
+          
+          echo "===================================================="
+        '''
+        
+        archiveArtifacts artifacts: 'front/frontend/android/app/build/outputs/**/*.apk', fingerprint: true, allowEmptyArchive: true
       }
     }
   }
 
   post {
     always {
+      sh '''
+        echo "===================================================="
+        echo "🧹 작업 공간 정리"
+        echo "===================================================="
+      '''
       cleanWs()
     }
     success {
-      echo '✅ Frontend CI/CD 성공 🎉'
+      sh '''
+        echo "===================================================="
+        echo "✅ Frontend CI/CD 성공 🎉"
+        echo "===================================================="
+      '''
     }
     failure {
-      echo '❌ Frontend CI/CD 실패 ❗'
+      sh '''
+        echo "===================================================="
+        echo "❌ Frontend CI/CD 실패 ❗"
+        echo "===================================================="
+      '''
     }
   }
 }
