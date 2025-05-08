@@ -7,6 +7,7 @@ import com.auth.repository.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.reactive.function.client.WebClient;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -20,6 +21,7 @@ public class AuthService {
     private final UserInfoRepository userRepo;
     private final AuthTokenRepository tokenRepo;
     private final JwtTokenProvider jwt;
+    private final WebClient webClient = WebClient.create(); // 기본 WebClient
 
     @Transactional // 트랜잭션 처리를 위해 추가
     public Map<String, Object> loginWithKakaoAccessToken(String kakaoAccessToken) {
@@ -40,7 +42,28 @@ public class AuthService {
                             .id(UUID.randomUUID()) // 앱 내부용 새 UUID 생성
                             .kakaoEmail(email)     // 카카오 이메일 저장
                             .build();
-                    return userRepo.save(newUser);
+                    UserInfo savedUser = userRepo.save(newUser);
+
+                    try {
+                        String uri = "http://backend-service:8083/api/v1/users";
+
+                        // WebClient 비동기 호출 후 block()으로 동기 전환
+                        webClient.post()
+                                .uri(uri)
+                                .bodyValue(Map.of(
+                                        "userId", savedUser.getId().toString(),
+                                        "infoCount", 0
+                                ))
+                                .retrieve()
+                                .bodyToMono(Void.class)
+                                .block(); // block()을 써야 트랜잭션 중 동기 실행 가능
+
+                    } catch (Exception e) {
+                        System.err.println("신규 사용자 백엔드 등록 실패: " + e.getMessage());
+                        // throw new RuntimeException("User creation failed in backend-service");
+                    }
+
+                    return savedUser;
                 });
 
         // 3. 자체 서비스 JWT (Access Token, Refresh Token) 생성
