@@ -23,11 +23,23 @@ router = APIRouter()
 async def upload_image(
     user_id: str = Form(...),
     access_id: str = Form(...),
-    image_time: datetime = Form(...),  # ✅ datetime으로 직접 받기
+    image_time: str = Form(...),  # ✅ 문자열로 받고
     file: UploadFile = File(...),
 ):
     try:
-        logger.info(f"📥 이미지 처리 시작 - user_id={user_id}, access_id={access_id}")
+        logger.info(
+            f"📥 이미지 처리 시작 - user_id={user_id}, access_id={access_id}, image_time={image_time}"
+        )
+
+        # ✅ "2024:12:15 22:40:55" 형식 파싱
+        try:
+            image_time_obj = datetime.strptime(image_time, "%Y:%m:%d %H:%M:%S")
+        except ValueError:
+            raise HTTPException(
+                status_code=422,
+                detail="image_time 형식은 'yyyy:MM:dd HH:mm:ss'이어야 합니다.",
+            )
+        image_time_iso = image_time_obj.isoformat()
 
         image_bytes = await file.read()
         text_score = classify_image_from_bytes(image_bytes)
@@ -44,14 +56,14 @@ async def upload_image(
             content = extracted_text
             logger.info(f"📝 텍스트 추출 완료 - {extracted_text}")
 
-        text_for_embedding = f"{access_id} ({image_time.isoformat()}): {content}"
+        text_for_embedding = f"{access_id} ({image_time_iso}): {content}"
         namespace = save_text_to_pinecone(user_id, text_for_embedding, target)
         logger.info(f"✅ 벡터 저장 완료 - namespace={namespace}")
 
         image_payload = {
             "userId": user_id,
             "accessId": access_id,
-            "imageTime": image_time.isoformat(),  # ✅ ISO 포맷으로 직렬화
+            "imageTime": image_time_iso,  # ✅ ISO 포맷으로 보냄
             "type": target,
             "content": content,
         }
@@ -81,7 +93,7 @@ async def upload_image(
                 ):
                     plan_payload = {
                         "userId": user_id,
-                        "planTime": schedule_result["datetime"],  # 이미 ISO8601 형식임
+                        "planTime": schedule_result["datetime"],
                         "planContent": schedule_result.get("event", content),
                         "imageId": image_id,
                     }
@@ -104,7 +116,7 @@ async def upload_image(
 
         return {
             "access_id": access_id,
-            "image_time": image_time.isoformat(),
+            "image_time": image_time_iso,
             "type": target,
             "namespace": namespace,
             "content": text_for_embedding,
@@ -116,11 +128,7 @@ async def upload_image(
         logger.error(f"❌ 처리 중 오류 발생 (access_id={access_id}): {e}")
         return {
             "access_id": access_id,
-            "image_time": (
-                image_time.isoformat()
-                if isinstance(image_time, datetime)
-                else str(image_time)
-            ),
+            "image_time": image_time,
             "status": "error",
             "message": str(e),
         }
