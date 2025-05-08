@@ -8,7 +8,7 @@ pipeline {
     NODE_VERSION    = '18'
     FRONTEND_DIR    = 'front/frontend'
     APK_PATH        = 'android/app/build/outputs/apk/release/app-release.apk'
-  }
+  } 
 
   parameters {
     string(
@@ -237,7 +237,7 @@ ENV=prod
             if (svc != 'frontend') {
               echo "▶ Building & deploying ${svc}"
               sh """
-                docker compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" build ${svc}
+                docker compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" build --no-cache ${svc}
                 docker compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" up -d --no-deps ${svc}
               """
             }
