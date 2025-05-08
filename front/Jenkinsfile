@@ -2,9 +2,11 @@ pipeline {
   agent any
 
   environment {
+    // Android SDK 설정
     ANDROID_SDK_ROOT = '/opt/android-sdk'
     ANDROID_HOME     = '/opt/android-sdk'
     PATH             = "${env.PATH}:/opt/android-sdk/cmdline-tools/latest/bin:/opt/android-sdk/platform-tools"
+    // Fastlane Firebase App Distribution 토큰
     FIREBASE_TOKEN   = credentials('FIREBASE_TOKEN')
   }
 
@@ -22,39 +24,37 @@ pipeline {
             script: "git diff --name-only ${env.GIT_PREVIOUS_SUCCESSFUL_COMMIT ?: 'HEAD~1'} ${env.GIT_COMMIT}",
             returnStdout: true
           ).trim()
-          def changed = diff.split('\n').findAll { it.startsWith('front/frontend/') }
-          env.BUILD_FRONTEND = changed ? 'true' : 'false'
-          echo env.BUILD_FRONTEND=='true' 
-               ? "▶ Frontend 변경 감지: 빌드합니다" 
+          // front/frontend/ 하위 파일 변경이 있으면 빌드
+          env.BUILD_FRONTEND = diff.split('\n').any { it.startsWith('front/frontend/') } ? 'true' : 'false'
+          echo env.BUILD_FRONTEND=='true'
+               ? "▶ Frontend 변경 감지: 빌드합니다"
                : "▶ Frontend 변경 없음: 스킵합니다"
         }
       }
     }
 
     stage('Build & Distribute Frontend') {
-      when {
-        expression { env.BUILD_FRONTEND == 'true' }
-      }
+      when { expression { env.BUILD_FRONTEND == 'true' } }
       steps {
         script {
-          // 한 번만 컨테이너 띄워서 모든 작업 수행
+          // Docker 컨테이너 안에서 한 번에 처리
           docker.image('my-android-ci:latest')
-                .inside('--rm -u root:root') {
+                .inside('-i --rm -u root:root') {
             // 1) 시크릿 복사
             withCredentials([
-              file(credentialsId: 'android-release-keystore', variable: 'KEYSTORE_FILE'),
-              string(credentialsId: 'KEYSTORE_PASSWORD', variable: 'KEYSTORE_PASSWORD'),
-              string(credentialsId: 'KEY_ALIAS',       variable: 'KEY_ALIAS'),
-              string(credentialsId: 'KEY_PASSWORD',    variable: 'KEY_PASSWORD'),
-              file(credentialsId: 'google-services-json', variable: 'GOOGLE_SERVICES_JSON'),
-              file(credentialsId: 'firebase-service-account', variable: 'FIREBASE_SERVICE_ACCOUNT')
+              file(  credentialsId: 'android-release-keystore',    variable: 'KEYSTORE_FILE'),
+              string(credentialsId: 'KEYSTORE_PASSWORD',           variable: 'KEYSTORE_PASSWORD'),
+              string(credentialsId: 'KEY_ALIAS',                   variable: 'KEY_ALIAS'),
+              string(credentialsId: 'KEY_PASSWORD',                variable: 'KEY_PASSWORD'),
+              file(  credentialsId: 'google-services-json',        variable: 'GOOGLE_SERVICES_JSON'),
+              file(  credentialsId: 'firebase-service-account',    variable: 'FIREBASE_SERVICE_ACCOUNT')
             ]) {
-              sh '''
+              sh """
                 mkdir -p front/frontend/android/app/keystore
-                cp "$KEYSTORE_FILE" front/frontend/android/app/keystore/release.keystore
-                cp "$GOOGLE_SERVICES_JSON" front/frontend/android/app/google-services.json
-                cp "$FIREBASE_SERVICE_ACCOUNT" front/frontend/android/firebase_service_account.json
-              '''
+                cp "\$KEYSTORE_FILE"           front/frontend/android/app/keystore/release.keystore
+                cp "\$GOOGLE_SERVICES_JSON"    front/frontend/android/app/google-services.json
+                cp "\$FIREBASE_SERVICE_ACCOUNT" front/frontend/android/firebase_service_account.json
+              """
             }
 
             // 2) 의존성 설치
@@ -65,7 +65,7 @@ pipeline {
               bundle exec fastlane install_plugins
             '''
 
-            // 3) 릴리즈 빌드 & Firebase App Distribution
+            // 3) 릴리즈 빌드 + Firebase App Distribution
             sh '''
               cd front/frontend/android
               bundle exec fastlane release groups:"testers" notes:"CI 자동 배포 빌드"
@@ -76,9 +76,7 @@ pipeline {
     }
 
     stage('Archive APK') {
-      when {
-        expression { env.BUILD_FRONTEND == 'true' }
-      }
+      when { expression { env.BUILD_FRONTEND == 'true' } }
       steps {
         archiveArtifacts artifacts: 'front/frontend/android/app/build/outputs/**/*.apk', fingerprint: true
       }
