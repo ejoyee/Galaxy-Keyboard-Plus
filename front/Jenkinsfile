@@ -144,6 +144,34 @@ pipeline {
       }
     }
 
+    stage('Prepare Build Directory') {
+      when { expression { env.BUILD_FRONTEND == 'true' } }
+      steps {
+        sh '''
+          echo "===================================================="
+          echo "📦 빌드 디렉토리 준비"
+          echo "===================================================="
+          
+          # 임시 빌드 디렉토리 생성
+          mkdir -p android-build
+          
+          # 프로젝트 파일 복사
+          echo "📂 프로젝트 파일 복사 중..."
+          cp -r front/frontend/* android-build/
+          
+          # 복사 확인
+          echo "📂 빌드 디렉토리 확인:"
+          ls -la android-build
+          
+          echo "📂 빌드 디렉토리 Android 폴더 확인:"
+          ls -la android-build/android
+          
+          echo "✅ 빌드 디렉토리 준비 완료"
+          echo "===================================================="
+        '''
+      }
+    }
+
     stage('Prepare Fastlane') {
       when { expression { env.BUILD_FRONTEND == 'true' } }
       steps {
@@ -152,7 +180,7 @@ pipeline {
           echo "🚀 Fastlane 환경 준비"
           echo "===================================================="
           
-          cd front/frontend/android
+          cd android-build/android
           
           # Fastlane 디렉토리 확인 및 필요시 초기화
           if [ ! -d "fastlane" ]; then
@@ -195,7 +223,7 @@ pipeline {
           docker images | grep my-android-ci
           
           # 테스트로 Docker 컨테이너 실행
-          docker run --rm ${DOCKER_IMAGE} bash -c 'echo "Docker 컨테이너 테스트" && java -version && node -version || node --version'
+          docker run --rm ${DOCKER_IMAGE} bash -c 'echo "Docker 컨테이너 테스트" && java -version && node --version'
           
           echo "===================================================="
         '''
@@ -212,11 +240,12 @@ pipeline {
           
           # 작업 디렉토리
           WORKSPACE_DIR="$(pwd)"
+          BUILD_DIR="$WORKSPACE_DIR/android-build"
           
           # Docker에서 React Native 앱 빌드 실행
           docker run --rm \
-            -v "$WORKSPACE_DIR:/workspace" \
-            -w /workspace \
+            -v "$BUILD_DIR:/app" \
+            -w /app \
             -e ANDROID_SDK_ROOT=/opt/android-sdk \
             -e ANDROID_HOME=/opt/android-sdk \
             -e KEYSTORE_PASSWORD="$KEYSTORE_PASSWORD" \
@@ -225,8 +254,6 @@ pipeline {
             ${DOCKER_IMAGE} \
             bash -c '
               set -x  # 실행 명령어 출력
-              
-              cd /workspace/front/frontend
               
               echo "📂 현재 디렉토리: $(pwd)"
               ls -la
@@ -243,13 +270,13 @@ pipeline {
               cat local.properties
               
               echo "🔧 Gradle 프로퍼티 설정"
-              cat >> gradle.properties << EOL
+              cat >> gradle.properties << EOF
               
               # CI 환경 키스토어 설정
               KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD
               KEY_ALIAS=$KEY_ALIAS
               KEY_PASSWORD=$KEY_PASSWORD
-              EOL
+              EOF
               
               cat gradle.properties
               
@@ -271,11 +298,11 @@ pipeline {
           
           # 빌드 결과물 복사
           mkdir -p apk
-          find front/frontend/android -name "*.apk" -exec cp {} apk/ \\;
+          find android-build/android -name "*.apk" -exec cp {} apk/ \\;
           
           # 빌드 결과 확인
           echo "📂 빌드 결과 확인:"
-          find front/frontend/android -name "*.apk" || echo "❌ Android 프로젝트 내에 APK 파일이 생성되지 않았습니다"
+          find android-build/android -name "*.apk" || echo "❌ Android 프로젝트 내에 APK 파일이 생성되지 않았습니다"
           find apk -name "*.apk" || echo "❌ APK 디렉토리에 APK 파일이 복사되지 않았습니다"
           
           echo "===================================================="
@@ -313,7 +340,7 @@ pipeline {
               -e FIREBASE_APP_ID="$FIREBASE_APP_ID" \
               ${DOCKER_IMAGE} \
               bash -c '
-                cd /workspace/front/frontend/android
+                cd /workspace/android-build/android
                 
                 # Bundler 환경 설정
                 export GEM_HOME=/root/.gem
@@ -390,7 +417,7 @@ pipeline {
         echo "===================================================="
         
         # 임시 디렉토리 정리
-        rm -rf apk || true
+        rm -rf apk android-build || true
       '''
       cleanWs()
     }
