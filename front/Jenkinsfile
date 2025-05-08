@@ -42,9 +42,9 @@ pipeline {
           echo "📦 아카이브 생성 완료: ${TAR_PATH}"
 
           echo "📊 생성된 tar 파일 정보:"
-          ls -lh ${TAR_PATH} || echo "❌ tar 파일 없음"
-          file ${TAR_PATH} || echo "❌ file 명령 실패"
-          stat ${TAR_PATH} || echo "❌ stat 명령 실패"
+          ls -lh ${TAR_PATH}
+          command -v file >/dev/null && file ${TAR_PATH} || echo "⚠️ file 명령어 없음"
+          stat ${TAR_PATH}
         '''
       }
     }
@@ -75,7 +75,7 @@ pipeline {
 
           echo "🧪 Docker 마운트 전 아카이브 상태 확인"
           ls -lh "${TAR_PATH}"
-          file "${TAR_PATH}"
+          command -v file >/dev/null && file "${TAR_PATH}" || echo "⚠️ file 명령 없음"
           stat "${TAR_PATH}"
 
           docker run --rm \
@@ -87,7 +87,7 @@ pipeline {
               set -e
 
               echo "📦 컨테이너 내부 /workspace.tar.gz 상태 확인"
-              file /workspace.tar.gz || echo "❌ file 확인 실패"
+              command -v file >/dev/null && file /workspace.tar.gz || echo "⚠️ file 명령 없음 (컨테이너 내부)"
               ls -lh /workspace.tar.gz || echo "❌ 파일 존재 안 함"
               stat /workspace.tar.gz || echo "❌ stat 실패"
 
@@ -155,7 +155,7 @@ pipeline {
         cat ${WORK_DIR}/package.json >> debug-archive/info.txt 2>/dev/null || echo "package.json 없음" >> debug-archive/info.txt
 
         echo "## .tar.gz 상태" >> debug-archive/info.txt
-        file ${TAR_PATH} >> debug-archive/info.txt 2>/dev/null || echo "file 실패" >> debug-archive/info.txt
+        command -v file >/dev/null && file ${TAR_PATH} >> debug-archive/info.txt 2>/dev/null || echo "file 실패" >> debug-archive/info.txt
         stat ${TAR_PATH} >> debug-archive/info.txt 2>/dev/null || echo "stat 실패" >> debug-archive/info.txt
       '''
       archiveArtifacts artifacts: 'debug-archive/**', fingerprint: true, allowEmptyArchive: true
