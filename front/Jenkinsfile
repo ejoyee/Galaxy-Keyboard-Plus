@@ -63,7 +63,7 @@ pipeline {
     stage('Project Check') {
       when { expression { env.BUILD_FRONTEND == 'true' } }
       steps {
-        // 프로젝트 구조 점검 및 디버깅
+        // 프로젝트 구조 점검 및 디버깅 - 간소화된 버전
         sh '''
           echo "===================================================="
           echo "🔍 프로젝트 구조 점검"
@@ -71,18 +71,14 @@ pipeline {
           
           # 중요 파일 확인
           echo "📂 front/frontend 디렉토리 점검:"
-          ls -la front/frontend || { echo "❌ front/frontend 디렉토리가 없습니다"; exit 1; }
+          ls -la front/frontend
           
           echo "📂 front/frontend/android 디렉토리 점검:"
-          ls -la front/frontend/android || { echo "❌ front/frontend/android 디렉토리가 없습니다"; exit 1; }
+          ls -la front/frontend/android
           
           # gradlew 파일 확인
           if [ ! -f "front/frontend/android/gradlew" ]; then
-            echo "⚠️ gradlew 파일이 없습니다. 기본 템플릿 생성 중..."
-            touch front/frontend/android/gradlew
-            chmod +x front/frontend/android/gradlew
-            echo "#!/bin/sh" > front/frontend/android/gradlew
-            echo "exec ./gradlew \\"\\$@\\"" >> front/frontend/android/gradlew
+            echo "⚠️ gradlew 파일이 없습니다."
           else
             echo "✅ gradlew 파일 존재"
             chmod +x front/frontend/android/gradlew
@@ -93,13 +89,6 @@ pipeline {
             echo "⚠️ app/build.gradle 파일이 없습니다. APK 빌드가 불가능할 수 있습니다."
           else
             echo "✅ app/build.gradle 파일 존재"
-            # 앱 ID 확인
-            APP_ID=$(grep "applicationId" front/frontend/android/app/build.gradle | sed "s/.*applicationId[[:space:]]*[\\\\\"\\']\\([^\\\\\"\\']\\+\\)[\\\\\"\\'].*/\\1/")
-            if [ ! -z "$APP_ID" ]; then
-              echo "✅ 앱 패키지 ID: $APP_ID"
-            else
-              echo "⚠️ 앱 패키지 ID를 찾을 수 없습니다"
-            fi
           fi
           
           echo "===================================================="
@@ -281,12 +270,11 @@ EOL
           echo "===================================================="
           
           # APK 파일 존재 확인
-          APK_FILES=$(find front/frontend -name "*.apk" 2>/dev/null)
-          APK_COUNT=$(echo "$APK_FILES" | grep -c . || echo "0")
+          APK_COUNT=$(find front/frontend -name "*.apk" 2>/dev/null | wc -l || echo "0")
           
           if [ "$APK_COUNT" -gt 0 ]; then
             echo "✅ $APK_COUNT 개의 APK 파일 발견:"
-            echo "$APK_FILES" | sed "s/^/   /"
+            find front/frontend -name "*.apk" 2>/dev/null
             
             # 모든 APK 파일을 하나의 디렉토리로 복사
             mkdir -p apk-archive
