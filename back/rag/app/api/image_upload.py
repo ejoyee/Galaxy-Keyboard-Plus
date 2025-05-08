@@ -23,23 +23,21 @@ router = APIRouter()
 async def upload_image(
     user_id: str = Form(...),
     access_id: str = Form(...),
-    image_time: str = Form(...),  # ✅ 문자열로 받고
+    image_time: str = Form(...),  # ✅ 문자열로 받기
     file: UploadFile = File(...),
 ):
     try:
-        logger.info(
-            f"📥 이미지 처리 시작 - user_id={user_id}, access_id={access_id}, image_time={image_time}"
-        )
+        logger.info(f"📥 이미지 처리 시작 - user_id={user_id}, access_id={access_id}")
 
-        # ✅ "2024:12:15 22:40:55" 형식 파싱
+        # ✅ 문자열로 받은 image_time → datetime 변환
         try:
             image_time_obj = datetime.strptime(image_time, "%Y:%m:%d %H:%M:%S")
-        except ValueError:
+        except ValueError as e:
+            logger.error(f"❌ image_time 파싱 실패: {e}")
             raise HTTPException(
-                status_code=422,
-                detail="image_time 형식은 'yyyy:MM:dd HH:mm:ss'이어야 합니다.",
+                status_code=400,
+                detail="날짜 형식이 잘못되었습니다. (예: 2025:05:08 00:00:00)",
             )
-        image_time_iso = image_time_obj.isoformat()
 
         image_bytes = await file.read()
         text_score = classify_image_from_bytes(image_bytes)
@@ -56,14 +54,14 @@ async def upload_image(
             content = extracted_text
             logger.info(f"📝 텍스트 추출 완료 - {extracted_text}")
 
-        text_for_embedding = f"{access_id} ({image_time_iso}): {content}"
+        text_for_embedding = f"{access_id} ({image_time}): {content}"
         namespace = save_text_to_pinecone(user_id, text_for_embedding, target)
         logger.info(f"✅ 벡터 저장 완료 - namespace={namespace}")
 
         image_payload = {
             "userId": user_id,
             "accessId": access_id,
-            "imageTime": image_time_iso,  # ✅ ISO 포맷으로 보냄
+            "imageTime": image_time,  # ✅ 변환 없이 원본 포맷 그대로 사용
             "type": target,
             "content": content,
         }
@@ -71,7 +69,7 @@ async def upload_image(
         async with httpx.AsyncClient() as client:
             logger.info(f"📤 이미지 정보 전송 → payload: {image_payload}")
             logger.info(
-                f"📤 이미지 전송 바디(JSON):\n{json.dumps(image_payload, ensure_ascii=False, indent=2)}"
+                f"📤 JSON:\n{json.dumps(image_payload, ensure_ascii=False, indent=2)}"
             )
 
             image_response = await client.post(
@@ -81,7 +79,6 @@ async def upload_image(
             logger.debug(f"📥 이미지 응답 내용: {image_response.text}")
 
             if image_response.status_code != 200:
-                logger.error(f"❌ 이미지 정보 저장 실패: {image_response.text}")
                 raise HTTPException(status_code=500, detail="이미지 정보 저장 실패")
 
             image_id = image_response.json().get("result", {}).get("imageId")
@@ -93,21 +90,19 @@ async def upload_image(
                 ):
                     plan_payload = {
                         "userId": user_id,
-                        "planTime": schedule_result["datetime"],
+                        "planTime": image_time,  # ✅ 여기도 그대로 포맷 유지
                         "planContent": schedule_result.get("event", content),
                         "imageId": image_id,
                     }
 
                     logger.info(f"📤 일정 등록 전송 → payload: {plan_payload}")
                     logger.info(
-                        f"📤 일정 전송 바디(JSON):\n{json.dumps(plan_payload, ensure_ascii=False, indent=2)}"
+                        f"📤 JSON:\n{json.dumps(plan_payload, ensure_ascii=False, indent=2)}"
                     )
 
                     plan_response = await client.post(
                         "http://backend-service:8083/api/v1/plans", json=plan_payload
                     )
-                    logger.info(f"📥 일정 응답 상태: {plan_response.status_code}")
-                    logger.debug(f"📥 일정 응답 내용: {plan_response.text}")
 
                     if plan_response.status_code != 200:
                         logger.warning(f"⚠️ 일정 등록 실패: {plan_response.text}")
@@ -116,7 +111,7 @@ async def upload_image(
 
         return {
             "access_id": access_id,
-            "image_time": image_time_iso,
+            "image_time": image_time,
             "type": target,
             "namespace": namespace,
             "content": text_for_embedding,
