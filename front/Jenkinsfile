@@ -11,6 +11,8 @@ pipeline {
     KEY_PASSWORD     = credentials('KEY_PASSWORD')
     // CircleCI Android 이미지 사용
     DOCKER_IMAGE     = 'cimg/android:2023.08'
+    // 작업 디렉토리 변수 추가
+    WORK_DIR         = "${WORKSPACE}/workspace"
   }
 
   stages {
@@ -25,6 +27,7 @@ pipeline {
           echo "🔍 빌드 ID: ${BUILD_ID}"
           echo "🔍 Git 커밋: ${GIT_COMMIT}"
           echo "🔍 브랜치: ${GIT_BRANCH}"
+          echo "🔍 작업 디렉토리: ${WORKSPACE}"
           echo "===================================================="
         '''
       }
@@ -60,9 +63,9 @@ pipeline {
           echo "🔧 빌드 환경 준비"
           echo "===================================================="
           
-          # 임시 작업 디렉토리 생성
-          rm -rf _build_tmp
-          mkdir -p _build_tmp
+          # 임시 작업 디렉토리 생성 (전체 경로 사용)
+          rm -rf ${WORK_DIR}
+          mkdir -p ${WORK_DIR}
           
           # 디버깅: 원본 디렉토리 구조 확인
           echo "📂 원본 frontend 디렉토리 구조:"
@@ -70,22 +73,22 @@ pipeline {
           
           # 프로젝트 파일 복사 (모든 파일을 복사하기 위해 ./* 사용)
           echo "📂 프로젝트 파일 복사"
-          cp -a front/frontend/. _build_tmp/
+          cp -a front/frontend/. ${WORK_DIR}/
           
           # 파일 목록 확인 (더 자세한 로깅)
           echo "📂 복사된 파일 확인:"
-          ls -la _build_tmp
+          ls -la ${WORK_DIR}
           
           # package.json 확인
           echo "📄 package.json 확인:"
-          cat _build_tmp/package.json | head -20 || echo "package.json 파일을 찾을 수 없습니다"
+          cat ${WORK_DIR}/package.json | head -20 || echo "package.json 파일을 찾을 수 없습니다"
           
           # 권한 설정 (모든 사용자가 읽고 쓸 수 있도록)
-          chmod -R 777 _build_tmp
+          chmod -R 777 ${WORK_DIR}
           
           # 파일 권한 확인
           echo "📄 중요 파일 권한 확인:"
-          ls -la _build_tmp/package.json || echo "package.json 파일을 찾을 수 없습니다"
+          ls -la ${WORK_DIR}/package.json || echo "package.json 파일을 찾을 수 없습니다"
           
           echo "===================================================="
         '''
@@ -105,18 +108,18 @@ pipeline {
             echo "===================================================="
             
             # 디렉토리 생성
-            mkdir -p _build_tmp/android/app/keystore
+            mkdir -p ${WORK_DIR}/android/app/keystore
             
             # 시크릿 파일 복사
-            cp "$FIREBASE_SERVICE_ACCOUNT" _build_tmp/android/firebase_service_account.json
-            cp "$GOOGLE_SERVICES_JSON" _build_tmp/android/app/google-services.json
-            cp "$KEYSTORE_FILE" _build_tmp/android/app/keystore/release.keystore
+            cp "$FIREBASE_SERVICE_ACCOUNT" ${WORK_DIR}/android/firebase_service_account.json
+            cp "$GOOGLE_SERVICES_JSON" ${WORK_DIR}/android/app/google-services.json
+            cp "$KEYSTORE_FILE" ${WORK_DIR}/android/app/keystore/release.keystore
             
             # 권한 설정
-            chmod -R 777 _build_tmp/android/app/keystore
-            chmod 666 _build_tmp/android/firebase_service_account.json
-            chmod 666 _build_tmp/android/app/google-services.json
-            chmod 666 _build_tmp/android/app/keystore/release.keystore
+            chmod -R 777 ${WORK_DIR}/android/app/keystore
+            chmod 666 ${WORK_DIR}/android/firebase_service_account.json
+            chmod 666 ${WORK_DIR}/android/app/google-services.json
+            chmod 666 ${WORK_DIR}/android/app/keystore/release.keystore
             
             echo "===================================================="
           '''
@@ -124,61 +127,102 @@ pipeline {
       }
     }
 
-    stage('Docker Volume Test') {
+    stage('Debug File System') {
       steps {
         sh '''
           echo "===================================================="
-          echo "🔍 Docker 볼륨 마운트 테스트"
+          echo "🔍 파일 시스템 디버깅"
           echo "===================================================="
           
-          # 테스트 파일 생성
-          echo "테스트 파일입니다." > _build_tmp/test-file.txt
+          # 현재 디렉토리 및 작업 디렉토리 확인
+          echo "📂 현재 디렉토리: $(pwd)"
+          echo "📂 작업 디렉토리: ${WORK_DIR}"
           
-          # Docker에서 볼륨 마운트 테스트 (간단한 명령어로 테스트)
-          docker run --rm \
-            -v "$(pwd)/_build_tmp:/project" \
-            --workdir /project \
-            ${DOCKER_IMAGE} \
-            ls -la /project
+          # 작업 디렉토리 내용 확인
+          echo "📄 작업 디렉토리 내용:"
+          ls -la ${WORK_DIR}
           
-          # package.json 파일 확인
-          docker run --rm \
-            -v "$(pwd)/_build_tmp:/project" \
-            --workdir /project \
-            ${DOCKER_IMAGE} \
-            cat /project/package.json | head -5
+          # package.json 파일 시스템 정보 확인
+          echo "📄 package.json 파일 시스템 정보:"
+          stat ${WORK_DIR}/package.json || echo "package.json 파일 정보를 가져올 수 없습니다"
+          
+          # Docker 정보 확인
+          echo "🐳 Docker 버전:"
+          docker --version
+          
+          # SELinux 상태 확인 (볼륨 마운트에 영향을 줄 수 있음)
+          echo "🔒 SELinux 상태:"
+          getenforce 2>/dev/null || echo "SELinux 상태를 확인할 수 없습니다"
+          
+          # Docker 호스트 정보 확인
+          echo "🐳 Docker 호스트 정보:"
+          docker info | grep -E "Storage Driver|Root Dir"
+          
+          echo "===================================================="
+          
+          # 작업 디렉토리를 아카이브로 만들어 Docker에서 추출하는 대안 테스트
+          echo "📦 작업 디렉토리 아카이브 생성"
+          tar -czf ${WORKSPACE}/workspace.tar.gz -C ${WORK_DIR} .
           
           echo "===================================================="
         '''
       }
     }
 
-    stage('Build in Docker') {
+    stage('Docker Volume Test') {
       steps {
         sh '''
           echo "===================================================="
-          echo "🚀 Docker 내부에서 빌드 실행"
+          echo "🔍 Docker 볼륨 마운트 테스트 (다양한 방법 시도)"
           echo "===================================================="
           
-          # Docker 컨테이너 내부 디버깅 (자세한 로깅)
-          echo "📂 Docker 내부 디버깅:"
+          # 방법 1: 일반 볼륨 마운트
+          echo "🔍 방법 1: 일반 볼륨 마운트"
           docker run --rm \
-            -v "$(pwd)/_build_tmp:/project" \
+            -v "${WORK_DIR}:/project" \
             --workdir /project \
             ${DOCKER_IMAGE} \
-            bash -c "ls -la && echo '--- package.json 내용: ---' && cat package.json | head -10"
+            bash -c "ls -la && (cat package.json | head -5 || echo 'package.json 파일 없음')"
           
-          # 현재 디렉토리의 권한 확인
-          echo "📄 현재 디렉토리 권한:"
-          ls -ld "$(pwd)/_build_tmp"
-          
-          # Docker 컨테이너 실행
+          # 방법 2: 파일 경로에 따옴표 추가
+          echo "🔍 방법 2: 파일 경로에 따옴표 추가"
           docker run --rm \
-            -v "$(pwd)/_build_tmp:/project" \
+            -v "${WORK_DIR}":/project \
             --workdir /project \
+            ${DOCKER_IMAGE} \
+            bash -c "ls -la && (cat package.json | head -5 || echo 'package.json 파일 없음')"
+          
+          # 방법 3: 아카이브 추출 방식
+          echo "🔍 방법 3: 아카이브 추출 방식"
+          docker run --rm \
+            -v "${WORKSPACE}/workspace.tar.gz:/workspace.tar.gz" \
+            ${DOCKER_IMAGE} \
+            bash -c "mkdir -p /project && tar -xzf /workspace.tar.gz -C /project && cd /project && ls -la && (cat package.json | head -5 || echo 'package.json 파일 없음')"
+          
+          echo "===================================================="
+        '''
+      }
+    }
+
+    stage('Build in Docker (Using Archive Method)') {
+      steps {
+        sh '''
+          echo "===================================================="
+          echo "🚀 Docker 내부에서 빌드 실행 (아카이브 방식)"
+          echo "===================================================="
+          
+          # Docker 컨테이너 실행 (아카이브 방식)
+          docker run --rm \
+            -v "${WORKSPACE}/workspace.tar.gz:/workspace.tar.gz" \
+            -v "${WORKSPACE}/apk:/output" \
             ${DOCKER_IMAGE} \
             bash -c '
               set -e  # 에러 발생 시 즉시 스크립트 중단
+              
+              # 작업 디렉토리 준비
+              mkdir -p /project
+              tar -xzf /workspace.tar.gz -C /project
+              cd /project
               
               echo "📂 현재 디렉토리: $(pwd)"
               ls -la
@@ -191,20 +235,11 @@ pipeline {
                 exit 1
               fi
               
-              # CircleCI Android 이미지에 Node.js 및 npm 설치 확인
+              # Node.js 버전 확인
               NODE_VERSION=$(node --version || echo "Node.js가 설치되지 않았습니다")
               NPM_VERSION=$(npm --version || echo "npm이 설치되지 않았습니다")
               echo "Node.js 버전: $NODE_VERSION"
               echo "npm 버전: $NPM_VERSION"
-              
-              # Node.js가 설치되어 있지 않으면 설치
-              if [[ "$NODE_VERSION" == *"설치되지 않았습니다"* ]]; then
-                echo "Node.js 설치 중..."
-                curl -sL https://deb.nodesource.com/setup_18.x | bash -
-                apt-get update && apt-get install -y nodejs
-                echo "Node.js 설치 완료: $(node --version)"
-                echo "npm 설치 완료: $(npm --version)"
-              fi
               
               npm install
               
@@ -227,41 +262,21 @@ KEY_ALIAS='"'"'$KEY_ALIAS'"'"'
 KEY_PASSWORD='"'"'$KEY_PASSWORD'"'"'
 EOF
               
-              echo "🔧 Android SDK 확인"
-              echo "ANDROID_HOME: $ANDROID_HOME"
-              ls -la $ANDROID_HOME || echo "Android SDK 디렉토리가 없습니다"
-              
               echo "🔧 Gradle 빌드 실행"
               ./gradlew clean --stacktrace
               ./gradlew assembleDebug --stacktrace
               
               echo "🔧 빌드 결과 확인"
-              find . -name "*.apk" || echo "APK 파일을 찾을 수 없습니다"
+              find . -name "*.apk" 
+              
+              # APK 파일 복사
+              mkdir -p /output
+              find . -name "*.apk" -exec cp {} /output/ \;
             '
           
-          # 빌드 결과 디렉토리 생성
-          mkdir -p apk
-          
-          # APK 파일 찾기 및 복사
-          echo "🔍 APK 파일 검색"
-          find _build_tmp/android -name "*.apk" | xargs -I {} cp {} apk/ || echo "APK 파일을 찾을 수 없습니다"
-          
-          echo "===================================================="
-        '''
-      }
-    }
-
-    stage('Archive APK') {
-      steps {
-        sh '''
-          echo "===================================================="
-          echo "📦 APK 아카이브"
-          echo "===================================================="
-          
+          # APK 파일 정리
           mkdir -p apk-archive
-          
-          # APK 파일 찾기 및 복사
-          find apk -name "*.apk" | xargs -I {} cp {} apk-archive/ || echo "APK 파일이 없습니다"
+          find ${WORKSPACE}/apk -name "*.apk" -exec cp {} apk-archive/ \; || echo "APK 파일이 없습니다"
           
           # 결과 확인
           APK_COUNT=$(find apk-archive -name "*.apk" | wc -l)
@@ -292,7 +307,7 @@ EOF
             echo "===================================================="
             
             # APK 파일 찾기
-            APK_FILE=$(find "$(pwd)/apk-archive" -name "*.apk" | head -1)
+            APK_FILE=$(find "${WORKSPACE}/apk-archive" -name "*.apk" | head -1)
             
             if [ -z "$APK_FILE" ]; then
               echo "❌ APK 파일을 찾을 수 없어 Firebase 배포를 건너뜁니다"
@@ -303,9 +318,7 @@ EOF
             
             # Firebase 배포 실행
             docker run --rm \
-              -v "$(pwd):/firebase_workspace" \
-              -v "$(pwd)/_build_tmp/android:/app_android" \
-              -w /app_android \
+              -v "${APK_FILE}:/app.apk" \
               -e FIREBASE_TOKEN="$FIREBASE_TOKEN" \
               -e FIREBASE_APP_ID="$FIREBASE_APP_ID" \
               ${DOCKER_IMAGE} \
@@ -314,7 +327,7 @@ EOF
                 npm install -g firebase-tools
                 
                 echo "🔥 Firebase App Distribution 실행"
-                firebase appdistribution:distribute "/firebase_workspace/'"$APK_FILE"'" \
+                firebase appdistribution:distribute "/app.apk" \
                   --app "$FIREBASE_APP_ID" \
                   --token "$FIREBASE_TOKEN" \
                   --groups "testers" \
@@ -347,23 +360,14 @@ EOF
         echo "" >> debug-info.md
         
         echo "## 빌드 디렉토리 정보" >> debug-info.md
-        ls -la _build_tmp 2>/dev/null >> debug-info.md || echo "빌드 디렉토리가 없습니다" >> debug-info.md
+        ls -la ${WORK_DIR} 2>/dev/null >> debug-info.md || echo "빌드 디렉토리가 없습니다" >> debug-info.md
         echo "" >> debug-info.md
         
         echo "## package.json 파일 내용" >> debug-info.md
-        cat _build_tmp/package.json 2>/dev/null >> debug-info.md || echo "package.json 파일이 없습니다" >> debug-info.md
+        cat ${WORK_DIR}/package.json 2>/dev/null >> debug-info.md || echo "package.json 파일이 없습니다" >> debug-info.md
         echo "" >> debug-info.md
         
-        echo "## node_modules 정보" >> debug-info.md
-        ls -la _build_tmp/node_modules 2>/dev/null >> debug-info.md || echo "node_modules 디렉토리가 없습니다" >> debug-info.md
-        echo "" >> debug-info.md
-        
-        echo "## Android 디렉토리 정보" >> debug-info.md
-        ls -la _build_tmp/android 2>/dev/null >> debug-info.md || echo "안드로이드 디렉토리가 없습니다" >> debug-info.md
-        echo "" >> debug-info.md
-        
-        # Docker 상태 확인
-        echo "## Docker 정보" >> debug-info.md
+        echo "## Docker 상태" >> debug-info.md
         docker info 2>/dev/null >> debug-info.md || echo "Docker 정보를 가져올 수 없습니다" >> debug-info.md
         echo "" >> debug-info.md
         
@@ -383,7 +387,7 @@ EOF
         echo "===================================================="
         
         # 임시 디렉토리 정리
-        rm -rf _build_tmp apk apk-archive debug-archive || true
+        rm -rf ${WORK_DIR} workspace.tar.gz apk apk-archive debug-archive || true
       '''
       cleanWs()
     }
