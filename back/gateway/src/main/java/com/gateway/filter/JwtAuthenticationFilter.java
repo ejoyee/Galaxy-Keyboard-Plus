@@ -1,8 +1,9 @@
 package com.gateway.filter;
 
-import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
@@ -19,6 +20,9 @@ import java.util.List;
 
 @Component
 public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
+
+    private static final Logger logger = LoggerFactory.getLogger(JwtAuthenticationFilter.class);
+
     @Value("${jwt.secret}")
     private String secretKey;
 
@@ -34,7 +38,15 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
 
         // Authorization 헤더 확인
         String authHeader = exchange.getRequest().getHeaders().getFirst("Authorization");
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+
+        if (authHeader == null) {
+            logger.warn("🔒 인증 실패: Authorization 헤더 없음");
+            exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
+            return exchange.getResponse().setComplete();
+        }
+
+        if (!authHeader.startsWith("Bearer ")) {
+            logger.warn("🔒 인증 실패: Authorization 형식이 Bearer 아님 (값: {})", authHeader);
             exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
             return exchange.getResponse().setComplete();
         }
@@ -48,7 +60,7 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
                     .parseClaimsJws(token)
                     .getBody();
 
-            String userId = claims.getSubject(); // 또는 claims.get("userId", String.class)
+            String userId = claims.getSubject();
 
             // 요청 헤더에 userId 추가
             ServerHttpRequest mutatedRequest = exchange.getRequest().mutate()
@@ -57,14 +69,26 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
 
             return chain.filter(exchange.mutate().request(mutatedRequest).build());
 
+        } catch (ExpiredJwtException e) {
+            logger.warn("🔒 인증 실패: 토큰 만료됨 - {}", e.getMessage());
+        } catch (UnsupportedJwtException e) {
+            logger.warn("🔒 인증 실패: 지원하지 않는 토큰 - {}", e.getMessage());
+        } catch (MalformedJwtException e) {
+            logger.warn("🔒 인증 실패: 잘못된 형식의 토큰 - {}", e.getMessage());
+        } catch (SignatureException e) {
+            logger.warn("🔒 인증 실패: 서명 검증 실패 - {}", e.getMessage());
+        } catch (JwtException e) {
+            logger.warn("🔒 인증 실패: JWT 처리 오류 - {}", e.getMessage());
         } catch (Exception e) {
-            exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
-            return exchange.getResponse().setComplete();
+            logger.error("🔒 인증 실패: 예기치 않은 오류 - {}", e.getMessage(), e);
         }
+
+        exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
+        return exchange.getResponse().setComplete();
     }
 
     @Override
     public int getOrder() {
-        return 0; // LoggingFilter(-1)보다 뒤에 실행
+        return 0;
     }
 }
