@@ -37,7 +37,7 @@ public class AuthService {
         UserInfo user = userRepo.findByKakaoEmail(email)
                 .orElseGet(() -> {
                     UserInfo newUser = UserInfo.builder()
-//                            .id(UUID.randomUUID()) // 앱 내부용 새 UUID 생성
+                            .id(UUID.randomUUID()) // 앱 내부용 새 UUID 생성
                             .kakaoEmail(email)     // 카카오 이메일 저장
                             .build();
                     return userRepo.save(newUser);
@@ -81,7 +81,7 @@ public class AuthService {
     @Transactional
     public Map<String,String> reissue(String oldRt) {
         // jwt.parse(oldRt)가 UUID 객체를 직접 반환하므로, 변수 타입을 UUID로 변경합니다.
-        Long uid = jwt.parse(oldRt); // 수정된 부분
+        UUID uid = jwt.parse(oldRt); // 수정된 부분
 
         AuthTokenEntity token = tokenRepo.findById(uid)
                 .orElseThrow(() -> new RuntimeException("Invalid RT: Refresh token not found in DB."));

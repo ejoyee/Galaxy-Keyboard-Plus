@@ -17,6 +17,7 @@ import jakarta.servlet.http.*;
 import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
+import java.util.UUID;
 
 @Component
 @RequiredArgsConstructor
@@ -29,13 +30,22 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest req, HttpServletResponse res,
                                     FilterChain chain) throws ServletException, IOException {
 
+        String path = req.getServletPath();
+        if (path.startsWith("/swagger-ui")
+                || path.startsWith("/v3/api-docs")
+                || path.startsWith("/webjars")
+                || path.equals("/swagger-ui.html")) {
+            chain.doFilter(req, res);
+            return;
+        }
+
         String token = resolveToken(req); // 헤더에서 Bearer 토큰 추출
 
         if (token != null) { // 토큰이 존재하면
             try {
                 // 1. 토큰 파싱 및 검증 -> 사용자 ID (Long) 획득
                 // jwt.parse() 내부에서 만료, 서명 등 기본 검증도 수행한다고 가정
-                Long userId = jwt.parse(token); // 반환 타입이 Long인지 확인
+                UUID userId = jwt.parse(token); // 반환 타입이 Long인지 확인
 
 
                 // 2. Authentication 객체 생성 (Principal로 Long 타입 userId 사용)
