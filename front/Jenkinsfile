@@ -36,14 +36,32 @@ pipeline {
     stage('Build & Distribute Frontend') {
       when { expression { env.BUILD_FRONTEND == 'true' } }
       steps {
-        // Docker를 직접 실행하는 방식으로 변경
+        // 디렉토리 구조 확인 및 디버깅
         sh '''
           # 시크릿 디렉토리 만들기
           mkdir -p front/frontend/android/app/keystore
           
-          # 디버깅을 위한 디렉토리 구조 확인
+          # 디렉토리 구조 자세히 확인
+          echo "===== 작업 디렉토리 ====="
+          pwd
+          
+          echo "===== 전체 디렉토리 구조 ====="
           ls -la
-          ls -la front || echo "front 디렉토리가 없습니다"
+          
+          echo "===== front 디렉토리 ====="
+          ls -la front
+          
+          echo "===== front/frontend 디렉토리 ====="
+          ls -la front/frontend || echo "front/frontend 디렉토리가 없습니다"
+          
+          # android 디렉토리가 없으면 생성
+          if [ ! -d "front/frontend/android" ]; then
+            echo "android 디렉토리가 없습니다. 생성합니다."
+            mkdir -p front/frontend/android
+          fi
+          
+          echo "===== front/frontend/android 디렉토리 ====="
+          ls -la front/frontend/android || echo "front/frontend/android 디렉토리가 없습니다"
         '''
         
         // 시크릿 파일 준비
@@ -62,10 +80,9 @@ pipeline {
           '''
         }
         
-        // 각 단계를 별도의 Docker 명령으로 실행
+        // Docker 명령 실행 - 절대 경로 사용 및 각 명령이 독립적으로 실행되도록 수정
         sh '''
-          # 디렉토리 구조 확인
-          pwd
+          echo "===== Docker 컨테이너에서 명령 실행 ====="
           
           # 1) 의존성 설치
           docker run --rm \
@@ -74,7 +91,7 @@ pipeline {
             -e ANDROID_SDK_ROOT=/opt/android-sdk \
             -e ANDROID_HOME=/opt/android-sdk \
             my-android-ci:latest \
-            bash -c "cd /workspace/front/frontend/android && yarn install"
+            bash -c "ls -la /workspace/front/frontend && cd /workspace/front/frontend/android && yarn install"
             
           # 2) Bundle 설치
           docker run --rm \
