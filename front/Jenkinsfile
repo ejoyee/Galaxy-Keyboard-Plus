@@ -16,14 +16,14 @@ pipeline {
         checkout scm
         
         // 빌드 시작 로그
-        sh """
+        sh '''
           echo "===================================================="
           echo "🚀 빌드 시작: $(date '+%Y-%m-%d %H:%M:%S')"
-          echo "🔍 빌드 ID: ${env.BUILD_ID}"
-          echo "🔍 Git 커밋: ${env.GIT_COMMIT}"
-          echo "🔍 브랜치: ${env.GIT_BRANCH}"
+          echo "🔍 빌드 ID: ${BUILD_ID}"
+          echo "🔍 Git 커밋: ${GIT_COMMIT}"
+          echo "🔍 브랜치: ${GIT_BRANCH}"
           echo "===================================================="
-        """
+        '''
       }
     }
 
