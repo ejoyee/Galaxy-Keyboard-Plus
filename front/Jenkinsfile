@@ -18,6 +18,9 @@ pipeline {
     KEY_PASSWORD     = credentials('KEY_PASSWORD')
     // 사용할 Docker 이미지
     DOCKER_IMAGE     = 'my-android-ci:latest'
+    // 현재 사용자 ID (Docker 볼륨 마운트에 사용)
+    USER_ID = sh(script: 'id -u', returnStdout: true).trim()
+    GROUP_ID = sh(script: 'id -g', returnStdout: true).trim()
   }
 
   stages {
@@ -151,9 +154,9 @@ pipeline {
           # 전체 프로젝트 경로 (절대 경로)
           PROJECT_PATH="$(pwd)/front/frontend"
           
-          # Docker에서 React Native 앱 빌드 실행
-          # 주요 변경: 프로젝트 경로를 직접 지정
+          # Docker에서 React Native 앱 빌드 실행 (중요: -u 옵션 추가)
           docker run --rm \
+            -u $(id -u):$(id -g) \
             -v "$PROJECT_PATH:/workspace" \
             -w /workspace \
             -e ANDROID_SDK_ROOT=/opt/android-sdk \
@@ -171,6 +174,12 @@ pipeline {
               echo "📂 Android 디렉토리 확인:"
               ls -la android
               
+              # 중요 파일 확인
+              if [ ! -f "android/gradlew" ] || [ ! -d "android/app" ]; then
+                echo "❌ 필수 Android 파일이 없습니다. 볼륨 마운트 문제가 있습니다."
+                exit 1
+              fi
+              
               echo "🔧 Node 모듈 설치"
               yarn install
               
@@ -182,20 +191,20 @@ pipeline {
               
               echo "🔧 Gradle 프로퍼티 설정"
               cat >> gradle.properties << EOF
-              
-              # CI 환경 키스토어 설정
-              KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD
-              KEY_ALIAS=$KEY_ALIAS
-              KEY_PASSWORD=$KEY_PASSWORD
-              EOF
+
+# CI 환경 키스토어 설정
+KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD
+KEY_ALIAS=$KEY_ALIAS
+KEY_PASSWORD=$KEY_PASSWORD
+EOF
               
               echo "🔧 Android SDK 환경 확인"
               echo "ANDROID_HOME: $ANDROID_HOME"
               
               echo "🔧 Gradle 빌드 실행"
               chmod +x ./gradlew
-              ./gradlew clean --info
-              ./gradlew assembleDebug --info
+              ./gradlew clean
+              ./gradlew assembleDebug
               
               echo "🔧 빌드 결과 확인"
               find . -name "*.apk"
@@ -214,6 +223,51 @@ pipeline {
       }
     }
 
+    stage('Direct Build') {
+      when { 
+        expression { env.BUILD_FRONTEND == 'true' }
+        // 이전 스테이지에서 APK 생성 실패했을 경우에 실행 (백업 방법)
+        expression { 
+          return sh(script: 'find apk -name "*.apk" | wc -l', returnStdout: true).trim() == '0' 
+        }
+      }
+      steps {
+        sh '''
+          echo "===================================================="
+          echo "🚀 직접 Android 빌드 시도 (백업 방법)"
+          echo "===================================================="
+          
+          cd front/frontend/android
+          
+          # local.properties 생성
+          echo "sdk.dir=${ANDROID_SDK_ROOT}" > local.properties
+          
+          # Gradle 프로퍼티에 Keystore 정보 추가
+          cat >> gradle.properties << EOF
+
+# CI 환경 키스토어 설정
+KEYSTORE_PASSWORD=${KEYSTORE_PASSWORD}
+KEY_ALIAS=${KEY_ALIAS}
+KEY_PASSWORD=${KEY_PASSWORD}
+EOF
+          
+          # Gradle 빌드
+          chmod +x ./gradlew
+          ./gradlew clean
+          ./gradlew assembleDebug
+          
+          # 빌드 결과물 확인
+          find . -name "*.apk"
+          
+          # 결과물 복사
+          mkdir -p ../../apk
+          find . -name "*.apk" | xargs -I {} cp {} ../../apk/
+          
+          echo "===================================================="
+        '''
+      }
+    }
+
     stage('Archive APK') {
       when { expression { env.BUILD_FRONTEND == 'true' } }
       steps {
@@ -224,15 +278,15 @@ pipeline {
           
           mkdir -p apk-archive
           
-          # apk 디렉토리에서 APK 파일 찾기
-          APK_COUNT=$(find "$(pwd)/apk" -name "*.apk" | wc -l || echo "0")
+          # APK 파일 검색 범위 확장
+          FOUND_APKS=$(find "$(pwd)" -name "*.apk" | wc -l)
           
-          if [ "$APK_COUNT" -gt 0 ]; then
-            echo "✅ $APK_COUNT 개의 APK 파일 발견:"
-            find "$(pwd)/apk" -name "*.apk"
+          if [ "$FOUND_APKS" -gt 0 ]; then
+            echo "✅ $FOUND_APKS 개의 APK 파일 발견:"
+            find "$(pwd)" -name "*.apk"
             
-            # 모든 APK 파일을 아카이브 디렉토리로 복사
-            find "$(pwd)/apk" -name "*.apk" | xargs -I {} cp {} apk-archive/
+            # APK 파일 복사
+            find "$(pwd)" -name "*.apk" | xargs -I {} cp {} apk-archive/
           else
             echo "❌ APK 파일을 찾을 수 없습니다"
             echo "No APK files found" > apk-archive/build-failed.txt
@@ -257,8 +311,8 @@ pipeline {
             echo "🔥 Firebase 배포"
             echo "===================================================="
             
-            # APK 파일 찾기
-            APK_FILE=$(find "$(pwd)/apk" -name "*.apk" | head -1)
+            # 전체 시스템에서 APK 파일 찾기
+            APK_FILE=$(find "$(pwd)" -name "*.apk" | head -1)
             
             if [ -z "$APK_FILE" ]; then
               echo "❌ APK 파일을 찾을 수 없어 Firebase 배포를 건너뜁니다"
@@ -313,7 +367,29 @@ pipeline {
         echo "===================================================="
         echo "❌ Frontend CI/CD 실패 ❗"
         echo "===================================================="
+        
+        # 디버깅 정보 수집
+        echo "🔍 빌드 실패 디버깅 정보:"
+        echo "Android 디렉토리 구조:" > debug-info.txt
+        find front/frontend/android -type f | sort >> debug-info.txt
+        echo "" >> debug-info.txt
+        
+        echo "Gradle 파일 내용:" >> debug-info.txt
+        cat front/frontend/android/build.gradle >> debug-info.txt
+        echo "" >> debug-info.txt
+        
+        echo "마운트 상태:" >> debug-info.txt
+        docker run --rm -v "$(pwd)/front/frontend:/workspace" ${DOCKER_IMAGE} bash -c 'ls -la /workspace' >> debug-info.txt
+        
+        # 디버깅 정보 아카이브
+        mkdir -p debug-archive
+        cp debug-info.txt debug-archive/
+        
+        # 디버깅 아카이브
+        echo "📦 디버깅 정보가 debug-archive에 저장되었습니다"
       '''
+      
+      archiveArtifacts artifacts: 'debug-archive/**', fingerprint: true, allowEmptyArchive: true
     }
     always {
       sh '''
@@ -322,7 +398,7 @@ pipeline {
         echo "===================================================="
         
         # 임시 디렉토리 정리
-        rm -rf apk apk-archive || true
+        rm -rf apk apk-archive debug-archive || true
       '''
       cleanWs()
     }
