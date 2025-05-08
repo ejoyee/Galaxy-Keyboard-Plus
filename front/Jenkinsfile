@@ -81,8 +81,8 @@ pipeline {
             echo "⚠️ gradlew 파일이 없습니다. 기본 템플릿 생성 중..."
             touch front/frontend/android/gradlew
             chmod +x front/frontend/android/gradlew
-            echo '#!/bin/sh
-exec ./gradlew "$@"' > front/frontend/android/gradlew
+            echo "#!/bin/sh" > front/frontend/android/gradlew
+            echo "exec ./gradlew \\"\\$@\\"" >> front/frontend/android/gradlew
           else
             echo "✅ gradlew 파일 존재"
             chmod +x front/frontend/android/gradlew
@@ -94,7 +94,7 @@ exec ./gradlew "$@"' > front/frontend/android/gradlew
           else
             echo "✅ app/build.gradle 파일 존재"
             # 앱 ID 확인
-            APP_ID=$(grep "applicationId" front/frontend/android/app/build.gradle | sed 's/.*applicationId[[:space:]]*[\\"\\'\'']\\([^\\"\\'\'']\\+\\)[\\"\\'\''].*/\\1/')
+            APP_ID=$(grep "applicationId" front/frontend/android/app/build.gradle | sed "s/.*applicationId[[:space:]]*[\\\\\"\\']\\([^\\\\\"\\']\\+\\)[\\\\\"\\'].*/\\1/")
             if [ ! -z "$APP_ID" ]; then
               echo "✅ 앱 패키지 ID: $APP_ID"
             else
@@ -240,12 +240,7 @@ EOL
             echo "===================================================="
             
             # APK 파일 찾기
-            APK_FILE=$(find front/frontend/android -name "*.apk" | head -1)
-            
-            if [ -z "$APK_FILE" ]; then
-              # React Native 디렉토리에서도 찾기
-              APK_FILE=$(find front/frontend/android -name "*.apk" | head -1)
-            fi
+            APK_FILE=$(find front/frontend -name "*.apk" | head -1)
             
             if [ -z "$APK_FILE" ]; then
               echo "❌ APK 파일을 찾을 수 없어 Firebase 업로드를 건너뜁니다"
@@ -287,11 +282,11 @@ EOL
           
           # APK 파일 존재 확인
           APK_FILES=$(find front/frontend -name "*.apk" 2>/dev/null)
-          APK_COUNT=$(echo "$APK_FILES" | grep -c .)
+          APK_COUNT=$(echo "$APK_FILES" | grep -c . || echo "0")
           
-          if [ $APK_COUNT -gt 0 ]; then
+          if [ "$APK_COUNT" -gt 0 ]; then
             echo "✅ $APK_COUNT 개의 APK 파일 발견:"
-            echo "$APK_FILES" | sed 's/^/   /'
+            echo "$APK_FILES" | sed "s/^/   /"
             
             # 모든 APK 파일을 하나의 디렉토리로 복사
             mkdir -p apk-archive
