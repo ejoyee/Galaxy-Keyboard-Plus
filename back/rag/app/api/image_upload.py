@@ -83,22 +83,24 @@ async def upload_image(
                 if schedule_result.get("is_schedule") and schedule_result.get(
                     "datetime"
                 ):
+                    # 기존 문자열을 datetime 객체로 파싱 후 ISO 형식으로 변환
                     try:
-                        # ISO 8601 포맷을 datetime 객체로 파싱
-                        dt_obj = datetime.fromisoformat(schedule_result["datetime"])
-                        # 🛠 백엔드 요구 포맷으로 변경 (주의: 콜론(:) 구분자)
-                        # formatted_time = dt_obj.strftime("%Y:%m:%d %H:%M:%S")
-                        formatted_time = dt_obj.isoformat()
-                    except Exception as time_err:
-                        logger.warning(f"⚠️ 날짜 포맷 변환 실패: {time_err}")
-                        formatted_time = schedule_result["datetime"]  # fallback
+                        image_time_obj = datetime.strptime(
+                            image_time, "%Y-%m-%d %H:%M:%S"
+                        )
+                        image_time_iso = image_time_obj.isoformat()
+                    except ValueError as e:
+                        logger.warning(f"⚠️ image_time 파싱 실패: {e}, 원본 값 사용")
+                        image_time_iso = image_time  # fallback
 
-                    plan_payload = {
+                    image_payload = {
                         "userId": user_id,
-                        "planTime": formatted_time,
-                        "planContent": schedule_result.get("event", content),
-                        "imageId": image_id,
+                        "accessId": access_id,
+                        "imageTime": image_time_iso,
+                        "type": target,
+                        "content": content,
                     }
+
                     logger.info(f"📤 일정 등록 전송 → payload: {plan_payload}")
                     logger.info(
                         f"📤 일정 전송 바디(JSON):\n{json.dumps(plan_payload, ensure_ascii=False, indent=2)}"
