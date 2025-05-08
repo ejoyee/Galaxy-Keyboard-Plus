@@ -36,42 +36,70 @@ pipeline {
     stage('Build & Distribute Frontend') {
       when { expression { env.BUILD_FRONTEND == 'true' } }
       steps {
-        script {
-          // Docker 컨테이너 안에서 한 번에 처리
-          docker.image('my-android-ci:latest')
-                .inside('-i -t --rm -u root:root') {
-            // 1) 시크릿 복사
-            withCredentials([
-              file(  credentialsId: 'android-release-keystore',    variable: 'KEYSTORE_FILE'),
-              string(credentialsId: 'KEYSTORE_PASSWORD',           variable: 'KEYSTORE_PASSWORD'),
-              string(credentialsId: 'KEY_ALIAS',                   variable: 'KEY_ALIAS'),
-              string(credentialsId: 'KEY_PASSWORD',                variable: 'KEY_PASSWORD'),
-              file(  credentialsId: 'google-services-json',        variable: 'GOOGLE_SERVICES_JSON'),
-              file(  credentialsId: 'firebase-service-account',    variable: 'FIREBASE_SERVICE_ACCOUNT')
-            ]) {
-              sh """
-                mkdir -p front/frontend/android/app/keystore
-                cp "\$KEYSTORE_FILE"           front/frontend/android/app/keystore/release.keystore
-                cp "\$GOOGLE_SERVICES_JSON"    front/frontend/android/app/google-services.json
-                cp "\$FIREBASE_SERVICE_ACCOUNT" front/frontend/android/firebase_service_account.json
-              """
-            }
-
-            // 2) 의존성 설치
-            sh '''
-              cd front/frontend/android
-              yarn install
-              bundle install --path vendor/bundle
-              bundle exec fastlane install_plugins
-            '''
-
-            // 3) 릴리즈 빌드 + Firebase App Distribution
-            sh '''
-              cd front/frontend/android
-              bundle exec fastlane release groups:"testers" notes:"CI 자동 배포 빌드"
-            '''
-          }
+        // Docker를 직접 실행하는 방식으로 변경
+        sh '''
+          # 시크릿 디렉토리 만들기
+          mkdir -p front/frontend/android/app/keystore
+        '''
+        
+        // 시크릿 파일 준비
+        withCredentials([
+          file(credentialsId: 'android-release-keystore', variable: 'KEYSTORE_FILE'),
+          string(credentialsId: 'KEYSTORE_PASSWORD', variable: 'KEYSTORE_PASSWORD'),
+          string(credentialsId: 'KEY_ALIAS', variable: 'KEY_ALIAS'),
+          string(credentialsId: 'KEY_PASSWORD', variable: 'KEY_PASSWORD'),
+          file(credentialsId: 'google-services-json', variable: 'GOOGLE_SERVICES_JSON'),
+          file(credentialsId: 'firebase-service-account', variable: 'FIREBASE_SERVICE_ACCOUNT')
+        ]) {
+          sh '''
+            cp "$KEYSTORE_FILE" front/frontend/android/app/keystore/release.keystore
+            cp "$GOOGLE_SERVICES_JSON" front/frontend/android/app/google-services.json
+            cp "$FIREBASE_SERVICE_ACCOUNT" front/frontend/android/firebase_service_account.json
+          '''
         }
+        
+        // 각 단계를 별도의 Docker 명령으로 실행
+        sh '''
+          # 1) 의존성 설치
+          docker run --rm \
+            -v "$(pwd):/workspace" \
+            -w /workspace \
+            -e ANDROID_SDK_ROOT=/opt/android-sdk \
+            -e ANDROID_HOME=/opt/android-sdk \
+            my-android-ci:latest \
+            bash -c "cd front/frontend/android && yarn install"
+            
+          # 2) Bundle 설치
+          docker run --rm \
+            -v "$(pwd):/workspace" \
+            -w /workspace \
+            -e ANDROID_SDK_ROOT=/opt/android-sdk \
+            -e ANDROID_HOME=/opt/android-sdk \
+            my-android-ci:latest \
+            bash -c "cd front/frontend/android && bundle install --path vendor/bundle"
+            
+          # 3) Fastlane 플러그인 설치
+          docker run --rm \
+            -v "$(pwd):/workspace" \
+            -w /workspace \
+            -e ANDROID_SDK_ROOT=/opt/android-sdk \
+            -e ANDROID_HOME=/opt/android-sdk \
+            my-android-ci:latest \
+            bash -c "cd front/frontend/android && bundle exec fastlane install_plugins"
+            
+          # 4) 릴리스 빌드 및 배포
+          docker run --rm \
+            -v "$(pwd):/workspace" \
+            -w /workspace \
+            -e ANDROID_SDK_ROOT=/opt/android-sdk \
+            -e ANDROID_HOME=/opt/android-sdk \
+            -e FIREBASE_TOKEN="$FIREBASE_TOKEN" \
+            -e KEYSTORE_PASSWORD="$KEYSTORE_PASSWORD" \
+            -e KEY_ALIAS="$KEY_ALIAS" \
+            -e KEY_PASSWORD="$KEY_PASSWORD" \
+            my-android-ci:latest \
+            bash -c "cd front/frontend/android && bundle exec fastlane release groups:\\"testers\\" notes:\\"CI 자동 배포 빌드\\""
+        '''
       }
     }
 
