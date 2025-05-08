@@ -40,6 +40,10 @@ pipeline {
         sh '''
           # 시크릿 디렉토리 만들기
           mkdir -p front/frontend/android/app/keystore
+          
+          # 디버깅을 위한 디렉토리 구조 확인
+          ls -la
+          ls -la front || echo "front 디렉토리가 없습니다"
         '''
         
         // 시크릿 파일 준비
@@ -60,6 +64,9 @@ pipeline {
         
         // 각 단계를 별도의 Docker 명령으로 실행
         sh '''
+          # 디렉토리 구조 확인
+          pwd
+          
           # 1) 의존성 설치
           docker run --rm \
             -v "$(pwd):/workspace" \
@@ -67,7 +74,7 @@ pipeline {
             -e ANDROID_SDK_ROOT=/opt/android-sdk \
             -e ANDROID_HOME=/opt/android-sdk \
             my-android-ci:latest \
-            bash -c "cd front/frontend/android && yarn install"
+            bash -c "cd /workspace/front/frontend/android && yarn install"
             
           # 2) Bundle 설치
           docker run --rm \
@@ -76,7 +83,7 @@ pipeline {
             -e ANDROID_SDK_ROOT=/opt/android-sdk \
             -e ANDROID_HOME=/opt/android-sdk \
             my-android-ci:latest \
-            bash -c "cd front/frontend/android && bundle install --path vendor/bundle"
+            bash -c "cd /workspace/front/frontend/android && bundle install --path vendor/bundle"
             
           # 3) Fastlane 플러그인 설치
           docker run --rm \
@@ -85,7 +92,7 @@ pipeline {
             -e ANDROID_SDK_ROOT=/opt/android-sdk \
             -e ANDROID_HOME=/opt/android-sdk \
             my-android-ci:latest \
-            bash -c "cd front/frontend/android && bundle exec fastlane install_plugins"
+            bash -c "cd /workspace/front/frontend/android && bundle exec fastlane install_plugins"
             
           # 4) 릴리스 빌드 및 배포
           docker run --rm \
@@ -98,7 +105,7 @@ pipeline {
             -e KEY_ALIAS="$KEY_ALIAS" \
             -e KEY_PASSWORD="$KEY_PASSWORD" \
             my-android-ci:latest \
-            bash -c "cd front/frontend/android && bundle exec fastlane release groups:\\"testers\\" notes:\\"CI 자동 배포 빌드\\""
+            bash -c "cd /workspace/front/frontend/android && bundle exec fastlane release groups:\\"testers\\" notes:\\"CI 자동 배포 빌드\\""
         '''
       }
     }
