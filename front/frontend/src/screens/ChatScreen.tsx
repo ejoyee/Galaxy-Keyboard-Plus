@@ -13,6 +13,7 @@ import tw from 'twrnc';
 import HeaderBar from '../components/HeaderBar';
 import InputBar from '../components/InputBar';
 import MessageBubble, {Message} from '../components/MessageBubble';
+import {useAuthStore} from '../stores/authStore';
 
 const HEADER_BG = '#FFEBD6';
 
@@ -25,10 +26,19 @@ export default function ChatScreen() {
   const flatListRef = useRef<FlatList<Message>>(null);
   const headerHeight = useHeaderHeight();
 
+  // zustand에서 userId 가져오기
+  const {userId} = useAuthStore();
+
   /* ---------------- 메시지 전송 ---------------- */
   const handleSend = useCallback(async () => {
     const trimmed = inputText.trim();
     if (!trimmed) return;
+
+    // userId 없으면 중단
+    if (!userId) {
+      setError('로그인이 필요합니다.');
+      return;
+    }
 
     // 1) 사용자 메시지 즉시 추가
     setMessages(prev => [
@@ -47,7 +57,7 @@ export default function ChatScreen() {
     // 2) 서버 호출
     try {
       const form = new URLSearchParams();
-      form.append('user_id', 'dajeong');
+      form.append('user_id', userId);
       form.append('query', trimmed);
 
       const {data} = await axios.post(

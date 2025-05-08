@@ -10,6 +10,8 @@ export async function signInWithKakao() {
   // 1) Kakao SDK 로그인
   const kRes = await kakaoLogin();    // {accessToken, idToken, ...}
 
+  console.log(kRes, "kRes");
+
   // 2) 우리 서버에 전달해 JWT 세트 획득
   const { data } = await api.post('/auth/kakao/login', {
     kakaoAccessToken: kRes.accessToken,

@@ -4,12 +4,14 @@ import { useAuthStore } from '../stores/authStore';
 import { refreshWithServer } from '../services/authService';
 
 export const api = axios.create({
+  // baseURL: 'https://k12e201.p.ssafy.io',
   baseURL: BASE_URL,
   timeout: 8000,
 });
 
 // ★ 토큰 주입
 api.interceptors.request.use((config) => {
+  console.log("BASE_URL: ", BASE_URL);
   const { accessToken } = useAuthStore.getState();
   if (accessToken) {
     config.headers.Authorization = `Bearer ${accessToken}`;
