@@ -99,8 +99,6 @@ dependencies {
     // Firebase BoM 추가
     implementation platform('com.google.firebase:firebase-bom:33.13.0')
     
-    // Firebase 종속성 추가 (버전 지정할 필요 없음)
-    implementation 'com.google.firebase:firebase-analytics'
     // Firebase Analytics
     implementation 'com.google.firebase:firebase-analytics'
 }
