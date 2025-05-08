@@ -110,6 +110,50 @@ pipeline {
       }
     }
 
+    stage('Full Project Structure Debug') {
+      when { expression { env.BUILD_FRONTEND == 'true' } }
+      steps {
+        sh '''
+          echo "===================================================="
+          echo "🔍 프로젝트 구조 심층 디버깅"
+          echo "===================================================="
+          
+          # 기본 디렉토리 구조 확인
+          echo "📂 작업 디렉토리 구조:"
+          find . -maxdepth 2 -type d | sort
+          
+          # 중요 경로의 파일/디렉토리 권한 확인
+          echo "📂 파일 및 디렉토리 권한:"
+          ls -la .
+          ls -la ./front
+          ls -la ./front/frontend
+          ls -la ./front/frontend/android
+          
+          # 빌드 관련 파일 존재 확인
+          echo "📂 주요 빌드 파일 확인:"
+          find . -name "build.gradle" | sort
+          find . -name "settings.gradle" | sort
+          find . -name "package.json" | sort
+          
+          # 디렉토리 크기 확인
+          echo "📂 디렉토리 크기:"
+          du -sh ./front
+          du -sh ./front/frontend
+          du -sh ./front/frontend/android
+          
+          # 사용자 및 그룹 정보
+          echo "👤 사용자 정보:"
+          id
+          
+          # Docker 내부 환경 정보 확인
+          echo "🐳 Docker 내부 환경:"
+          docker run --rm ${DOCKER_IMAGE} bash -c 'echo "Docker 내부 사용자: $(id)"; echo "Docker 내부 환경 변수:"; env | sort'
+          
+          echo "===================================================="
+        '''
+      }
+    }
+
     stage('Prepare Files') {
       when { expression { env.BUILD_FRONTEND == 'true' } }
       steps {
@@ -124,18 +168,34 @@ pipeline {
             echo "🔐 시크릿 파일 준비"
             echo "===================================================="
             
-            # 디렉토리 생성
+            # 디렉토리 생성 및 확인
             mkdir -p front/frontend/android/app/keystore
+            echo "📂 생성된 디렉토리 확인:"
+            ls -la front/frontend/android/app || echo "❌ 앱 디렉토리가 없습니다"
+            ls -la front/frontend/android/app/keystore || echo "❌ keystore 디렉토리가 없습니다"
+            
+            # 시크릿 파일 복사 전 정보
+            echo "🔐 시크릿 파일 정보:"
+            file "$FIREBASE_SERVICE_ACCOUNT" || echo "❌ Firebase 서비스 계정 파일이 없습니다"
+            file "$GOOGLE_SERVICES_JSON" || echo "❌ Google 서비스 JSON 파일이 없습니다"
+            file "$KEYSTORE_FILE" || echo "❌ 키스토어 파일이 없습니다"
             
             # 시크릿 파일 복사 (올바른 경로에 맞게 조정)
-            cp "$FIREBASE_SERVICE_ACCOUNT" front/frontend/android/firebase_service_account.json
-            cp "$GOOGLE_SERVICES_JSON" front/frontend/android/app/google-services.json
-            cp "$KEYSTORE_FILE" front/frontend/android/app/keystore/release.keystore
+            cp -v "$FIREBASE_SERVICE_ACCOUNT" front/frontend/android/firebase_service_account.json || echo "❌ Firebase 서비스 계정 파일 복사 실패"
+            cp -v "$GOOGLE_SERVICES_JSON" front/frontend/android/app/google-services.json || echo "❌ Google 서비스 JSON 파일 복사 실패"
+            cp -v "$KEYSTORE_FILE" front/frontend/android/app/keystore/release.keystore || echo "❌ 키스토어 파일 복사 실패"
             
             # 파일 존재 여부 확인
-            ls -la front/frontend/android/firebase_service_account.json
-            ls -la front/frontend/android/app/google-services.json
-            ls -la front/frontend/android/app/keystore/release.keystore
+            echo "📂 복사된 파일 확인:"
+            ls -la front/frontend/android/firebase_service_account.json || echo "❌ Firebase 서비스 계정 파일이 복사되지 않았습니다"
+            ls -la front/frontend/android/app/google-services.json || echo "❌ Google 서비스 JSON 파일이 복사되지 않았습니다"
+            ls -la front/frontend/android/app/keystore/release.keystore || echo "❌ 키스토어 파일이 복사되지 않았습니다"
+            
+            # 파일 권한 확인
+            echo "📂 파일 권한 확인:"
+            stat front/frontend/android/firebase_service_account.json || echo "❌ Firebase 서비스 계정 파일에 접근할 수 없습니다"
+            stat front/frontend/android/app/google-services.json || echo "❌ Google 서비스 JSON 파일에 접근할 수 없습니다" 
+            stat front/frontend/android/app/keystore/release.keystore || echo "❌ 키스토어 파일에 접근할 수 없습니다"
             
             echo "✅ 시크릿 파일 복사 완료"
             echo "===================================================="
@@ -152,19 +212,59 @@ pipeline {
           echo "📦 빌드 디렉토리 준비"
           echo "===================================================="
           
-          # 임시 빌드 디렉토리 생성
+          # 현재 디렉토리 및 환경 정보 확인
+          echo "📂 현재 작업 디렉토리: $(pwd)"
+          echo "📂 Jenkins 작업 공간: $WORKSPACE"
+          echo "📂 사용자: $(whoami)"
+          
+          # 임시 빌드 디렉토리 생성 및 초기화
+          rm -rf android-build
           mkdir -p android-build
           
-          # 프로젝트 파일 복사
-          echo "📂 프로젝트 파일 복사 중..."
-          cp -r front/frontend/* android-build/
+          # 원본 프로젝트 구조 확인
+          echo "📂 원본 프로젝트 구조:"
+          find front/frontend -type d -maxdepth 3 | sort
           
-          # 복사 확인
-          echo "📂 빌드 디렉토리 확인:"
+          echo "📂 front/frontend 파일 목록:"
+          ls -la front/frontend
+          
+          echo "📂 front/frontend/android 파일 목록:"
+          ls -la front/frontend/android
+          
+          # 상세한 복사 과정 로깅
+          echo "📦 프로젝트 파일 복사 중..."
+          cp -av front/frontend/. android-build/
+          
+          # 복사 후 빌드 디렉토리 구조 확인
+          echo "📂 빌드 디렉토리 구조:"
+          find android-build -type d -maxdepth 3 | sort
+          
+          echo "📂 빌드 디렉토리 파일 목록:"
           ls -la android-build
           
-          echo "📂 빌드 디렉토리 Android 폴더 확인:"
-          ls -la android-build/android
+          echo "📂 빌드 디렉토리 android 폴더 파일 목록:"
+          ls -la android-build/android || echo "❌ android 디렉토리가 복사되지 않았습니다"
+          
+          # android/app 디렉토리 및 중요 파일 확인
+          if [ -d "android-build/android/app" ]; then
+            echo "📂 android/app 디렉토리 파일 목록:"
+            ls -la android-build/android/app
+            
+            echo "📂 google-services.json 확인:"
+            ls -la android-build/android/app/google-services.json || echo "❌ google-services.json 파일이 없습니다"
+            
+            echo "📂 keystore 디렉토리 확인:"
+            ls -la android-build/android/app/keystore || echo "❌ keystore 디렉토리가 없습니다"
+          else
+            echo "❌ android/app 디렉토리가 없습니다"
+          fi
+          
+          # 권한 확인 및 설정
+          echo "📂 중요 실행 파일 권한 확인:"
+          ls -la android-build/android/gradlew || echo "❌ gradlew 파일이 없습니다"
+          
+          echo "🔧 gradlew 파일에 실행 권한 부여"
+          chmod +x android-build/android/gradlew || echo "❌ gradlew 파일에 권한을 부여할 수 없습니다"
           
           echo "✅ 빌드 디렉토리 준비 완료"
           echo "===================================================="
@@ -201,6 +301,9 @@ pipeline {
             echo 'gem "fastlane-plugin-firebase_app_distribution"' > fastlane/Pluginfile
           else
             echo "✅ Fastlane 디렉토리가 이미 존재합니다"
+            echo "📂 Fastlane 디렉토리 내용:"
+            ls -la fastlane
+            cat fastlane/Fastfile
           fi
           
           echo "===================================================="
@@ -213,17 +316,52 @@ pipeline {
       steps {
         sh '''
           echo "===================================================="
-          echo "🔍 Docker 환경 디버깅"
+          echo "🔍 환경 디버깅"
           echo "===================================================="
           
-          # Docker 버전 확인
+          # 시스템 정보 출력
+          echo "🖥️ 호스트 정보:"
+          uname -a
+          
+          # 디스크 공간 확인
+          echo "💾 디스크 공간:"
+          df -h
+          
+          # Docker 정보
+          echo "🐳 Docker 버전:"
           docker --version
           
-          # 이미지 목록 확인
-          docker images | grep my-android-ci
+          # Docker 이미지 정보
+          echo "🐳 Docker 이미지 목록:"
+          docker images | grep -E "my-android-ci|android|react"
           
-          # 테스트로 Docker 컨테이너 실행
-          docker run --rm ${DOCKER_IMAGE} bash -c 'echo "Docker 컨테이너 테스트" && java -version && node --version'
+          # Docker 이미지 상세 정보
+          echo "🐳 Docker 이미지 상세 정보:"
+          docker image inspect ${DOCKER_IMAGE} || echo "❌ Docker 이미지 정보를 확인할 수 없습니다"
+          
+          # Docker 컨테이너에서 Android SDK 확인
+          echo "🐳 Docker 컨테이너 Android SDK 확인:"
+          docker run --rm ${DOCKER_IMAGE} bash -c '
+            echo "Android SDK 경로: $ANDROID_HOME"
+            echo "Android SDK 디렉토리 내용:"
+            ls -la $ANDROID_HOME || echo "Android SDK 디렉토리가 없습니다"
+            echo "Android SDK 도구 확인:"
+            ls -la $ANDROID_HOME/cmdline-tools || echo "Android SDK 명령줄 도구가 없습니다"
+            echo "Android SDK 플랫폼 도구 확인:"
+            ls -la $ANDROID_HOME/platform-tools || echo "Android SDK 플랫폼 도구가 없습니다"
+          '
+          
+          # Docker 컨테이너에서 Node/Java 버전 확인
+          echo "🐳 Docker 컨테이너 개발 환경 확인:"
+          docker run --rm ${DOCKER_IMAGE} bash -c '
+            echo "Node 버전: $(node --version)"
+            echo "NPM 버전: $(npm --version)"
+            echo "Yarn 버전: $(yarn --version)"
+            echo "Java 버전: $(java -version 2>&1 | head -1)"
+            echo "Gradle 설치 여부: $(command -v gradle || echo "Gradle 없음")"
+            echo "Ruby 버전: $(ruby --version || echo "Ruby 없음")"
+            echo "Fastlane 설치 여부: $(gem list | grep fastlane || echo "Fastlane 없음")"
+          '
           
           echo "===================================================="
         '''
@@ -238,11 +376,25 @@ pipeline {
           echo "🚀 Docker를 통한 Android 빌드"
           echo "===================================================="
           
-          # 작업 디렉토리
+          # 작업 디렉토리 정보
           WORKSPACE_DIR="$(pwd)"
           BUILD_DIR="$WORKSPACE_DIR/android-build"
           
+          echo "📂 빌드 디렉토리 경로: $BUILD_DIR"
+          echo "📂 빌드 디렉토리 내용:"
+          ls -la $BUILD_DIR
+          
+          # Docker 이미지 및 환경 확인
+          echo "🐳 사용할 Docker 이미지: ${DOCKER_IMAGE}"
+          echo "🐳 Docker 이미지 세부 정보:"
+          docker image inspect ${DOCKER_IMAGE} | grep -E 'Id|RepoTags|Created|Size'
+          
+          # 볼륨 마운트 테스트
+          echo "🐳 Docker 볼륨 마운트 테스트:"
+          docker run --rm -v "$BUILD_DIR:/app" ${DOCKER_IMAGE} bash -c 'echo "마운트된 디렉토리 내용:"; ls -la /app'
+          
           # Docker에서 React Native 앱 빌드 실행
+          echo "🐳 Docker 컨테이너 내에서 빌드 시작"
           docker run --rm \
             -v "$BUILD_DIR:/app" \
             -w /app \
@@ -253,17 +405,60 @@ pipeline {
             -e KEY_PASSWORD="$KEY_PASSWORD" \
             ${DOCKER_IMAGE} \
             bash -c '
+              set -e  # 에러 발생 시 즉시 스크립트 중단
               set -x  # 실행 명령어 출력
               
               echo "📂 현재 디렉토리: $(pwd)"
+              echo "📂 디렉토리 내용:"
               ls -la
               
-              echo "🔧 Node 모듈 설치"
-              yarn install
+              # 전체 디렉토리 구조 출력
+              echo "📂 전체 디렉토리 구조:"
+              find . -type d | sort
               
-              echo "🔧 Android 디렉토리로 이동"
-              cd android
+              # 파일 구조 깊이 확인
+              echo "📂 디렉토리 깊이 확인:"
+              find . -type d | awk -F/ "{ print NF-1 }" | sort -nu
+              
+              echo "🔧 Node 모듈 설치 시작"
+              yarn -v
+              node -v
+              yarn install --verbose
+              
+              # Android 디렉토리 확인 (핵심 부분)
+              echo "📂 안드로이드 디렉토리 찾기:"
+              find . -name "android" -type d | sort
+              
+              if [ -d "android" ]; then
+                echo "✅ 루트 경로에 Android 디렉토리 발견"
+                cd android
+              else
+                echo "⚠️ 루트 경로에 Android 디렉토리가 없습니다. 디렉토리 구조 심층 분석:"
+                find . -type d -maxdepth 3
+                
+                # 하위 디렉토리에서 android 폴더 찾기
+                ANDROID_DIR=$(find . -name "android" -type d | head -1)
+                if [ ! -z "$ANDROID_DIR" ]; then
+                  echo "✅ Android 디렉토리 발견: $ANDROID_DIR"
+                  cd "$ANDROID_DIR"
+                else
+                  echo "❌ Android 디렉토리를 찾을 수 없습니다. 빌드 실패."
+                  exit 1
+                fi
+              fi
+              
+              echo "📂 Android 디렉토리 내용:"
               ls -la
+              
+              # 필수 파일 및 디렉토리 존재 확인
+              echo "📂 중요 파일 확인:"
+              [ -f "build.gradle" ] && echo "✅ build.gradle 존재" || echo "❌ build.gradle 없음"
+              [ -f "settings.gradle" ] && echo "✅ settings.gradle 존재" || echo "❌ settings.gradle 없음"
+              [ -f "gradlew" ] && echo "✅ gradlew 존재" || echo "❌ gradlew 없음"
+              [ -d "app" ] && echo "✅ app 디렉토리 존재" || echo "❌ app 디렉토리 없음"
+              
+              echo "📂 app 디렉토리 확인:"
+              ls -la app || echo "❌ app 디렉토리에 접근할 수 없습니다"
               
               echo "🔧 local.properties 생성"
               echo "sdk.dir=/opt/android-sdk" > local.properties
@@ -278,32 +473,57 @@ pipeline {
               KEY_PASSWORD=$KEY_PASSWORD
               EOF
               
+              echo "📂 gradle.properties 내용 확인:"
               cat gradle.properties
               
               echo "🔧 Android SDK 환경 확인"
               echo "ANDROID_HOME: $ANDROID_HOME"
-              ls -la $ANDROID_HOME || echo "Android SDK 디렉토리에 접근할 수 없습니다"
+              echo "📂 Android SDK 디렉토리 내용:"
+              ls -la $ANDROID_HOME || echo "❌ Android SDK 디렉토리에 접근할 수 없습니다"
               
               echo "🔧 Gradle 버전 확인"
-              ./gradlew --version
+              chmod +x ./gradlew
+              ./gradlew --version || { echo "❌ Gradle 버전 확인 실패"; exit 1; }
               
               echo "🔧 Gradle 빌드 실행"
-              chmod +x ./gradlew
-              ./gradlew clean --info
-              ./gradlew assembleDebug --info
+              ./gradlew tasks || { echo "❌ Gradle 태스크 목록 확인 실패"; exit 1; }
+              ./gradlew clean --info || { echo "❌ Gradle clean 실패"; exit 1; }
+              ./gradlew assembleDebug --info || { echo "❌ Gradle assembleDebug 실패"; exit 1; }
               
               echo "🔧 빌드 결과 확인"
-              find . -name "*.apk"
+              find . -name "*.apk" || echo "❌ APK 파일을 찾을 수 없습니다"
+              
+              # 빌드 결과 상세 확인
+              echo "📂 app/build 디렉토리 확인:"
+              ls -la app/build || echo "❌ app/build 디렉토리에 접근할 수 없습니다"
+              
+              echo "📂 app/build/outputs 디렉토리 확인:"
+              ls -la app/build/outputs || echo "❌ app/build/outputs 디렉토리에 접근할 수 없습니다"
+              
+              echo "📂 빌드 로그 전체 경로:"
+              find app -name "build-info.xml" | xargs cat || echo "❌ 빌드 로그를 찾을 수 없습니다"
             '
           
-          # 빌드 결과물 복사
-          mkdir -p apk
-          find android-build/android -name "*.apk" -exec cp {} apk/ \\;
+          # 빌드 결과 확인 (Docker 실행 후)
+          echo "📂 빌드 후 android-build 디렉토리 구조:"
+          find android-build -type d | grep -E "outputs|apk" || echo "❌ 빌드 결과 디렉토리를 찾을 수 없습니다"
           
-          # 빌드 결과 확인
-          echo "📂 빌드 결과 확인:"
-          find android-build/android -name "*.apk" || echo "❌ Android 프로젝트 내에 APK 파일이 생성되지 않았습니다"
-          find apk -name "*.apk" || echo "❌ APK 디렉토리에 APK 파일이 복사되지 않았습니다"
+          # APK 파일 찾기 및 복사
+          echo "🔍 APK 파일 검색:"
+          find android-build -name "*.apk" || echo "❌ APK 파일을 찾을 수 없습니다"
+          
+          # 결과물 복사
+          mkdir -p apk
+          if find android-build -name "*.apk" | grep -q ".apk"; then
+            echo "✅ APK 파일 발견: 복사 중..."
+            find android-build -name "*.apk" -exec cp -v {} apk/ \;
+          else
+            echo "❌ APK 파일이 생성되지 않았습니다"
+          fi
+          
+          # 복사된 파일 확인
+          echo "📂 apk 디렉토리 내용:"
+          ls -la apk || echo "❌ apk 디렉토리가 비어있습니다"
           
           echo "===================================================="
         '''
@@ -331,6 +551,9 @@ pipeline {
             fi
             
             echo "✅ 업로드할 APK 파일: $APK_FILE"
+            echo "📂 APK 파일 정보:"
+            ls -la "$APK_FILE"
+            file "$APK_FILE"
             
             # Docker에서 Firebase 배포 실행
             docker run --rm \
@@ -340,21 +563,52 @@ pipeline {
               -e FIREBASE_APP_ID="$FIREBASE_APP_ID" \
               ${DOCKER_IMAGE} \
               bash -c '
+                set -x  # 실행 명령어 출력
+                
                 cd /workspace/android-build/android
+                
+                # Fastlane 환경 디버깅
+                echo "📂 현재 디렉토리 확인:"
+                pwd
+                ls -la
+                
+                echo "📂 Fastlane 디렉토리 확인:"
+                ls -la fastlane || echo "❌ Fastlane 디렉토리가 없습니다"
+                
+                echo "📂 Gemfile 확인:"
+                cat Gemfile || echo "❌ Gemfile이 없습니다"
                 
                 # Bundler 환경 설정
                 export GEM_HOME=/root/.gem
                 export PATH=$PATH:$GEM_HOME/bin
                 
+                # Ruby 및 Bundler 버전 확인
+                echo "💎 Ruby 버전:"
+                ruby --version
+                
+                echo "💎 Bundler 버전:"
+                bundle --version || gem install bundler
+                
                 # Fastlane으로 배포
+                echo "🚀 Fastlane 배포 시작"
                 bundle config set path "vendor/bundle"
                 bundle install
+                
+                echo "📂 APK 파일 경로 확인:"
+                ls -la /workspace/"$APK_FILE" || echo "❌ APK 파일에 접근할 수 없습니다"
+                
+                # Firebase CLI 설치 및 확인
+                echo "🔥 Firebase CLI 확인:"
+                command -v firebase || npm install -g firebase-tools
+                
+                # Fastlane으로 배포
+                echo "🚀 Firebase App Distribution으로 APK 배포"
                 bundle exec fastlane run firebase_app_distribution \
                   app:"$FIREBASE_APP_ID" \
                   firebase_cli_token:"$FIREBASE_TOKEN" \
                   apk_path:"/workspace/'"$APK_FILE"'" \
                   groups:"testers" \
-                  release_notes:"Jenkins CI 자동 배포 빌드 #${BUILD_ID} (${GIT_COMMIT})" || echo "⚠️ Firebase 배포 실패"
+                  release_notes:"Jenkins CI 자동 배포 빌드 #${BUILD_ID} (${GIT_COMMIT})" || { echo "⚠️ Firebase 배포 실패: $?"; exit 1; }
               '
             
             echo "===================================================="
@@ -373,18 +627,39 @@ pipeline {
           
           mkdir -p apk-archive
           
-          # apk 디렉토리에서 APK 파일 찾기
+          # apk 디렉토리에서 APK 파일 찾기 - 자세한 로깅 추가
+          echo "🔍 APK 파일 검색:"
+          find "$(pwd)" -name "*.apk" 2>/dev/null | sort
+          
           APK_COUNT=$(find "$(pwd)/apk" -name "*.apk" 2>/dev/null | wc -l || echo "0")
           
           if [ "$APK_COUNT" -gt 0 ]; then
             echo "✅ $APK_COUNT 개의 APK 파일 발견:"
             find "$(pwd)/apk" -name "*.apk" 2>/dev/null
             
-            # 모든 APK 파일을 아카이브 디렉토리로 복사
-            cp -r apk/*.apk apk-archive/ || true
+            # 모든 APK 파일을 아카이브 디렉토리로 복사 (상세 로깅)
+            echo "📦 APK 파일 복사 중..."
+            find "$(pwd)/apk" -name "*.apk" -exec cp -v {} apk-archive/ \;
+            
+            # APK 파일 정보 출력
+            echo "📂 APK 파일 정보:"
+            for apk in apk-archive/*.apk; do
+              echo "파일: $apk"
+              ls -la "$apk"
+              file "$apk"
+              echo ""
+            done
           else
             echo "❌ APK 파일을 찾을 수 없습니다"
             echo "No APK files found" > apk-archive/build-failed.txt
+            
+            # 디버깅 정보 수집
+            echo "📂 빌드 디렉토리 내 가능한 APK 경로 확인:"
+            find android-build -path "*app/build*" -type d | sort
+            
+            # 빌드 실패 원인 기록
+            echo "빌드 실패 시간: $(date)" >> apk-archive/build-failed.txt
+            echo "가능한 원인: APK 파일이 생성되지 않았거나 예상 위치에 없습니다." >> apk-archive/build-failed.txt
           fi
           
           echo "===================================================="
@@ -408,7 +683,36 @@ pipeline {
         echo "===================================================="
         echo "❌ Frontend CI/CD 실패 ❗"
         echo "===================================================="
+        
+        # 빌드 실패 시 디버깅 정보 수집
+        echo "🔍 실패 디버깅 정보 수집"
+        
+        # 작업 디렉토리 구조 저장
+        echo "📂 작업 디렉토리 구조:" > build-debug-info.txt
+        find . -type d -maxdepth 3 >> build-debug-info.txt
+        
+        # Docker 이미지 정보 저장
+        echo "🐳 Docker 이미지 정보:" >> build-debug-info.txt
+        docker images >> build-debug-info.txt
+        
+        # 마지막 로그 정보 저장
+        echo "📋 마지막 로그 정보:" >> build-debug-info.txt
+        tail -n 100 ./*.log 2>/dev/null >> build-debug-info.txt || echo "로그 파일 없음" >> build-debug-info.txt
+        
+        # 안드로이드 빌드 실패 로그 검색
+        echo "📋 Gradle 빌드 실패 로그:" >> build-debug-info.txt
+        find android-build -name "*.log" -o -name "output.json" 2>/dev/null | xargs cat >> build-debug-info.txt || echo "Gradle 로그 없음" >> build-debug-info.txt
+        
+        # 모든 디버깅 정보를 아카이브
+        mkdir -p debug-archive
+        cp build-debug-info.txt debug-archive/
+        
+        # 디버깅 정보 아카이브
+        echo "📦 디버깅 정보 아카이브 완료"
       '''
+      
+      // 빌드 실패 시 디버깅 정보 아카이브
+      archiveArtifacts artifacts: 'debug-archive/**', fingerprint: true, allowEmptyArchive: true
     }
     always {
       sh '''
