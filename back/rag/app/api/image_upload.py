@@ -83,7 +83,6 @@ async def upload_image(
                 if schedule_result.get("is_schedule") and schedule_result.get(
                     "datetime"
                 ):
-                    # 기존 문자열을 datetime 객체로 파싱 후 ISO 형식으로 변환
                     try:
                         image_time_obj = datetime.strptime(
                             image_time, "%Y-%m-%d %H:%M:%S"
@@ -91,14 +90,14 @@ async def upload_image(
                         image_time_iso = image_time_obj.isoformat()
                     except ValueError as e:
                         logger.warning(f"⚠️ image_time 파싱 실패: {e}, 원본 값 사용")
-                        image_time_iso = image_time  # fallback
+                        image_time_iso = image_time
 
-                    image_payload = {
+                    # ❗ 여기에서 plan_payload 선언 필요
+                    plan_payload = {
                         "userId": user_id,
-                        "accessId": access_id,
-                        "imageTime": image_time_iso,
-                        "type": target,
-                        "content": content,
+                        "planTime": image_time_iso,  # 또는 schedule_result["datetime"] 이 더 맞을 수 있음
+                        "planContent": schedule_result.get("event", content),
+                        "imageId": image_id,
                     }
 
                     logger.info(f"📤 일정 등록 전송 → payload: {plan_payload}")
@@ -109,6 +108,7 @@ async def upload_image(
                     plan_response = await client.post(
                         "http://backend-service:8083/api/v1/plans", json=plan_payload
                     )
+
                     logger.info(f"📥 일정 응답 상태: {plan_response.status_code}")
                     logger.debug(f"📥 일정 응답 내용: {plan_response.text}")
 
