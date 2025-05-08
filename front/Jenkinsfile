@@ -12,6 +12,10 @@ pipeline {
     FIREBASE_APP_ID  = '1:189536895445:android:783ed885fd7c4b896bfd5c'
     // 빌드 강제 실행 여부
     FORCE_BUILD      = 'true'
+    // 키스토어 관련 설정
+    KEYSTORE_PASSWORD = credentials('KEYSTORE_PASSWORD')
+    KEY_ALIAS        = credentials('KEY_ALIAS')
+    KEY_PASSWORD     = credentials('KEY_PASSWORD')
     // 사용할 Docker 이미지
     DOCKER_IMAGE     = 'my-android-ci:latest'
   }
@@ -108,9 +112,6 @@ pipeline {
         // 시크릿 파일 준비
         withCredentials([
           file(credentialsId: 'android-release-keystore', variable: 'KEYSTORE_FILE'),
-          string(credentialsId: 'KEYSTORE_PASSWORD', variable: 'KEYSTORE_PASSWORD'),
-          string(credentialsId: 'KEY_ALIAS', variable: 'KEY_ALIAS'),
-          string(credentialsId: 'KEY_PASSWORD', variable: 'KEY_PASSWORD'),
           file(credentialsId: 'google-services-json', variable: 'GOOGLE_SERVICES_JSON'),
           file(credentialsId: 'firebase-service-account', variable: 'FIREBASE_SERVICE_ACCOUNT')
         ]) {
@@ -119,18 +120,59 @@ pipeline {
             echo "🔐 시크릿 파일 준비"
             echo "===================================================="
             
-            # Keystore 디렉토리 생성
+            # 디렉토리 생성
             mkdir -p front/frontend/android/app/keystore
             
-            # 시크릿 파일 복사
-            cp "$KEYSTORE_FILE" front/frontend/android/app/keystore/release.keystore
-            cp "$GOOGLE_SERVICES_JSON" front/frontend/android/app/google-services.json
+            # 시크릿 파일 복사 (올바른 경로에 맞게 조정)
             cp "$FIREBASE_SERVICE_ACCOUNT" front/frontend/android/firebase_service_account.json
+            cp "$GOOGLE_SERVICES_JSON" front/frontend/android/app/google-services.json
+            cp "$KEYSTORE_FILE" front/frontend/android/app/keystore/release.keystore
+            
+            # 파일 존재 여부 확인
+            ls -la front/frontend/android/firebase_service_account.json
+            ls -la front/frontend/android/app/google-services.json
+            ls -la front/frontend/android/app/keystore/release.keystore
             
             echo "✅ 시크릿 파일 복사 완료"
             echo "===================================================="
           '''
         }
+      }
+    }
+
+    stage('Prepare Fastlane') {
+      when { expression { env.BUILD_FRONTEND == 'true' } }
+      steps {
+        sh '''
+          echo "===================================================="
+          echo "🚀 Fastlane 환경 준비"
+          echo "===================================================="
+          
+          cd front/frontend/android
+          
+          # Fastlane 디렉토리 확인 및 필요시 초기화
+          if [ ! -d "fastlane" ]; then
+            echo "🔧 Fastlane 초기화"
+            touch Gemfile
+            echo 'source "https://rubygems.org"' > Gemfile
+            echo 'gem "fastlane"' >> Gemfile
+            echo 'plugins_path = File.join(File.dirname(__FILE__), "fastlane", "Pluginfile")' >> Gemfile
+            echo 'eval_gemfile(plugins_path) if File.exist?(plugins_path)' >> Gemfile
+            
+            mkdir -p fastlane
+            echo 'lane :beta do' > fastlane/Fastfile
+            echo '  gradle(task: "clean assembleRelease")' >> fastlane/Fastfile
+            echo '  firebase_app_distribution(app: ENV["FIREBASE_APP_ID"])' >> fastlane/Fastfile
+            echo 'end' >> fastlane/Fastfile
+            
+            touch fastlane/Pluginfile
+            echo 'gem "fastlane-plugin-firebase_app_distribution"' > fastlane/Pluginfile
+          else
+            echo "✅ Fastlane 디렉토리가 이미 존재합니다"
+          fi
+          
+          echo "===================================================="
+        '''
       }
     }
 
@@ -147,27 +189,38 @@ pipeline {
           
           # Docker에서 React Native 앱 빌드 실행
           docker run --rm \
-            -v "$WORKSPACE_DIR/front/frontend:/workspace" \
+            -v "$WORKSPACE_DIR:/workspace" \
             -w /workspace \
             -e ANDROID_SDK_ROOT=/opt/android-sdk \
             -e ANDROID_HOME=/opt/android-sdk \
+            -e KEYSTORE_PASSWORD="$KEYSTORE_PASSWORD" \
+            -e KEY_ALIAS="$KEY_ALIAS" \
+            -e KEY_PASSWORD="$KEY_PASSWORD" \
             ${DOCKER_IMAGE} \
             bash -c '
-              echo "📂 작업 디렉토리 구조 확인"
-              ls -la
-
+              cd /workspace/front/frontend
+              
               echo "🔧 Node 모듈 설치"
               yarn install
-
+              
               echo "🔧 Android 디렉토리로 이동"
               cd android
-
+              
               echo "🔧 local.properties 생성"
               echo "sdk.dir=/opt/android-sdk" > local.properties
-              cat local.properties
-
+              
+              echo "🔧 Gradle 프로퍼티 설정"
+              cat >> gradle.properties << EOF
+              
+              # CI 환경 키스토어 설정
+              KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD
+              KEY_ALIAS=$KEY_ALIAS
+              KEY_PASSWORD=$KEY_PASSWORD
+              EOF
+              
               echo "🔧 Gradle 빌드 실행"
-              ./gradlew assembleDebug --stacktrace
+              chmod +x ./gradlew
+              ./gradlew clean assembleDebug --stacktrace
             '
           
           # 빌드 결과물 복사
@@ -205,7 +258,7 @@ pipeline {
             
             echo "✅ 업로드할 APK 파일: $APK_FILE"
             
-            # Docker에서 Firebase 배포 실행 (이미 빌드된 CI 이미지 사용)
+            # Docker에서 Firebase 배포 실행
             docker run --rm \
               -v "$(pwd):/workspace" \
               -w /workspace \
@@ -213,21 +266,21 @@ pipeline {
               -e FIREBASE_APP_ID="$FIREBASE_APP_ID" \
               ${DOCKER_IMAGE} \
               bash -c '
-                echo "==== Firebase App Distribution 배포 ===="
-                # Ruby Gem 경로 등 환경 설정 (필요한 경우)
-                export PATH=$PATH:/root/.gem/ruby/3.0.0/bin
+                cd /workspace/front/frontend/android
                 
-                cd /workspace
+                # Bundler 환경 설정
+                export GEM_HOME=/root/.gem
+                export PATH=$PATH:$GEM_HOME/bin
                 
-                # Fastlane을 사용하여 Firebase App Distribution에 배포
-                fastlane run firebase_app_distribution_login token:"$FIREBASE_TOKEN"
-                
-                fastlane run firebase_app_distribution \
+                # Fastlane으로 배포
+                bundle config set path "vendor/bundle"
+                bundle install
+                bundle exec fastlane run firebase_app_distribution \
                   app:"$FIREBASE_APP_ID" \
                   firebase_cli_token:"$FIREBASE_TOKEN" \
-                  apk_path:"'"$APK_FILE"'" \
+                  apk_path:"/workspace/'"$APK_FILE"'" \
                   groups:"testers" \
-                  release_notes:"Jenkins CI 자동 배포 빌드" || echo "⚠️ Firebase 배포 실패"
+                  release_notes:"Jenkins CI 자동 배포 빌드 #${BUILD_ID} (${GIT_COMMIT})" || echo "⚠️ Firebase 배포 실패"
               '
             
             echo "===================================================="
