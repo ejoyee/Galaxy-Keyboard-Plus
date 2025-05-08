@@ -39,11 +39,15 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-oauth2-resource-server' // JWT decoding용
 	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
 	implementation 'org.springframework.boot:spring-boot-starter-validation'
-	implementation 'com.auth0:java-jwt:4.4.0'                   // JWT 생성
+
 	runtimeOnly  'org.postgresql:postgresql'
 	implementation 'io.github.cdimascio:dotenv-java:3.0.0'
 	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.1.0'
 	implementation 'org.springframework.boot:spring-boot-starter-webflux'
+
+	implementation("io.jsonwebtoken:jjwt-api:0.11.5")
+	implementation("io.jsonwebtoken:jjwt-impl:0.11.5")
+	implementation("io.jsonwebtoken:jjwt-jackson:0.11.5") // JSON 처리를 위한 Jackson 바인딩
 }
 
 tasks.named('test') {

@@ -1,51 +1,71 @@
 package com.auth.config;
 
-import com.auth0.jwt.*;
-import com.auth0.jwt.algorithms.Algorithm;
-import com.auth0.jwt.exceptions.JWTVerificationException;
-import com.auth0.jwt.interfaces.DecodedJWT;
+import io.jsonwebtoken.*;
+import io.jsonwebtoken.security.Keys;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-import java.util.*;
+import javax.crypto.SecretKey;
+import java.nio.charset.StandardCharsets;
+import java.util.Date;
+import java.util.UUID;
 
 @Component
 public class JwtTokenProvider {
 
-    private final Algorithm alg;
-    private final long atMs;
-    private final long rtMs;
+    private static final Logger logger = LoggerFactory.getLogger(JwtTokenProvider.class);
 
-    public JwtTokenProvider(@Value("${jwt.secret}") String secret,
-                            @Value("${jwt.access-token-validity}") long at,
-                            @Value("${jwt.refresh-token-validity}") long rt) {
-        this.alg = Algorithm.HMAC256(Base64.getEncoder().encodeToString(secret.getBytes()));
-        this.atMs = at;
-        this.rtMs = rt;
+    private final SecretKey secretKey;
+    private final long at;
+    private final long rt;
+
+    public JwtTokenProvider(
+            @Value("${jwt.secret}") String secret,
+            @Value("${jwt.access-token-validity}") long at,
+            @Value("${jwt.refresh-token-validity}") long rt) {
+        this.secretKey = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
+        this.at = at;
+        this.rt = rt;
     }
 
     private String create(UUID uid, long ms) {
         Date now = new Date();
-        return JWT.create().withSubject(uid.toString())
-                  .withIssuedAt(now)
-                  .withExpiresAt(new Date(now.getTime() + ms))
-                  .sign(alg);
+        return Jwts.builder()
+                .setSubject(uid.toString())
+                .setIssuedAt(now)
+                .setExpiration(new Date(now.getTime() + ms))
+                .signWith(secretKey, SignatureAlgorithm.HS256)
+                .compact();
     }
-    public String access(UUID id)  { return create(id, atMs); }
-    public String refresh(UUID id) { return create(id, rtMs); }
+
+    public String access(UUID id) {
+        return create(id, at);
+    }
+
+    public String refresh(UUID id) {
+        return create(id, rt);
+    }
 
     public UUID parse(String token) {
         try {
-            DecodedJWT decoded = JWT.require(alg).build().verify(token);
-            String subject = decoded.getSubject();
+            Claims claims = Jwts.parserBuilder()
+                    .setSigningKey(secretKey)
+                    .build()
+                    .parseClaimsJws(token)
+                    .getBody();
+
+            String subject = claims.getSubject();
             if (subject == null) {
-                throw new JWTVerificationException("Token does not contain a subject (userId)");
+                throw new JwtException("토큰에 사용자 ID(subject)가 없습니다.");
             }
+
             return UUID.fromString(subject);
-        } catch (JWTVerificationException | IllegalArgumentException e) {
-            // IllegalArgumentException은 UUID.fromString 실패 시 던져집니다.
-            System.err.println("JWT parsing/verification failed: " + e.getMessage());
-            throw new RuntimeException("Invalid Token or failed to parse User ID from token.", e);
+
+        } catch (JwtException | IllegalArgumentException e) {
+            logger.error("❌ JWT 파싱 또는 검증 실패: {}", e.getMessage());
+            throw new RuntimeException("유효하지 않은 토큰이거나 사용자 ID 파싱에 실패했습니다.", e);
         }
     }
 }
