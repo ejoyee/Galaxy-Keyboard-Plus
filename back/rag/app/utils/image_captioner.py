@@ -28,7 +28,7 @@ def generate_image_caption(image_bytes: bytes) -> str:
     encoded_image = base64.b64encode(resized_bytes).decode("utf-8")
 
     response = client.chat.completions.create(
-        model="gpt-4-turbo",
+        model="gpt-4o-mini",
         messages=[
             {
                 "role": "user",
