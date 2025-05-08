@@ -639,7 +639,7 @@ pipeline {
             
             # 모든 APK 파일을 아카이브 디렉토리로 복사 (상세 로깅)
             echo "📦 APK 파일 복사 중..."
-            find "$(pwd)/apk" -name "*.apk" -exec cp -v {} apk-archive/ \;
+            find "$(pwd)/apk" -name "*.apk" | xargs -I {} cp -v {} apk-archive/
             
             # APK 파일 정보 출력
             echo "📂 APK 파일 정보:"
