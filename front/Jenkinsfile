@@ -5,13 +5,10 @@ pipeline {
     // Android SDK 설정
     ANDROID_SDK_ROOT = '/opt/android-sdk'
     ANDROID_HOME     = '/opt/android-sdk'
-    PATH             = "${env.PATH}:/opt/android-sdk/cmdline-tools/latest/bin:/opt/android-sdk/platform-tools"
     // Fastlane Firebase App Distribution 토큰
     FIREBASE_TOKEN   = credentials('FIREBASE_TOKEN')
     // Firebase 앱 ID
     FIREBASE_APP_ID  = '1:189536895445:android:783ed885fd7c4b896bfd5c'
-    // 빌드 강제 실행 여부
-    FORCE_BUILD      = 'true'
     // 키스토어 관련 설정
     KEYSTORE_PASSWORD = credentials('KEYSTORE_PASSWORD')
     KEY_ALIAS        = credentials('KEY_ALIAS')
@@ -37,409 +34,212 @@ pipeline {
       }
     }
 
-    stage('Detect Frontend Changes') {
-      steps {
-        script {
-          def diff = sh(
-            script: "git diff --name-only ${env.GIT_PREVIOUS_SUCCESSFUL_COMMIT ?: 'HEAD~1'} ${env.GIT_COMMIT}",
-            returnStdout: true
-          ).trim()
-          
-          // 변경 파일 목록 출력
-          echo "==== 변경된 파일 목록 ===="
-          echo "${diff}"
-          echo "=========================="
-          
-          // "front/" 하위 파일 변경이 있으면 빌드
-          env.BUILD_FRONTEND = diff.split('\n').any { it.startsWith('front/') } ? 'true' : 'false'
-          
-          // 강제 빌드 옵션이 true이면 무조건 빌드
-          if (env.FORCE_BUILD == 'true') {
-            env.BUILD_FRONTEND = 'true'
-            echo "🔧 강제 빌드 옵션이 활성화되어 있습니다."
-          }
-          
-          echo env.BUILD_FRONTEND=='true'
-               ? "▶ Frontend 변경 감지: 빌드합니다"
-               : "▶ Frontend 변경 없음: 스킵합니다"
-        }
-      }
-    }
-
-    stage('Check Project Structure') {
-      when { expression { env.BUILD_FRONTEND == 'true' } }
+    stage('Environment Diagnostic') {
       steps {
         sh '''
           echo "===================================================="
-          echo "🔍 프로젝트 구조 확인"
+          echo "🔍 Jenkins 환경 진단"
           echo "===================================================="
           
-          # 디렉토리 구조 확인
-          echo "📂 작업 디렉토리: $(pwd)"
+          # 시스템 정보
+          echo "📊 OS 정보:"
+          uname -a
           
-          echo "📂 front/frontend 디렉토리 확인:"
-          ls -la front/frontend || { echo "❌ front/frontend 디렉토리가 없습니다"; exit 1; }
+          # 설치된 도구 확인
+          echo "📊 설치된 도구 확인:"
+          which node || echo "Node.js가 설치되어 있지 않습니다"
+          which npm || echo "npm이 설치되어 있지 않습니다"
+          which yarn || echo "yarn이 설치되어 있지 않습니다"
+          which java || echo "Java가 설치되어 있지 않습니다"
+          which javac || echo "Java 컴파일러가 설치되어 있지 않습니다"
           
-          # package.json 확인
-          if [ -f "front/frontend/package.json" ]; then
-            echo "✅ package.json 파일 존재"
-            cat front/frontend/package.json | grep "name\\|version"
-          else
-            echo "❌ package.json 파일이 없습니다. React Native 프로젝트가 아닐 수 있습니다."
-            exit 1
-          fi
+          # 환경 변수 확인
+          echo "📊 환경 변수:"
+          echo "PATH: $PATH"
+          echo "ANDROID_HOME: $ANDROID_HOME"
+          echo "ANDROID_SDK_ROOT: $ANDROID_SDK_ROOT"
           
-          echo "📂 front/frontend/android 디렉토리 확인:"
-          ls -la front/frontend/android || { echo "❌ front/frontend/android 디렉토리가 없습니다"; exit 1; }
+          # Android SDK 확인
+          echo "📊 Android SDK 확인:"
+          [ -d "$ANDROID_SDK_ROOT" ] && ls -la $ANDROID_SDK_ROOT || echo "Android SDK 디렉토리가 없습니다"
           
-          echo "📂 gradlew 파일 확인:"
-          if [ -f "front/frontend/android/gradlew" ]; then
-            echo "✅ gradlew 파일 존재"
-            chmod +x front/frontend/android/gradlew
-          else
-            echo "❌ gradlew 파일이 없습니다."
-            exit 1
-          fi
+          # 작업 디렉토리 구조
+          echo "📊 작업 디렉토리 구조:"
+          ls -la
+          
+          # Front 디렉토리 구조
+          echo "📊 Front 디렉토리 구조:"
+          ls -la front/
+          
+          # Frontend 디렉토리 구조
+          echo "📊 Frontend 디렉토리 구조:"
+          ls -la front/frontend/
+          
+          # Android 디렉토리 구조
+          echo "📊 Android 디렉토리 구조:"
+          ls -la front/frontend/android/
           
           echo "===================================================="
         '''
       }
     }
 
-    stage('Prepare Files') {
-      when { expression { env.BUILD_FRONTEND == 'true' } }
-      steps {
-        // 시크릿 파일 준비
-        withCredentials([
-          file(credentialsId: 'android-release-keystore', variable: 'KEYSTORE_FILE'),
-          file(credentialsId: 'google-services-json', variable: 'GOOGLE_SERVICES_JSON'),
-          file(credentialsId: 'firebase-service-account', variable: 'FIREBASE_SERVICE_ACCOUNT')
-        ]) {
-          sh '''
-            echo "===================================================="
-            echo "🔐 시크릿 파일 준비"
-            echo "===================================================="
-            
-            # 디렉토리 생성
-            mkdir -p front/frontend/android/app/keystore
-            
-            # 시크릿 파일 복사 (올바른 경로에 맞게 조정)
-            cp "$FIREBASE_SERVICE_ACCOUNT" front/frontend/android/firebase_service_account.json
-            cp "$GOOGLE_SERVICES_JSON" front/frontend/android/app/google-services.json
-            cp "$KEYSTORE_FILE" front/frontend/android/app/keystore/release.keystore
-            
-            # 파일 존재 여부 확인
-            ls -la front/frontend/android/firebase_service_account.json
-            ls -la front/frontend/android/app/google-services.json
-            ls -la front/frontend/android/app/keystore/release.keystore
-            
-            echo "✅ 시크릿 파일 복사 완료"
-            echo "===================================================="
-          '''
-        }
-      }
-    }
-
-    stage('Install Dependencies') {
-      when { expression { env.BUILD_FRONTEND == 'true' } }
+    stage('Docker Environment Diagnostic') {
       steps {
         sh '''
           echo "===================================================="
-          echo "📦 Node.js 종속성 설치"
+          echo "🔍 Docker 환경 진단"
           echo "===================================================="
           
-          # front/frontend 디렉토리로 이동
-          cd front/frontend
+          # Docker 버전 확인
+          echo "📊 Docker 버전:"
+          docker --version
           
-          # Node.js 버전 확인
-          echo "📊 Node.js 버전 정보:"
-          node --version
-          npm --version
+          # Docker 이미지 확인
+          echo "📊 사용 중인 Docker 이미지:"
+          docker images ${DOCKER_IMAGE}
           
-          # package-lock.json 삭제 (충돌 방지)
-          rm -f package-lock.json
+          # Docker 이미지 정보
+          echo "📊 Docker 이미지 상세 정보:"
+          docker image inspect ${DOCKER_IMAGE}
           
-          # 종속성 설치
-          echo "📦 npm 종속성 설치 중..."
-          npm install
-          
-          # 설치 확인
-          echo "📂 node_modules 디렉토리 확인:"
-          ls -la node_modules | head
-          
-          # React Native Gradle 플러그인 확인
-          echo "📂 React Native Gradle 플러그인 확인:"
-          ls -la node_modules/@react-native/gradle-plugin || echo "❌ React Native Gradle 플러그인이 설치되지 않았습니다"
+          # Docker 환경 확인
+          echo "📊 Docker 환경 확인:"
+          docker run --rm ${DOCKER_IMAGE} bash -c 'echo "OS: $(uname -a)" && echo "Node: $(node -v)" && echo "NPM: $(npm -v)" && echo "Yarn: $(yarn -v)" && echo "Java: $(java -version 2>&1)" && ls -la /workspace || echo "워크스페이스 디렉토리 없음" && ls -la / | grep workspace'
           
           echo "===================================================="
         '''
       }
     }
 
-    stage('Build with Docker (Copy Method)') {
-      when { expression { env.BUILD_FRONTEND == 'true' } }
+    stage('Docker Mount Test') {
       steps {
         sh '''
           echo "===================================================="
-          echo "🚀 Docker를 통한 Android 빌드 (복사 방식)"
+          echo "🔍 Docker 볼륨 마운트 테스트"
+          echo "===================================================="
+          
+          # 임시 테스트 디렉토리 생성
+          TEST_DIR=$(pwd)/test_mount
+          mkdir -p ${TEST_DIR}
+          echo "테스트 파일입니다" > ${TEST_DIR}/test.txt
+          
+          # 기본 볼륨 마운트 테스트
+          echo "📊 기본 볼륨 마운트 테스트:"
+          docker run --rm -v ${TEST_DIR}:/test ${DOCKER_IMAGE} bash -c 'ls -la /test && cat /test/test.txt'
+          
+          # 디렉토리 존재 테스트
+          echo "📊 Docker 내부 디렉토리 확인:"
+          docker run --rm ${DOCKER_IMAGE} bash -c 'ls -la / && ls -la /workspace || echo "워크스페이스 디렉토리 없음"'
+          
+          # 내부적으로 이미 존재하는 디렉토리에 마운트 테스트
+          echo "📊 기존 디렉토리 마운트 테스트:"
+          docker run --rm -v ${TEST_DIR}:/workspace ${DOCKER_IMAGE} bash -c 'ls -la /workspace && cat /workspace/test.txt || echo "파일 접근 실패"'
+          
+          # 하위 디렉토리 마운트 테스트
+          echo "📊 하위 디렉토리 마운트 테스트:"
+          docker run --rm -v $(pwd)/front/frontend:/workspace/frontend ${DOCKER_IMAGE} bash -c 'ls -la /workspace && ls -la /workspace/frontend || echo "프론트엔드 디렉토리 없음"'
+          
+          # 여러 디렉토리 마운트 테스트
+          echo "📊 여러 디렉토리 마운트 테스트:"
+          docker run --rm \
+            -v $(pwd)/front/frontend:/project/frontend \
+            -v $(pwd)/front/frontend/android:/project/android \
+            ${DOCKER_IMAGE} \
+            bash -c 'ls -la /project && ls -la /project/frontend && ls -la /project/android'
+          
+          # 정리
+          rm -rf ${TEST_DIR}
+          
+          echo "===================================================="
+        '''
+      }
+    }
+
+    stage('Docker Build Test') {
+      steps {
+        sh '''
+          echo "===================================================="
+          echo "🔍 Docker 빌드 테스트"
           echo "===================================================="
           
           # 임시 작업 디렉토리 생성
-          TEMP_DIR="$(pwd)/temp_build"
+          TEMP_DIR=$(pwd)/temp_docker_test
           mkdir -p ${TEMP_DIR}
+          cp -r front/frontend/* ${TEMP_DIR}/
           
-          # 프로젝트 파일 복사
-          echo "📂 프로젝트 파일 복사 중..."
-          cp -a front/frontend/. ${TEMP_DIR}/
-          
-          # Docker에서 React Native 앱 빌드 실행
+          # Docker 컨테이너로 빌드 환경 확인
+          echo "📊 Docker 빌드 환경 확인:"
           docker run --rm \
-            -v "${TEMP_DIR}:/workspace" \
-            -w /workspace \
-            -e ANDROID_SDK_ROOT=/opt/android-sdk \
-            -e ANDROID_HOME=/opt/android-sdk \
-            -e KEYSTORE_PASSWORD="${KEYSTORE_PASSWORD}" \
-            -e KEY_ALIAS="${KEY_ALIAS}" \
-            -e KEY_PASSWORD="${KEY_PASSWORD}" \
+            -v ${TEMP_DIR}:/project \
+            -w /project \
             ${DOCKER_IMAGE} \
             bash -c '
-              set -e  # 에러 발생 시 즉시 스크립트 중단
-              
-              echo "📂 현재 디렉토리: $(pwd)"
+              echo "현재 디렉토리: $(pwd)"
+              echo "디렉토리 내용:"
               ls -la
-              
-              echo "📂 Android 디렉토리 확인:"
-              ls -la android || { echo "❌ Android 디렉토리가 없습니다"; exit 1; }
-              
-              echo "🔧 local.properties 생성"
-              echo "sdk.dir=/opt/android-sdk" > android/local.properties
-              
-              echo "🔧 Gradle 프로퍼티 설정"
-              cat >> android/gradle.properties << EOF
-
-# CI 환경 키스토어 설정
-KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD
-KEY_ALIAS=$KEY_ALIAS
-KEY_PASSWORD=$KEY_PASSWORD
-EOF
-              
-              echo "🔧 Android 빌드 실행"
-              cd android
-              chmod +x ./gradlew
-              ./gradlew clean
-              ./gradlew assembleDebug
-              
-              echo "🔧 빌드 결과 확인"
-              find . -name "*.apk" || echo "APK 파일을 찾을 수 없습니다"
+              echo "Android 디렉토리:"
+              ls -la android || echo "Android 디렉토리 없음"
+              echo "Node 모듈:"
+              ls -la node_modules || echo "node_modules 디렉토리 없음"
+              echo "설치된 도구:"
+              echo "Node: $(node -v)"
+              echo "NPM: $(npm -v)"
+              echo "Yarn: $(yarn -v)"
+              echo "Java: $(java -version 2>&1 | head -1)"
             '
           
-          # 빌드 결과 확인
-          echo "📂 빌드 결과 확인:"
-          find ${TEMP_DIR}/android -name "*.apk" || echo "❌ APK 파일을 찾을 수 없습니다"
-          
-          # 결과물 복사
-          mkdir -p apk
-          find ${TEMP_DIR}/android -name "*.apk" | xargs -I {} cp {} apk/ || echo "❌ APK 파일 복사 실패"
-          
-          # 임시 디렉토리 정리
+          # 정리
           rm -rf ${TEMP_DIR}
           
           echo "===================================================="
         '''
       }
     }
-
-    stage('Direct Build') {
-      when { 
-        expression { env.BUILD_FRONTEND == 'true' }
-        // 이전 스테이지에서 APK 생성 실패했을 경우에만 실행
-        expression { 
-          return sh(script: 'find apk -name "*.apk" 2>/dev/null | wc -l', returnStdout: true).trim() == '0' 
-        }
-      }
-      steps {
-        sh '''
-          echo "===================================================="
-          echo "🚀 직접 Android 빌드 실행"
-          echo "===================================================="
-          
-          # 작업 디렉토리로 이동
-          cd front/frontend/android
-          
-          # 권한 설정
-          chmod +x ./gradlew
-          
-          # local.properties 생성
-          echo "sdk.dir=${ANDROID_SDK_ROOT}" > local.properties
-          
-          # Gradle 프로퍼티에 키스토어 설정 추가
-          cat >> gradle.properties << EOF
-
-# CI 환경 키스토어 설정
-KEYSTORE_PASSWORD=${KEYSTORE_PASSWORD}
-KEY_ALIAS=${KEY_ALIAS}
-KEY_PASSWORD=${KEY_PASSWORD}
-EOF
-          
-          # Gradle 빌드 환경 확인
-          echo "🔧 Gradle 환경 확인"
-          ./gradlew --version
-          
-          # Gradle 빌드
-          echo "🔧 Gradle 빌드 실행"
-          ./gradlew clean --info
-          ./gradlew assembleDebug --info
-          
-          # 빌드 결과물 확인
-          echo "🔧 빌드 결과 확인:"
-          find . -name "*.apk"
-          
-          # 결과물 복사
-          mkdir -p ../../apk
-          find . -name "*.apk" | xargs -I {} cp {} ../../apk/ || echo "APK 파일이 없습니다"
-          
-          echo "===================================================="
-        '''
-      }
-    }
-
-    stage('Archive APK') {
-      when { expression { env.BUILD_FRONTEND == 'true' } }
-      steps {
-        sh '''
-          echo "===================================================="
-          echo "📦 APK 아카이브"
-          echo "===================================================="
-          
-          mkdir -p apk-archive
-          
-          # APK 파일 전체 검색
-          echo "🔍 APK 파일 검색 중..."
-          find "$(pwd)" -name "*.apk" 2>/dev/null | sort
-          
-          # 모든 가능한 위치에서 APK 파일 찾기
-          find "$(pwd)" -name "*.apk" 2>/dev/null | xargs -I {} cp {} apk-archive/ 2>/dev/null || true
-          
-          # 결과 확인
-          APK_COUNT=$(find apk-archive -name "*.apk" | wc -l)
-          
-          if [ "$APK_COUNT" -gt 0 ]; then
-            echo "✅ $APK_COUNT 개의 APK 파일을 아카이브에 복사했습니다:"
-            find apk-archive -name "*.apk" | xargs ls -la
-          else
-            echo "❌ APK 파일을 찾을 수 없습니다"
-            echo "No APK files found" > apk-archive/build-failed.txt
-          fi
-          
-          echo "===================================================="
-        '''
-        
-        archiveArtifacts artifacts: 'apk-archive/**', fingerprint: true, allowEmptyArchive: true
-      }
-    }
-
-    stage('Deploy to Firebase') {
-      when { expression { env.BUILD_FRONTEND == 'true' } }
-      steps {
-        // Firebase 배포
-        withCredentials([
-          string(credentialsId: 'FIREBASE_TOKEN', variable: 'FIREBASE_TOKEN')
-        ]) {
-          sh '''
-            echo "===================================================="
-            echo "🔥 Firebase 배포"
-            echo "===================================================="
-            
-            # APK 파일 찾기
-            APK_FILE=$(find "$(pwd)/apk-archive" -name "*.apk" | head -1)
-            
-            if [ -z "$APK_FILE" ]; then
-              echo "❌ APK 파일을 찾을 수 없어 Firebase 배포를 건너뜁니다"
-              exit 0
-            fi
-            
-            echo "✅ 업로드할 APK 파일: $APK_FILE"
-            
-            # Docker에서 Firebase 배포 실행
-            docker run --rm \
-              -v "$(pwd):/workspace" \
-              -w /workspace \
-              -e FIREBASE_TOKEN="$FIREBASE_TOKEN" \
-              -e FIREBASE_APP_ID="$FIREBASE_APP_ID" \
-              ${DOCKER_IMAGE} \
-              bash -c '
-                cd /workspace/front/frontend/android
-                
-                # Bundler 환경 설정
-                export GEM_HOME=/root/.gem
-                export PATH=$PATH:$GEM_HOME/bin
-                
-                # Fastlane으로 배포
-                bundle config set path "vendor/bundle"
-                bundle install
-                
-                bundle exec fastlane run firebase_app_distribution \
-                  app:"$FIREBASE_APP_ID" \
-                  firebase_cli_token:"$FIREBASE_TOKEN" \
-                  apk_path:"/workspace/'"$APK_FILE"'" \
-                  groups:"testers" \
-                  release_notes:"Jenkins CI 자동 배포 빌드 #${BUILD_ID} (${GIT_COMMIT})"
-              '
-            
-            echo "===================================================="
-          '''
-        }
-      }
-    }
   }
 
   post {
-    success {
-      sh '''
-        echo "===================================================="
-        echo "✅ Frontend CI/CD 성공 🎉"
-        echo "===================================================="
-      '''
-    }
-    failure {
-      sh '''
-        echo "===================================================="
-        echo "❌ Frontend CI/CD 실패 ❗"
-        echo "===================================================="
-        
-        # 디버깅 정보 수집
-        echo "🔍 빌드 실패 디버깅 정보:" > debug-info.txt
-        
-        echo "🔍 React Native 환경:" >> debug-info.txt
-        cd front/frontend 2>/dev/null && ls -la node_modules/@react-native 2>/dev/null || echo "React Native 모듈을 찾을 수 없습니다" >> debug-info.txt
-        echo "" >> debug-info.txt
-        
-        echo "🔍 Android 디렉토리:" >> debug-info.txt
-        ls -la front/frontend/android 2>/dev/null || echo "Android 디렉토리를 찾을 수 없습니다" >> debug-info.txt
-        echo "" >> debug-info.txt
-        
-        echo "🔍 Gradle 설정:" >> debug-info.txt
-        cat front/frontend/android/settings.gradle 2>/dev/null || echo "설정 파일을 찾을 수 없습니다" >> debug-info.txt
-        echo "" >> debug-info.txt
-        
-        # 디버깅 정보 아카이브
-        mkdir -p debug-archive
-        cp debug-info.txt debug-archive/
-        
-        echo "📦 디버깅 정보가 debug-archive에 저장되었습니다"
-      '''
-      
-      archiveArtifacts artifacts: 'debug-archive/**', fingerprint: true, allowEmptyArchive: true
-    }
     always {
       sh '''
         echo "===================================================="
-        echo "🧹 작업 공간 정리"
+        echo "📊 진단 결과 요약"
         echo "===================================================="
         
-        # 임시 디렉토리 정리
-        rm -rf apk apk-archive temp_build debug-archive || true
+        # 진단 결과 파일 생성
+        echo "# 환경 진단 결과" > diagnostic-results.md
+        echo "" >> diagnostic-results.md
+        
+        echo "## Jenkins 환경" >> diagnostic-results.md
+        echo "- OS: $(uname -a)" >> diagnostic-results.md
+        echo "- Node.js: $(which node 2>/dev/null || echo '설치되지 않음')" >> diagnostic-results.md
+        echo "- Java: $(which java 2>/dev/null || echo '설치되지 않음')" >> diagnostic-results.md
+        echo "- Android SDK: $([ -d "$ANDROID_SDK_ROOT" ] && echo '존재함' || echo '존재하지 않음')" >> diagnostic-results.md
+        echo "" >> diagnostic-results.md
+        
+        echo "## Docker 환경" >> diagnostic-results.md
+        echo "- 이미지: ${DOCKER_IMAGE}" >> diagnostic-results.md
+        echo "- 내부 워크스페이스: $(docker run --rm ${DOCKER_IMAGE} bash -c '[ -d /workspace ] && echo "존재함" || echo "존재하지 않음"')" >> diagnostic-results.md
+        echo "" >> diagnostic-results.md
+        
+        echo "## 빌드 제안" >> diagnostic-results.md
+        echo "환경 진단 결과를 바탕으로 다음 방법 중 하나를 선택하여 빌드를 진행하는 것이 좋습니다:" >> diagnostic-results.md
+        echo "" >> diagnostic-results.md
+        echo "1. **Docker 컨테이너 내 의존성 설치 및 빌드**: 모든 빌드 과정을 Docker 내에서 진행" >> diagnostic-results.md
+        echo "2. **Jenkins에 Node.js 설치**: Jenkins 서버에 Node.js를 설치하여 직접 빌드" >> diagnostic-results.md
+        echo "3. **Docker 없이 수동 빌드**: Docker를 사용하지 않고 Jenkins 서버에 필요한 모든 도구를 설치하여 빌드" >> diagnostic-results.md
+        echo "" >> diagnostic-results.md
+        
+        echo "진단 결과가 diagnostic-results.md 파일에 저장되었습니다."
+        
+        # 진단 결과 아카이브를 위한 디렉토리 생성
+        mkdir -p diagnostic-archive
+        cp diagnostic-results.md diagnostic-archive/
+        
+        echo "===================================================="
       '''
+      
+      archiveArtifacts artifacts: 'diagnostic-archive/**', fingerprint: true, allowEmptyArchive: true
+      
       cleanWs()
     }
   }
