@@ -77,10 +77,23 @@ pipeline {
           echo "📂 front/frontend/android/app 디렉토리 확인:"
           ls -la front/frontend/android/app || { echo "❌ front/frontend/android/app 디렉토리가 없습니다"; exit 1; }
           
-          # 폴더 구조가 올바른지 한 번 더 확인
-          if [ ! -d "front/frontend/android" ]; then
-            echo "❌ Android 프로젝트 폴더가 존재하지 않습니다"
-            exit 1
+          # Gemfile 확인
+          echo "📂 Gemfile 확인:"
+          if [ -f "front/frontend/Gemfile" ]; then
+            echo "✅ front/frontend/Gemfile 파일 존재"
+            cp front/frontend/Gemfile front/frontend/android/
+            echo "✅ Gemfile을 android 디렉토리로 복사 완료"
+          elif [ -f "front/frontend/android/Gemfile" ]; then
+            echo "✅ front/frontend/android/Gemfile 파일 존재"
+          else
+            echo "⚠️ Gemfile이 없습니다. 기본 Gemfile 생성 중..."
+            cat > front/frontend/android/Gemfile << 'EOL'
+source "https://rubygems.org"
+
+gem "fastlane"
+gem "fastlane-plugin-firebase_app_distribution"
+EOL
+            echo "✅ 기본 Gemfile 생성 완료"
           fi
           
           echo "===================================================="
@@ -113,97 +126,104 @@ pipeline {
           '''
         }
         
-        // 직접 Docker 이미지 빌드 및 실행 (볼륨 마운트 대신)
+        // Docker 직접 실행 방식으로 변경 (이미지 빌드 없이)
         sh '''
           echo "===================================================="
-          echo "🐳 Docker 이미지로 안드로이드 빌드 및 배포"
+          echo "🐳 Docker 컨테이너에서 Android 빌드 실행"
           echo "===================================================="
           
-          # 임시 작업 디렉토리 생성
-          WORK_DIR=$(mktemp -d)
-          echo "📁 임시 작업 디렉토리 생성: $WORK_DIR"
+          # Android 디렉토리로 이동
+          cd front/frontend/android
           
-          # 안드로이드 프로젝트 복사
-          echo "🔄 안드로이드 프로젝트 파일 복사 중..."
-          cp -r front/frontend/android/* $WORK_DIR/
+          # Fastlane 디렉토리 확인 및 생성
+          if [ ! -d "fastlane" ]; then
+            echo "⚠️ fastlane 디렉토리가 없습니다. 기본 fastlane 설정 생성 중..."
+            mkdir -p fastlane
+            cat > fastlane/Fastfile << 'EOL'
+default_platform(:android)
+
+platform :android do
+  desc "Deploy a new version to Firebase App Distribution"
+  lane :release do |options|
+    gradle(
+      task: "clean assembleRelease"
+    )
+    firebase_app_distribution(
+      app: ENV["FIREBASE_APP_ID"] || "YOUR_FIREBASE_APP_ID",
+      groups: options[:groups],
+      release_notes: options[:notes],
+      firebase_cli_token: ENV["FIREBASE_TOKEN"]
+    )
+  end
+end
+EOL
+            echo "✅ 기본 Fastfile 생성 완료"
+            
+            # Appfile 생성
+            cat > fastlane/Appfile << 'EOL'
+json_key_file("firebase_service_account.json")
+package_name("com.yourcompany.yourapp") # 앱 패키지 이름 설정 필요
+EOL
+            echo "✅ 기본 Appfile 생성 완료"
+          fi
           
-          # 디렉토리 내용 확인
-          echo "📂 복사된 파일 확인:"
-          ls -la $WORK_DIR
-          
-          # 임시 도커파일 생성
-          cat > $WORK_DIR/Dockerfile.build << 'EOF'
-FROM my-android-ci:latest
-
-WORKDIR /app
-
-# 프로젝트 파일 복사
-COPY . /app
-
-# 빌드 스크립트
-RUN gem install bundler && \
-    yarn install && \
-    bundle install --path vendor/bundle && \
-    bundle exec fastlane install_plugins 
-
-# 환경 변수 설정을 위한 진입점 스크립트
-COPY <<'ENTRYPOINT_SCRIPT' /entrypoint.sh
-#!/bin/bash
-set -e
-
-echo "==== 빌드 환경 정보 ===="
-echo "Node 버전: $(node --version)"
-echo "Yarn 버전: $(yarn --version)"
-echo "Ruby 버전: $(ruby --version)"
-echo "Bundle 버전: $(bundle --version)"
-echo "Fastlane 버전: $(fastlane --version)"
-echo "========================="
-
-echo "==== 작업 디렉토리 파일 확인 ===="
-ls -la
-
-# Fastlane 실행
-bundle exec fastlane release groups:"testers" notes:"CI 자동 배포 빌드"
-ENTRYPOINT_SCRIPT
-
-RUN chmod +x /entrypoint.sh
-
-ENTRYPOINT ["/entrypoint.sh"]
-EOF
-          
-          # Docker 이미지 빌드
-          echo "🏗️ Docker 이미지 빌드 중..."
-          docker build -t android-build:${BUILD_ID} -f $WORK_DIR/Dockerfile.build $WORK_DIR
-          
-          # 환경 변수 설정하여 컨테이너 실행
-          echo "🚀 Android 빌드 실행 중..."
+          # Docker 컨테이너 실행
           docker run --rm \
+            -v "$(pwd):/app" \
+            -w /app \
             -e ANDROID_SDK_ROOT=/opt/android-sdk \
             -e ANDROID_HOME=/opt/android-sdk \
             -e FIREBASE_TOKEN="$FIREBASE_TOKEN" \
             -e KEYSTORE_PASSWORD="$KEYSTORE_PASSWORD" \
             -e KEY_ALIAS="$KEY_ALIAS" \
             -e KEY_PASSWORD="$KEY_PASSWORD" \
-            android-build:${BUILD_ID}
+            my-android-ci:latest \
+            bash -c '
+              set -e
+              
+              echo "======================================================"
+              echo "📂 작업 디렉토리 확인:"
+              pwd
+              ls -la
+              
+              echo "======================================================"
+              echo "📦 gem 및 bundler 설치 확인:"
+              gem install bundler -v 2.4.22 --no-document
+              bundler --version
+              
+              echo "======================================================"
+              echo "📦 1) 의존성 설치 시작"
+              yarn install
+              
+              echo "======================================================"
+              echo "📦 2) Bundle 설치 시작"
+              bundle config set --local path "vendor/bundle"
+              bundle install
+              
+              echo "======================================================"
+              echo "📦 3) Fastlane 플러그인 설치 시작"
+              bundle exec fastlane install_plugins
+              
+              echo "======================================================"
+              echo "📦 4) 릴리스 빌드 및 배포 시작"
+              bundle exec fastlane release groups:"testers" notes:"CI 자동 배포 빌드"
+              
+              echo "======================================================"
+              echo "✅ 빌드 완료"
+              
+              echo "📂 빌드 결과물 확인:"
+              find app/build/outputs -name "*.apk" || echo "APK 파일을 찾을 수 없습니다."
+            '
           
-          # 빌드 결과 확인
           BUILD_RESULT=$?
           
-          # 빌드 결과를 Jenkins 워크스페이스로 복사
-          echo "🔄 빌드 결과물 복사 중..."
-          docker create --name android-build-container android-build:${BUILD_ID}
-          docker cp android-build-container:/app/app/build front/frontend/android/
-          docker rm android-build-container
+          if [ $BUILD_RESULT -ne 0 ]; then
+            echo "❌ Android 빌드 실패 (종료 코드: $BUILD_RESULT)"
+            exit $BUILD_RESULT
+          fi
           
-          # 정리
-          echo "🧹 임시 파일 정리 중..."
-          rm -rf $WORK_DIR
-          docker rmi android-build:${BUILD_ID} || true
-          
+          echo "✅ Android 빌드 성공"
           echo "===================================================="
-          
-          # 빌드 상태 반환
-          exit $BUILD_RESULT
         '''
       }
     }
