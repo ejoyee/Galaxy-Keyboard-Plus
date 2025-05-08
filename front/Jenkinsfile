@@ -12,8 +12,8 @@ pipeline {
     FIREBASE_APP_ID  = '1:189536895445:android:783ed885fd7c4b896bfd5c'
     // 빌드 강제 실행 여부
     FORCE_BUILD      = 'true'
-    // Docker 이미지 설정
-    DOCKER_IMAGE     = 'reactnativecommunity/react-native-android:latest'
+    // 커스텀 Docker 이미지 설정 - 여기서 직접 빌드하도록 변경
+    DOCKER_IMAGE     = 'android-build:latest'
   }
 
   stages {
@@ -134,67 +134,65 @@ pipeline {
       }
     }
 
-    stage('Build with Dockerfile') {
+    stage('Build Docker Image') {
       when { expression { env.BUILD_FRONTEND == 'true' } }
       steps {
         sh '''
           echo "===================================================="
-          echo "🐳 Dockerfile을 통한 Android 빌드"
+          echo "🐳 Android 빌드 도커 이미지 생성"
+          echo "===================================================="
+          
+          # frontend 폴더에 Dockerfile 복사
+          cp front/frontend/Dockerfile .
+          
+          # 도커 이미지 빌드
+          docker build -t android-build:${BUILD_ID} .
+          
+          echo "✅ 도커 이미지 생성 완료"
+          echo "===================================================="
+        '''
+      }
+    }
+
+    stage('Build with Docker') {
+      when { expression { env.BUILD_FRONTEND == 'true' } }
+      steps {
+        sh '''
+          echo "===================================================="
+          echo "🚀 Docker를 통한 Android 빌드"
           echo "===================================================="
           
           # 작업 디렉토리
           WORKSPACE_DIR="$(pwd)"
           
-          # 임시 작업 디렉토리 생성
-          BUILD_DIR="$WORKSPACE_DIR/android-build"
-          mkdir -p "$BUILD_DIR"
-          
-          # 전체 React Native 프로젝트 복사 (중요 변경 부분) - node_modules 포함하여 복사
-          echo "📂 프로젝트 파일 복사 중..."
-          cp -r front/frontend/* "$BUILD_DIR/"
-          
-          # 현재 디렉토리에 Dockerfile 생성 (수정된 Dockerfile)
-          cat > "$BUILD_DIR/Dockerfile" << 'EOF'
-FROM reactnativecommunity/react-native-android:latest
-
-WORKDIR /app
-
-# 프로젝트 파일 복사
-COPY . /app
-
-# 환경 변수 설정
-ENV ANDROID_SDK_ROOT=/opt/android-sdk
-ENV ANDROID_HOME=/opt/android-sdk
-
-# 필요한 node 모듈 설치 (추가된 부분)
-RUN npm install
-
-# Android 디렉토리로 이동 (수정된 부분)
-WORKDIR /app/android
-
-# 로컬 프로퍼티 파일 생성
-RUN echo "sdk.dir=/opt/android-sdk" > local.properties
-
-# gradlew 실행 권한 설정
-RUN chmod +x ./gradlew
-
-# APK 빌드
-RUN ./gradlew assembleDebug --stacktrace
-EOF
-          
-          # Dockerfile 기반으로 이미지 빌드
-          echo "🏗️ Docker 이미지 빌드 중..."
-          docker build -t android-build:${BUILD_ID} "$BUILD_DIR"
-          
-          # 빌드 결과물 복사 (경로 수정)
-          echo "🔄 빌드 결과물 복사 중..."
+          # Docker에서 React Native 앱 빌드 실행
           docker run --rm \
-            -v "$WORKSPACE_DIR/apk:/output" \
+            -v "$WORKSPACE_DIR/front/frontend:/workspace" \
+            -w /workspace \
+            -e ANDROID_SDK_ROOT=/opt/android-sdk \
+            -e ANDROID_HOME=/opt/android-sdk \
             android-build:${BUILD_ID} \
-            bash -c "mkdir -p /output && find /app/android -name '*.apk' -exec cp {} /output/ \\;"
+            bash -c '
+              echo "📂 작업 디렉토리 구조 확인"
+              ls -la
+
+              echo "🔧 Node 모듈 설치"
+              yarn install
+
+              echo "🔧 Android 디렉토리로 이동"
+              cd android
+
+              echo "🔧 local.properties 생성"
+              echo "sdk.dir=/opt/android-sdk" > local.properties
+              cat local.properties
+
+              echo "🔧 Gradle 빌드 실행"
+              ./gradlew assembleDebug --stacktrace
+            '
           
-          # 이미지 삭제
-          docker rmi android-build:${BUILD_ID}
+          # 빌드 결과물 복사
+          mkdir -p apk
+          find front/frontend/android -name "*.apk" -exec cp {} apk/ \;
           
           # 빌드 결과 확인
           echo "📂 빌드 결과 확인:"
@@ -227,39 +225,27 @@ EOF
             
             echo "✅ 업로드할 APK 파일: $APK_FILE"
             
-            # Docker에서 Firebase 배포 실행
+            # Docker에서 Firebase 배포 실행 (기존에 빌드한 이미지 재사용)
             docker run --rm \
               -v "$(pwd):/workspace" \
               -w /workspace \
               -e FIREBASE_TOKEN="$FIREBASE_TOKEN" \
               -e FIREBASE_APP_ID="$FIREBASE_APP_ID" \
-              node:14 \
+              android-build:${BUILD_ID} \
               bash -c '
-                set -x
+                echo "==== Firebase App Distribution 배포 ===="
+                export PATH=$PATH:/root/.gem/ruby/3.0.0/bin
                 
-                echo "==== Node.js 버전 확인 ===="
-                node -v
-                npm -v
+                cd /workspace
                 
-                echo "==== Firebase CLI 설치 ===="
-                npm install -g firebase-tools
+                fastlane run firebase_app_distribution_login token:"$FIREBASE_TOKEN"
                 
-                echo "==== APK 파일 확인 ===="
-                APK_FILE=$(find /workspace/apk -name "*.apk" | head -1)
-                
-                if [ -z "$APK_FILE" ]; then
-                  echo "❌ APK 파일을 찾을 수 없습니다."
-                  exit 0
-                fi
-                
-                echo "✅ APK 파일: $APK_FILE"
-                
-                echo "==== Firebase 배포 ===="
-                firebase appdistribution:distribute "$APK_FILE" \
-                  --app "$FIREBASE_APP_ID" \
-                  --token "$FIREBASE_TOKEN" \
-                  --groups "testers" \
-                  --release-notes "Jenkins CI 자동 배포 빌드" || echo "⚠️ Firebase 배포 실패"
+                fastlane run firebase_app_distribution \
+                  app:"$FIREBASE_APP_ID" \
+                  firebase_cli_token:"$FIREBASE_TOKEN" \
+                  apk_path:"'"$APK_FILE"'" \
+                  groups:"testers" \
+                  release_notes:"Jenkins CI 자동 배포 빌드" || echo "⚠️ Firebase 배포 실패"
               '
             
             echo "===================================================="
@@ -296,6 +282,22 @@ EOF
         '''
         
         archiveArtifacts artifacts: 'apk-archive/**', fingerprint: true, allowEmptyArchive: true
+      }
+    }
+
+    stage('Cleanup Docker') {
+      when { expression { env.BUILD_FRONTEND == 'true' } }
+      steps {
+        sh '''
+          echo "===================================================="
+          echo "🧹 Docker 이미지 정리"
+          echo "===================================================="
+          
+          # 빌드에 사용된 Docker 이미지 삭제
+          docker rmi android-build:${BUILD_ID} || true
+          
+          echo "===================================================="
+        '''
       }
     }
   }
