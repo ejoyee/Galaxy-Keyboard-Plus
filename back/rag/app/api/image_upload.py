@@ -82,7 +82,7 @@ async def upload_image(
         image_payload = {
             "userId": user_id,
             "accessId": access_id,
-            "imageTime": image_time,  # ✅ 변환 없이 원본 포맷 그대로 사용
+            "imageTime": image_time,
             "type": target,
             "content": content,
         }
@@ -111,7 +111,7 @@ async def upload_image(
                 ):
                     plan_payload = {
                         "userId": user_id,
-                        "planTime": image_time,  # ✅ 여기도 그대로 포맷 유지
+                        "planTime": image_time,
                         "planContent": schedule_result.get("event", content),
                         "imageId": image_id,
                     }
