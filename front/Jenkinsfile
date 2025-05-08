@@ -149,11 +149,11 @@ pipeline {
           BUILD_DIR="$WORKSPACE_DIR/android-build"
           mkdir -p "$BUILD_DIR"
           
-          # 안드로이드 프로젝트 파일 복사
+          # 전체 React Native 프로젝트 복사 (중요 변경 부분) - node_modules 포함하여 복사
           echo "📂 프로젝트 파일 복사 중..."
-          cp -r front/frontend/android/* "$BUILD_DIR/"
+          cp -r front/frontend/* "$BUILD_DIR/"
           
-          # 현재 디렉토리에 Dockerfile 생성
+          # 현재 디렉토리에 Dockerfile 생성 (수정된 Dockerfile)
           cat > "$BUILD_DIR/Dockerfile" << 'EOF'
 FROM reactnativecommunity/react-native-android:latest
 
@@ -165,6 +165,12 @@ COPY . /app
 # 환경 변수 설정
 ENV ANDROID_SDK_ROOT=/opt/android-sdk
 ENV ANDROID_HOME=/opt/android-sdk
+
+# 필요한 node 모듈 설치 (추가된 부분)
+RUN npm install
+
+# Android 디렉토리로 이동 (수정된 부분)
+WORKDIR /app/android
 
 # 로컬 프로퍼티 파일 생성
 RUN echo "sdk.dir=/opt/android-sdk" > local.properties
@@ -180,12 +186,12 @@ EOF
           echo "🏗️ Docker 이미지 빌드 중..."
           docker build -t android-build:${BUILD_ID} "$BUILD_DIR"
           
-          # 빌드 결과물 복사
+          # 빌드 결과물 복사 (경로 수정)
           echo "🔄 빌드 결과물 복사 중..."
           docker run --rm \
             -v "$WORKSPACE_DIR/apk:/output" \
             android-build:${BUILD_ID} \
-            bash -c "mkdir -p /output && find . -name '*.apk' -exec cp {} /output/ \\;"
+            bash -c "mkdir -p /output && find /app/android -name '*.apk' -exec cp {} /output/ \\;"
           
           # 이미지 삭제
           docker rmi android-build:${BUILD_ID}
