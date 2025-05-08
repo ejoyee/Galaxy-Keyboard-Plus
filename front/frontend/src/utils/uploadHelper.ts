@@ -6,9 +6,12 @@ export const uploadImagesToServer = async (
   images: {uri: string; filename: string; timestamp: number | Date}[],
   onSuccess?: (filename: string) => void,
 ) => {
-  const {userId} = useAuthStore.getState();
+  const {userId, accessToken} = useAuthStore.getState(); // accessToken 가져오기
   const {setLastUploadedAt} = useBackupStore.getState();
   if (!userId) throw new Error('로그인이 필요합니다.');
+  if (!accessToken) {
+    throw new Error('인증 토큰이 없습니다. 로그인이 필요합니다.');
+  }
 
   let latestUploaded = 0;
 
@@ -27,11 +30,16 @@ export const uploadImagesToServer = async (
     });
 
     try {
+      console.log('▶ fetch 요청 accessToken:', accessToken); // accessToken 확인 로그 추가
       const response = await fetch(
+        // 'https://k12e201.p.ssafy.io/rag/upload-image/',
         'http://k12e201.p.ssafy.io:8090/rag/upload-image/',
         {
           method: 'POST',
           body: formData,
+          headers: { // 헤더 추가
+            Authorization: `Bearer ${accessToken}`,
+          },
         },
       );
 

@@ -1,3 +1,5 @@
+// api/axios.ts
+
 import axios from 'axios';
 import { BASE_URL } from '@env';
 import { useAuthStore } from '../stores/authStore';
@@ -11,15 +13,22 @@ export const api = axios.create({
 
 // ★ 토큰 주입
 api.interceptors.request.use((config) => {
-  console.log("BASE_URL: ", BASE_URL);
   const { accessToken } = useAuthStore.getState();
+
+  // baseURL이 없으면 빈 문자열로 대체
+  const base = config.baseURL ?? '';
+  const url  = config.url        ?? '';
+
+  console.log('▶ 요청 URL:', `${base}${url}`);
+  console.log('▶ interceptor 에서 가져온 accessToken:', accessToken);
+
   if (accessToken) {
     config.headers.Authorization = `Bearer ${accessToken}`;
   }
   return config;
 });
 
-// ★ 401 → RT로 재발급(중복 호출 lock)
+// ★ 401 → RT로 재발급(중복 호출 lock)
 let refreshPromise: Promise<void> | null = null;
 
 api.interceptors.response.use(
