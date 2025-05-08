@@ -1,20 +1,18 @@
 import {format} from 'date-fns';
-import { useAuthStore } from '../stores/authStore';
+import {useAuthStore} from '../stores/authStore';
+import {useBackupStore} from '../stores/useBackupStore';
 
-/**
- * rag에 이미지 업로드 하는 api를 병렬로 호출하는 메소드
- */
 export const uploadImagesToServer = async (
   images: {uri: string; filename: string; timestamp: number | Date}[],
+  onSuccess?: (filename: string) => void,
 ) => {
-  // 1) zustand에서 userId 꺼내기
-  const { userId } = useAuthStore.getState();
-  if (!userId) {
-    throw new Error('로그인이 필요합니다.');
-  }
+  const {userId} = useAuthStore.getState();
+  const {setLastUploadedAt} = useBackupStore.getState();
+  if (!userId) throw new Error('로그인이 필요합니다.');
 
-  // 2) 각 이미지에 대해 formData 구성 & fetch
-  const uploadPromises = images.map(async image => {
+  let latestUploaded = 0;
+
+  const uploadTasks = images.map(async image => {
     const accessId = image.filename.replace(/\.[^/.]+$/, '');
     const imageTime = format(image.timestamp, 'yyyy:MM:dd HH:mm:ss');
 
@@ -28,13 +26,6 @@ export const uploadImagesToServer = async (
       name: image.filename,
     });
 
-    console.log('📤 fetch 업로드 시도:', {
-      uri: image.uri,
-      filename: image.filename,
-      accessId,
-      imageTime,
-    });
-
     try {
       const response = await fetch(
         'http://k12e201.p.ssafy.io:8090/rag/upload-image/',
@@ -45,12 +36,26 @@ export const uploadImagesToServer = async (
       );
 
       const result = await response.json();
-      console.log('✅ fetch 업로드 성공:', result);
+      const filename = image.filename;
+      const timestamp = Number(image.timestamp);
+
+      if (result?.status === 'skipped') {
+        console.warn(`⚠️ 중복된 이미지 스킵됨: ${filename}`);
+        onSuccess?.(filename); // 중복이더라도 backedUp에 추가
+        return;
+      }
+
+      console.log('✅ 업로드 성공:', result);
+      latestUploaded = Math.max(latestUploaded, timestamp);
+      onSuccess?.(filename);
     } catch (error) {
-      console.error(`❌ fetch 업로드 오류 (${image.filename}):`, error);
+      console.error(`❌ 업로드 실패 (${image.filename}):`, error);
     }
   });
 
-  // 병렬 실행
-  await Promise.all(uploadPromises);
+  await Promise.all(uploadTasks);
+
+  if (latestUploaded > 0) {
+    setLastUploadedAt(latestUploaded);
+  }
 };
