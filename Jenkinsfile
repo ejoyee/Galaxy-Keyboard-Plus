@@ -231,8 +231,15 @@ ENV=prod
             if (svc != 'frontend') {
               echo "▶ Building & deploying ${svc}"
               sh """
+                # 기존 컨테이너 강제 종료 및 삭제 (이름 충돌 방지)
+                docker rm -f ${svc}-service || true
+
+                # 캐시 없이 재빌드
                 docker compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" build --no-cache ${svc}
-                docker compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" up -d --no-deps ${svc}
+
+                # 컨테이너 강제 재생성
+                docker compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" up -d --no-deps --force-recreate ${svc}
+"""
               """
             }
           }
