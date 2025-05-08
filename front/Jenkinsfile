@@ -56,7 +56,7 @@ pipeline {
         script {
           docker.image('my-android-ci:latest')
                 // -i 삭제, root 권한 유지
-                .inside('-u root:root') {
+                .inside('--rm -u root:root') {
             // 1) 키스토어·설정 파일 복사
             withCredentials([
               file(  credentialsId: 'android-release-keystore',    variable: 'KEYSTORE_FILE'),
