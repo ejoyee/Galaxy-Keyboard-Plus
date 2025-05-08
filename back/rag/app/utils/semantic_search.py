@@ -1,4 +1,5 @@
 import os
+import re
 from dotenv import load_dotenv
 from typing import Literal
 from app.utils.embedding import get_text_embedding
@@ -56,6 +57,8 @@ def search_similar_items(
             image_id, description = full_text.split(": ", 1)
         else:
             image_id, description = "unknown", full_text  # fallback
+
+        image_id = re.sub(r"\s*\([^)]*\)", "", image_id).strip()
 
         results.append(
             {
