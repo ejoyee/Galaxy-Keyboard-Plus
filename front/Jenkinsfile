@@ -2,29 +2,14 @@ pipeline {
   agent any
 
   environment {
-    FIREBASE_TOKEN = credentials('FIREBASE_TOKEN')
     FIREBASE_APP_ID = '1:189536895445:android:783ed885fd7c4b896bfd5c'
-
-    KEYSTORE_PASSWORD = credentials('KEYSTORE_PASSWORD')
-    KEY_ALIAS         = credentials('KEY_ALIAS')
-    KEY_PASSWORD      = credentials('KEY_PASSWORD')
-
-    // Firebase 빌드에 필요한 시크릿 파일들
-    KEYSTORE_FILE            = credentials('android-release-keystore')
-    GOOGLE_SERVICES_JSON     = credentials('google-services-json')
-    FIREBASE_SERVICE_ACCOUNT = credentials('firebase-service-account')
+    WORK_DIR = "${WORKSPACE}/workspace"
   }
 
   stages {
     stage('Checkout') {
       steps {
         checkout scm
-      }
-    }
-
-    stage('Checkout & Init') {
-      steps {
-        sh 'chmod -R 777 .'
       }
     }
 
@@ -45,7 +30,7 @@ pipeline {
       steps {
         withCredentials([
           file(credentialsId: 'android-release-keystore', variable: 'KEYSTORE_PATH'),
-          file(credentialsId: 'google-services-json',     variable: 'GOOGLE_JSON'),
+          file(credentialsId: 'google-services-json', variable: 'GOOGLE_JSON'),
           file(credentialsId: 'firebase-service-account', variable: 'FIREBASE_JSON')
         ]) {
           sh '''
@@ -62,40 +47,47 @@ pipeline {
 
     stage('Build and Deploy') {
       steps {
-        sh '''
-          echo 🚀 Docker 빌드 및 배포 시작
-          docker run --rm -v "$PWD/workspace:/app" \
-            -e FIREBASE_TOKEN="$FIREBASE_TOKEN" \
-            -e FIREBASE_APP_ID="$FIREBASE_APP_ID" \
-            cimg/android:2023.08 bash -c "
-              set -e
-              cd /app
+        withCredentials([
+          string(credentialsId: 'KEYSTORE_PASSWORD', variable: 'KEYSTORE_PASSWORD'),
+          string(credentialsId: 'KEY_ALIAS', variable: 'KEY_ALIAS'),
+          string(credentialsId: 'KEY_PASSWORD', variable: 'KEY_PASSWORD'),
+          string(credentialsId: 'FIREBASE_TOKEN', variable: 'FIREBASE_TOKEN')
+        ]) {
+          sh '''
+            echo 🚀 Docker 빌드 및 배포 시작
+            docker run --rm -v "$PWD/workspace:/app" \
+              -e FIREBASE_TOKEN="$FIREBASE_TOKEN" \
+              -e FIREBASE_APP_ID="$FIREBASE_APP_ID" \
+              reactnativecommunity/docker-android:latest bash -c "
+                set -e
+                cd /app
 
-              echo '📦 npm install'
-              npm install
+                echo '📦 npm install'
+                npm install
 
-              echo '🛠️ Android 빌드'
-              cd android
-              chmod +x ./gradlew
-              echo 'sdk.dir=$ANDROID_HOME' > local.properties
-              echo 'KEYSTORE_PASSWORD=${KEYSTORE_PASSWORD}' >> gradle.properties
-              echo 'KEY_ALIAS=${KEY_ALIAS}' >> gradle.properties
-              echo 'KEY_PASSWORD=${KEY_PASSWORD}' >> gradle.properties
-              ./gradlew clean assembleRelease --stacktrace
+                echo '🛠️ Android 빌드'
+                cd android
+                chmod +x ./gradlew
+                echo 'sdk.dir=/opt/android-sdk' > local.properties
+                echo 'KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD' >> gradle.properties
+                echo 'KEY_ALIAS=$KEY_ALIAS' >> gradle.properties
+                echo 'KEY_PASSWORD=$KEY_PASSWORD' >> gradle.properties
+                ./gradlew clean assembleRelease --stacktrace
 
-              echo '📦 빌드 산출물 복사'
-              mkdir -p /tmp/output
-              find . -name '*.apk' -o -name '*.aab' -exec cp {} /tmp/output/ \\;
+                echo '📦 빌드 산출물 복사'
+                mkdir -p /tmp/output
+                find . -name '*.apk' -o -name '*.aab' -exec cp {} /tmp/output/ \\;
 
-              echo '🔥 Firebase 배포'
-              npm install -g firebase-tools
-              firebase appdistribution:distribute /tmp/output/*.apk \\
-                --app $FIREBASE_APP_ID \\
-                --token $FIREBASE_TOKEN \\
-                --groups testers \\
-                --release-notes 'CI 자동 배포'
-            "
-        '''
+                echo '🔥 Firebase 배포'
+                npm install -g firebase-tools
+                firebase appdistribution:distribute /tmp/output/*.apk \\
+                  --app $FIREBASE_APP_ID \\
+                  --token $FIREBASE_TOKEN \\
+                  --groups testers \\
+                  --release-notes 'CI 자동 배포'
+              "
+          '''
+        }
       }
     }
   }
@@ -105,8 +97,10 @@ pipeline {
       sh '''
         echo ❌ 빌드 실패 디버깅 저장
         mkdir -p debug-archive
-        echo "## package.json 내용" && cat workspace/package.json || echo 없음
-        echo "\\n## 디렉토리 상태" && ls -al workspace || echo 없음
+        echo '## package.json 내용'
+        cat workspace/package.json || echo 없음
+        echo '\\n## 디렉토리 상태'
+        ls -al workspace || echo 없음
       '''
       archiveArtifacts artifacts: 'debug-archive/**', allowEmptyArchive: true
     }
