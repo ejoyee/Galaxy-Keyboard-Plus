@@ -55,15 +55,16 @@ pipeline {
       steps {
         script {
           docker.image('my-android-ci:latest')
-                .inside('-u root:root -i') {
+                // -i 삭제, root 권한 유지
+                .inside('--rm -u root:root') {
             // 1) 키스토어·설정 파일 복사
             withCredentials([
-              file(credentialsId: 'android-release-keystore', variable: 'KEYSTORE_FILE'),
-              string(credentialsId: 'KEYSTORE_PASSWORD',    variable: 'KEYSTORE_PASSWORD'),
-              string(credentialsId: 'KEY_ALIAS',            variable: 'KEY_ALIAS'),
-              string(credentialsId: 'KEY_PASSWORD',         variable: 'KEY_PASSWORD'),
-              file(credentialsId: 'google-services-json',   variable: 'GOOGLE_SERVICES_JSON'),
-              file(credentialsId: 'firebase-service-account', variable: 'FIREBASE_SERVICE_ACCOUNT')
+              file(  credentialsId: 'android-release-keystore',    variable: 'KEYSTORE_FILE'),
+              string(credentialsId: 'KEYSTORE_PASSWORD',            variable: 'KEYSTORE_PASSWORD'),
+              string(credentialsId: 'KEY_ALIAS',                    variable: 'KEY_ALIAS'),
+              string(credentialsId: 'KEY_PASSWORD',                 variable: 'KEY_PASSWORD'),
+              file(  credentialsId: 'google-services-json',         variable: 'GOOGLE_SERVICES_JSON'),
+              file(  credentialsId: 'firebase-service-account',     variable: 'FIREBASE_SERVICE_ACCOUNT')
             ]) {
               sh '''
                 mkdir -p front/frontend/android/app/keystore
