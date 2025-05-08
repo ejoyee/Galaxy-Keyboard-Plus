@@ -3,7 +3,6 @@ pipeline {
 
   environment {
     FIREBASE_APP_ID = '1:189536895445:android:783ed885fd7c4b896bfd5c'
-    WORK_DIR = "${WORKSPACE}/workspace"
   }
 
   stages {
@@ -48,17 +47,19 @@ pipeline {
     stage('Build and Deploy') {
       steps {
         withCredentials([
+          string(credentialsId: 'FIREBASE_TOKEN', variable: 'FIREBASE_TOKEN'),
           string(credentialsId: 'KEYSTORE_PASSWORD', variable: 'KEYSTORE_PASSWORD'),
           string(credentialsId: 'KEY_ALIAS', variable: 'KEY_ALIAS'),
-          string(credentialsId: 'KEY_PASSWORD', variable: 'KEY_PASSWORD'),
-          string(credentialsId: 'FIREBASE_TOKEN', variable: 'FIREBASE_TOKEN')
+          string(credentialsId: 'KEY_PASSWORD', variable: 'KEY_PASSWORD')
         ]) {
           sh '''
             echo 🚀 Docker 빌드 및 배포 시작
-            docker run --rm -v "$PWD/workspace:/app" \
-              -e FIREBASE_TOKEN="$FIREBASE_TOKEN" \
-              -e FIREBASE_APP_ID="$FIREBASE_APP_ID" \
-              reactnativecommunity/docker-android:latest bash -c "
+
+            docker run --rm \
+              -v $PWD/workspace:/app \
+              -e FIREBASE_TOKEN=$FIREBASE_TOKEN \
+              -e FIREBASE_APP_ID=$FIREBASE_APP_ID \
+              reactnativecommunity/react-native-android bash -c "
                 set -e
                 cd /app
 
@@ -80,10 +81,10 @@ pipeline {
 
                 echo '🔥 Firebase 배포'
                 npm install -g firebase-tools
-                firebase appdistribution:distribute /tmp/output/*.apk \\
-                  --app $FIREBASE_APP_ID \\
-                  --token $FIREBASE_TOKEN \\
-                  --groups testers \\
+                firebase appdistribution:distribute /tmp/output/*.apk \
+                  --app $FIREBASE_APP_ID \
+                  --token $FIREBASE_TOKEN \
+                  --groups testers \
                   --release-notes 'CI 자동 배포'
               "
           '''
@@ -97,12 +98,10 @@ pipeline {
       sh '''
         echo ❌ 빌드 실패 디버깅 저장
         mkdir -p debug-archive
-        echo '## package.json 내용'
-        cat workspace/package.json || echo 없음
-        echo '\\n## 디렉토리 상태'
-        ls -al workspace || echo 없음
+        echo "## package.json 내용" && cat workspace/package.json || echo 없음
+        echo "\\n## 디렉토리 상태" && ls -al workspace || echo 없음
       '''
-      archiveArtifacts artifacts: 'debug-archive/**', allowEmptyArchive: true
+      archiveArtifacts artifacts: '**/workspace/**', allowEmptyArchive: true
     }
   }
 }
