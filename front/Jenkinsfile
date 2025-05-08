@@ -516,7 +516,7 @@ pipeline {
           mkdir -p apk
           if find android-build -name "*.apk" | grep -q ".apk"; then
             echo "✅ APK 파일 발견: 복사 중..."
-            find android-build -name "*.apk" -exec cp -v {} apk/ \;
+            find android-build -name "*.apk" | xargs -I {} cp -v {} apk/
           else
             echo "❌ APK 파일이 생성되지 않았습니다"
           fi
