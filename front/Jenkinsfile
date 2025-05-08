@@ -10,7 +10,6 @@ pipeline {
     DOCKER_IMAGE        = 'cimg/android:2023.08'
     WORK_DIR            = "${WORKSPACE}/workspace"
     TAR_PATH            = "${WORKSPACE}/workspace.tar.gz"
-    ARCHIVE_DIR         = "${WORKSPACE}/apk-archive"
   }
 
   stages {
@@ -26,9 +25,9 @@ pipeline {
         sh '''
           echo "📦 작업 디렉토리 준비 및 압축"
 
-          echo "🧹 기존 아카이브 제거"
-          [ -d "${TAR_PATH}" ] && echo "⚠️ ${TAR_PATH} 디렉토리 삭제" && rm -rf "${TAR_PATH}"
-          [ -f "${TAR_PATH}" ] && echo "🧹 이전 tar 파일 삭제" && rm -f "${TAR_PATH}"
+          # 디렉토리로 잘못된 이름일 경우 제거
+          [ -d "${TAR_PATH}" ] && echo "⚠️ 디렉토리 잘못됨, 삭제" && rm -rf "${TAR_PATH}"
+          [ -f "${TAR_PATH}" ] && echo "🧹 이전 압축 파일 삭제" && rm -f "${TAR_PATH}"
 
           rm -rf ${WORK_DIR}
           mkdir -p ${WORK_DIR}
@@ -40,9 +39,6 @@ pipeline {
 
           echo "📦 압축 생성"
           tar -czf ${TAR_PATH} -C ${WORK_DIR} .
-          [ -f ${TAR_PATH} ] || { echo "❌ 압축 파일 생성 실패"; exit 1; }
-
-          echo "📊 .tar.gz 상태"
           ls -lh ${TAR_PATH}
           stat ${TAR_PATH}
         '''
@@ -57,7 +53,7 @@ pipeline {
           file(credentialsId: 'firebase-service-account', variable: 'FIREBASE_SERVICE_ACCOUNT')
         ]) {
           sh '''
-            echo "🔐 시크릿 파일 복사"
+            echo "🔐 시크릿 파일 복사 및 권한 설정"
             mkdir -p ${WORK_DIR}/android/app/keystore
             cp "$KEYSTORE_FILE" ${WORK_DIR}/android/app/keystore/release.keystore
             cp "$GOOGLE_SERVICES_JSON" ${WORK_DIR}/android/app/google-services.json
@@ -71,11 +67,10 @@ pipeline {
     stage('Build and Deploy') {
       steps {
         sh '''
-          echo "📁 마운트 전 상태 검사"
+          echo "🚀 Docker 빌드 시작"
+
           [ -d "${TAR_PATH}" ] && echo "❌ ${TAR_PATH}는 디렉토리입니다!" && exit 1
-          [ -f "${TAR_PATH}" ] || { echo "❌ ${TAR_PATH} 파일 없음"; exit 1; }
-          ls -lh ${TAR_PATH}
-          stat ${TAR_PATH}
+          [ -f "${TAR_PATH}" ] || { echo "❌ 압축 파일 없음!"; exit 1; }
 
           docker run --rm \
             -v "${TAR_PATH}:/input/project.tar.gz" \
@@ -84,15 +79,18 @@ pipeline {
             ${DOCKER_IMAGE} \
             bash -c '
               set -e
-              echo "📄 project.tar.gz 확인"
-              [ -d /input/project.tar.gz ] && echo "❌ 디렉토리로 마운트됨" && exit 1
+              echo "📄 /input/project.tar.gz 확인"
+              [ -d /input/project.tar.gz ] && echo "❌ 디렉토리 마운트됨" && exit 1
               [ -f /input/project.tar.gz ] || { echo "❌ 파일 없음"; exit 1; }
 
               mkdir -p /tmp/project
               tar -xzf /input/project.tar.gz -C /tmp/project
               cd /tmp/project
+
+              echo "📦 npm install"
               npm install
 
+              echo "🛠️ Android 빌드"
               cd android
               chmod +x ./gradlew
               echo "sdk.dir=$ANDROID_HOME" > local.properties
@@ -101,17 +99,21 @@ pipeline {
               echo "KEY_PASSWORD=${KEY_PASSWORD}" >> gradle.properties
               ./gradlew clean assembleRelease --stacktrace
 
+              echo "📦 빌드 결과 복사"
               mkdir -p /tmp/output
-              find . -name "*.apk" -o -name "*.aab" -exec cp {} /tmp/output/ \;
+              find . -name "*.apk" -o -name "*.aab" -exec cp {} /tmp/output/ \\;
+
+              echo "🔥 Firebase 배포"
               npm install -g firebase-tools
               firebase appdistribution:distribute /tmp/output/*.apk \
                 --app "$FIREBASE_APP_ID" \
                 --token "$FIREBASE_TOKEN" \
                 --groups "testers" \
                 --release-notes "CI 자동 배포 #${BUILD_ID}"
+
+              echo "✅ 배포 완료"
             '
         '''
-        archiveArtifacts artifacts: 'apk-archive/**', fingerprint: true, allowEmptyArchive: true
       }
     }
   }
@@ -123,7 +125,7 @@ pipeline {
         mkdir -p debug-archive
         echo "## package.json 내용" > debug-archive/info.txt
         cat ${WORK_DIR}/package.json >> debug-archive/info.txt 2>/dev/null || echo "없음" >> debug-archive/info.txt
-        echo "\n## .tar.gz 상태" >> debug-archive/info.txt
+        echo "\\n## .tar.gz 상태" >> debug-archive/info.txt
         stat ${TAR_PATH} >> debug-archive/info.txt 2>/dev/null || echo "stat 실패" >> debug-archive/info.txt
       '''
       archiveArtifacts artifacts: 'debug-archive/**', fingerprint: true, allowEmptyArchive: true
