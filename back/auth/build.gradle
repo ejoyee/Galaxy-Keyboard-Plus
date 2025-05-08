@@ -42,6 +42,8 @@ dependencies {
 	implementation 'com.auth0:java-jwt:4.4.0'                   // JWT 생성
 	runtimeOnly  'org.postgresql:postgresql'
 	implementation 'io.github.cdimascio:dotenv-java:3.0.0'
+	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.1.0'
+	implementation 'org.springframework.boot:spring-boot-starter-webflux'
 }
 
 tasks.named('test') {
