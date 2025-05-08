@@ -11,7 +11,8 @@ pipeline {
     ANDROID_SDK_ROOT = '/opt/android-sdk'
     ANDROID_HOME     = '/opt/android-sdk'
     PATH             = "${env.PATH}:/opt/android-sdk/cmdline-tools/latest/bin:/opt/android-sdk/platform-tools"
-    // Fastlane Firebase App Distribution 토큰 (optional)
+
+    // Fastlane Firebase App Distribution 토큰  
     FIREBASE_TOKEN   = credentials('FIREBASE_TOKEN')
   }
 
@@ -33,22 +34,22 @@ pipeline {
     stage('Detect Changed Services') {
       steps {
         script {
-          // 이전 빌드 대비 변경된 파일 목록에서 'front/frontend/' 경로만 골라냅니다
+          // 이전 빌드 대비 변경된 파일 목록에서 'frontend/' 경로만 골라냅니다
           def diff = sh(
             script: "git diff --name-only ${env.GIT_PREVIOUS_SUCCESSFUL_COMMIT ?: 'HEAD~1'} ${env.GIT_COMMIT}",
             returnStdout: true
           ).trim()
           def changed = diff.split('\n')
-                            .findAll{ it.startsWith('front/frontend/') }
+                            .findAll{ it.startsWith('frontend/') }
                             .collect{ 'frontend' }
                             .unique()
           def forced = params.FORCE_SERVICES ? params.FORCE_SERVICES.split(',').collect{ it.trim() } : []
           env.CHANGED_SERVICES = (forced ?: changed).join(',')
           if (!env.CHANGED_SERVICES) {
-            echo "No frontend changes detected, skipping build."
+            echo "🚫 No frontend changes detected, skipping build."
             currentBuild.result = 'SUCCESS'
           } else {
-            echo "Will build: ${env.CHANGED_SERVICES}"
+            echo "🔨 Will build: ${env.CHANGED_SERVICES}"
           }
         }
       }
@@ -60,18 +61,27 @@ pipeline {
       }
       steps {
         withCredentials([
-          file(  credentialsId: 'android-release-keystore', variable: 'KEYSTORE_FILE'),
-          string(credentialsId: 'KEYSTORE_PASSWORD',       variable: 'KEYSTORE_PASSWORD'),
-          string(credentialsId: 'KEY_ALIAS',               variable: 'KEY_ALIAS'),
-          string(credentialsId: 'KEY_PASSWORD',            variable: 'KEY_PASSWORD'),
-          file(  credentialsId: 'google-services-json',    variable: 'GOOGLE_SERVICES_JSON'),
-          file(  credentialsId: 'firebase-service-account',variable: 'FIREBASE_SERVICE_ACCOUNT')
+          file(  credentialsId: 'android-release-keystore',  variable: 'KEYSTORE_FILE'),
+          string(credentialsId: 'KEYSTORE_PASSWORD',          variable: 'KEYSTORE_PASSWORD'),
+          string(credentialsId: 'KEY_ALIAS',                  variable: 'KEY_ALIAS'),
+          string(credentialsId: 'KEY_PASSWORD',               variable: 'KEY_PASSWORD'),
+          file(  credentialsId: 'google-services-json',       variable: 'GOOGLE_SERVICES_JSON'),
+          file(  credentialsId: 'firebase-service-account',   variable: 'FIREBASE_SERVICE_ACCOUNT')
         ]) {
           sh '''
-            mkdir -p front/frontend/android/app/keystore
-            cp "$KEYSTORE_FILE"                front/frontend/android/app/keystore/release.keystore
-            cp "$GOOGLE_SERVICES_JSON"         front/frontend/android/app/google-services.json
-            cp "$FIREBASE_SERVICE_ACCOUNT"     front/frontend/android/firebase_service_account.json
+            # keystore & google-services.json 복사
+            mkdir -p frontend/android/app/keystore
+            cp "$KEYSTORE_FILE"            frontend/android/app/keystore/release.keystore
+            cp "$GOOGLE_SERVICES_JSON"     frontend/android/app/google-services.json
+            cp "$FIREBASE_SERVICE_ACCOUNT" frontend/android/firebase_service_account.json
+
+            # Gradle properties에 키스토어 정보 주입
+            mkdir -p ~/.gradle
+            cat > ~/.gradle/gradle.properties <<EOF
+KEYSTORE_PASSWORD=${KEYSTORE_PASSWORD}
+KEY_ALIAS=${KEY_ALIAS}
+KEY_PASSWORD=${KEY_PASSWORD}
+EOF
           '''
         }
       }
@@ -82,9 +92,10 @@ pipeline {
         expression { env.CHANGED_SERVICES.contains('frontend') }
       }
       steps {
-        dir('front/frontend/android') {
+        dir('frontend/android') {
           sh 'yarn install'
           sh 'bundle install --path vendor/bundle'
+          // Fastlane plugin 설치 (Fastfile 내 install_plugins lane 이 없으면 생략 가능)
           sh 'bundle exec fastlane install_plugins'
         }
       }
@@ -95,9 +106,14 @@ pipeline {
         expression { env.CHANGED_SERVICES.contains('frontend') }
       }
       steps {
-        dir('front/frontend/android') {
+        dir('frontend/android') {
           // fastlane/Fastfile 에 정의된 release lane 실행
-          sh "bundle exec fastlane release groups:'testers' notes:'CI 자동 배포 빌드'"
+          sh """
+            export FASTLANE_FIREBASE_CLI_TOKEN=${FIREBASE_TOKEN}
+            bundle exec fastlane release \
+              groups:'testers' \
+              notes:'CI 자동 배포 빌드'
+          """
         }
       }
     }
@@ -107,7 +123,7 @@ pipeline {
         expression { env.CHANGED_SERVICES.contains('frontend') }
       }
       steps {
-        archiveArtifacts artifacts: 'front/frontend/android/app/build/outputs/**/*.apk', fingerprint: true
+        archiveArtifacts artifacts: 'frontend/android/app/build/outputs/**/*.apk', fingerprint: true
       }
     }
   }
