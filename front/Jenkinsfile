@@ -1,18 +1,13 @@
 pipeline {
-  agent {
-    docker {
-      image 'my-android-ci:latest'
-      args  '--user root:root'
-    }
-  }
+  // 1) 전체 에이전트를 any로 지정
+  agent any
 
   environment {
-    // Android SDK 설정
+    // Android SDK 환경 변수 설정
     ANDROID_SDK_ROOT = '/opt/android-sdk'
     ANDROID_HOME     = '/opt/android-sdk'
     PATH             = "${env.PATH}:/opt/android-sdk/cmdline-tools/latest/bin:/opt/android-sdk/platform-tools"
-
-    // Fastlane Firebase App Distribution 토큰  
+    // Fastlane Firebase App Distribution 토큰
     FIREBASE_TOKEN   = credentials('FIREBASE_TOKEN')
   }
 
@@ -31,97 +26,84 @@ pipeline {
       }
     }
 
-    stage('Detect Changed Services') {
+    stage('변경된 프론트엔드 감지') {
       steps {
         script {
-          // 이전 빌드 대비 변경된 파일 목록에서 'frontend/' 경로만 골라냅니다
+          // 이전 커밋 대비 변경된 파일 중 front/frontend/ 경로만 추출
           def diff = sh(
             script: "git diff --name-only ${env.GIT_PREVIOUS_SUCCESSFUL_COMMIT ?: 'HEAD~1'} ${env.GIT_COMMIT}",
             returnStdout: true
           ).trim()
           def changed = diff.split('\n')
-                            .findAll{ it.startsWith('frontend/') }
+                            .findAll{ it.startsWith('front/frontend/') }
                             .collect{ 'frontend' }
                             .unique()
           def forced = params.FORCE_SERVICES ? params.FORCE_SERVICES.split(',').collect{ it.trim() } : []
           env.CHANGED_SERVICES = (forced ?: changed).join(',')
           if (!env.CHANGED_SERVICES) {
-            echo "🚫 No frontend changes detected, skipping build."
+            echo "프론트엔드 변경 없음, 빌드 스킵"
             currentBuild.result = 'SUCCESS'
           } else {
-            echo "🔨 Will build: ${env.CHANGED_SERVICES}"
+            echo "빌드 대상: ${env.CHANGED_SERVICES}"
           }
         }
       }
     }
 
-    stage('Prepare Secrets') {
-      when {
-        expression { env.CHANGED_SERVICES.contains('frontend') }
-      }
+    stage('Docker 컨테이너 안에서 준비 & 빌드') {
+      // frontend 변경이 있을 때만 실행
+      when { expression { env.CHANGED_SERVICES.contains('frontend') } }
       steps {
-        withCredentials([
-          file(  credentialsId: 'android-release-keystore',  variable: 'KEYSTORE_FILE'),
-          string(credentialsId: 'KEYSTORE_PASSWORD',          variable: 'KEYSTORE_PASSWORD'),
-          string(credentialsId: 'KEY_ALIAS',                  variable: 'KEY_ALIAS'),
-          string(credentialsId: 'KEY_PASSWORD',               variable: 'KEY_PASSWORD'),
-          file(  credentialsId: 'google-services-json',       variable: 'GOOGLE_SERVICES_JSON'),
-          file(  credentialsId: 'firebase-service-account',   variable: 'FIREBASE_SERVICE_ACCOUNT')
-        ]) {
-          sh '''
-            # keystore & google-services.json 복사
-            mkdir -p frontend/android/app/keystore
-            cp "$KEYSTORE_FILE"            frontend/android/app/keystore/release.keystore
-            cp "$GOOGLE_SERVICES_JSON"     frontend/android/app/google-services.json
-            cp "$FIREBASE_SERVICE_ACCOUNT" frontend/android/firebase_service_account.json
+        script {
+          // 2) my-android-ci:latest 이미지 내부에서 모든 작업 실행
+          docker.image('my-android-ci:latest').inside('--user root:root') {
 
-            # Gradle properties에 키스토어 정보 주입
-            mkdir -p ~/.gradle
-            cat > ~/.gradle/gradle.properties <<EOF
+            // ── 2-1) 비밀키 등 복사
+            withCredentials([
+              file(  credentialsId: 'android-release-keystore', variable: 'KEYSTORE_FILE'),
+              string(credentialsId: 'KEYSTORE_PASSWORD',       variable: 'KEYSTORE_PASSWORD'),
+              string(credentialsId: 'KEY_ALIAS',               variable: 'KEY_ALIAS'),
+              string(credentialsId: 'KEY_PASSWORD',            variable: 'KEY_PASSWORD'),
+              file(  credentialsId: 'google-services-json',    variable: 'GOOGLE_SERVICES_JSON'),
+              file(  credentialsId: 'firebase-service-account',variable: 'FIREBASE_SERVICE_ACCOUNT')
+            ]) {
+              sh '''
+                mkdir -p frontend/android/app/keystore
+                cp "$KEYSTORE_FILE"            frontend/android/app/keystore/release.keystore
+                cp "$GOOGLE_SERVICES_JSON"     frontend/android/app/google-services.json
+                cp "$FIREBASE_SERVICE_ACCOUNT" frontend/android/firebase_service_account.json
+
+                mkdir -p ~/.gradle
+                cat > ~/.gradle/gradle.properties <<EOF
 KEYSTORE_PASSWORD=${KEYSTORE_PASSWORD}
 KEY_ALIAS=${KEY_ALIAS}
 KEY_PASSWORD=${KEY_PASSWORD}
 EOF
-          '''
+              '''
+            }
+
+            // ── 2-2) 의존성 설치
+            dir('frontend/android') {
+              sh 'yarn install'
+              sh 'bundle install --path vendor/bundle'
+              sh 'bundle exec fastlane install_plugins'
+            }
+
+            // ── 2-3) 빌드 및 Firebase App Distribution 업로드
+            dir('frontend/android') {
+              sh """
+                export FASTLANE_FIREBASE_CLI_TOKEN=${FIREBASE_TOKEN}
+                bundle exec fastlane release groups:'testers' notes:'CI 자동 배포 빌드'
+              """
+            }
+
+          } // docker.image(...).inside 끝
         }
       }
     }
 
-    stage('Install Dependencies') {
-      when {
-        expression { env.CHANGED_SERVICES.contains('frontend') }
-      }
-      steps {
-        dir('frontend/android') {
-          sh 'yarn install'
-          sh 'bundle install --path vendor/bundle'
-          // Fastlane plugin 설치 (Fastfile 내 install_plugins lane 이 없으면 생략 가능)
-          sh 'bundle exec fastlane install_plugins'
-        }
-      }
-    }
-
-    stage('Build & Distribute') {
-      when {
-        expression { env.CHANGED_SERVICES.contains('frontend') }
-      }
-      steps {
-        dir('frontend/android') {
-          // fastlane/Fastfile 에 정의된 release lane 실행
-          sh """
-            export FASTLANE_FIREBASE_CLI_TOKEN=${FIREBASE_TOKEN}
-            bundle exec fastlane release \
-              groups:'testers' \
-              notes:'CI 자동 배포 빌드'
-          """
-        }
-      }
-    }
-
-    stage('Archive APK') {
-      when {
-        expression { env.CHANGED_SERVICES.contains('frontend') }
-      }
+    stage('APK 아카이브') {
+      when { expression { env.CHANGED_SERVICES.contains('frontend') } }
       steps {
         archiveArtifacts artifacts: 'frontend/android/app/build/outputs/**/*.apk', fingerprint: true
       }
@@ -129,14 +111,8 @@ EOF
   }
 
   post {
-    always {
-      cleanWs()
-    }
-    success {
-      echo '✅ Frontend CI/CD 성공적으로 완료'
-    }
-    failure {
-      echo '❌ Frontend CI/CD 중 오류 발생'
-    }
+    always { cleanWs() }
+    success { echo '✅ Frontend CI/CD 성공' }
+    failure { echo '❌ Frontend CI/CD 실패' }
   }
 }
