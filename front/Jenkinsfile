@@ -1,402 +1,506 @@
 pipeline {
-  agent any
+  agent any
 
-  environment {
-    // Firebase 배포 정보
-    FIREBASE_TOKEN   = credentials('FIREBASE_TOKEN')
-    FIREBASE_APP_ID  = '1:189536895445:android:783ed885fd7c4b896bfd5c'
-    // 키스토어 관련 설정
-    KEYSTORE_PASSWORD = credentials('KEYSTORE_PASSWORD')
-    KEY_ALIAS        = credentials('KEY_ALIAS')
-    KEY_PASSWORD     = credentials('KEY_PASSWORD')
-    // CircleCI Android 이미지 사용
-    DOCKER_IMAGE     = 'cimg/android:2023.08'
-    // 작업 디렉토리 변수 추가
-    WORK_DIR         = "${WORKSPACE}/workspace"
-  }
+  environment {
+    // Firebase 배포 정보
+    FIREBASE_TOKEN   = credentials('FIREBASE_TOKEN')
+    FIREBASE_APP_ID  = '1:189536895445:android:783ed885fd7c4b896bfd5c'
+    // 키스토어 관련 설정
+    KEYSTORE_PASSWORD = credentials('KEYSTORE_PASSWORD')
+    KEY_ALIAS        = credentials('KEY_ALIAS')
+    KEY_PASSWORD     = credentials('KEY_PASSWORD')
+    // CircleCI Android 이미지 사용
+    DOCKER_IMAGE     = 'cimg/android:2023.08'
+    // 작업 디렉토리 변수 추가 (Jenkins 워크스페이스 내 임시 디렉토리)
+    WORK_DIR         = "${WORKSPACE}/workspace"
+  }
 
-  stages {
-    stage('Checkout') {
-      steps {
-        checkout scm
-        
-        // 빌드 시작 로그
-        sh '''
-          echo "===================================================="
-          echo "🚀 빌드 시작: $(date '+%Y-%m-%d %H:%M:%S')"
-          echo "🔍 빌드 ID: ${BUILD_ID}"
-          echo "🔍 Git 커밋: ${GIT_COMMIT}"
-          echo "🔍 브랜치: ${GIT_BRANCH}"
-          echo "🔍 작업 디렉토리: ${WORKSPACE}"
-          echo "===================================================="
-        '''
-      }
-    }
+  stages {
+    stage('Checkout') {
+      steps {
+        checkout scm
 
-    stage('Check Docker Image') {
-      steps {
-        sh '''
-          echo "===================================================="
-          echo "🔍 Docker 이미지 확인"
-          echo "===================================================="
-          
-          # Docker 이미지 확인
-          if docker image inspect ${DOCKER_IMAGE} >/dev/null 2>&1; then
-            echo "✅ Docker 이미지 ${DOCKER_IMAGE}가 이미 존재합니다."
-          else
-            echo "🔄 Docker 이미지 ${DOCKER_IMAGE}를 다운로드합니다."
-            docker pull ${DOCKER_IMAGE} || {
-              echo "❌ Docker 이미지 다운로드 실패! 사용 가능한 이미지인지 확인하세요."
-              exit 1
-            }
-          fi
-          
-          echo "===================================================="
-        '''
-      }
-    }
+        // 빌드 시작 로그
+        sh '''
+          echo "===================================================="
+          echo "🚀 빌드 시작: $(date '+%Y-%m-%d %H:%M:%S')"
+          echo "🔍 빌드 ID: ${BUILD_ID}"
+          echo "🔍 Git 커밋: ${GIT_COMMIT}"
+          echo "🔍 브랜치: ${GIT_BRANCH}"
+          echo "🔍 작업 디렉토리: ${WORKSPACE}"
+          echo "===================================================="
+        '''
+      }
+    }
 
-    stage('Prepare Build Environment') {
-      steps {
-        sh '''
-          echo "===================================================="
-          echo "🔧 빌드 환경 준비"
-          echo "===================================================="
-          
-          # 임시 작업 디렉토리 생성 (전체 경로 사용)
-          rm -rf ${WORK_DIR}
-          mkdir -p ${WORK_DIR}
-          
-          # 디버깅: 원본 디렉토리 구조 확인
-          echo "📂 원본 frontend 디렉토리 구조:"
-          ls -la front/frontend/
-          
-          # 프로젝트 파일 복사 (모든 파일을 복사하기 위해 ./* 사용)
-          echo "📂 프로젝트 파일 복사"
-          cp -a front/frontend/. ${WORK_DIR}/
-          
-          # 파일 목록 확인 (더 자세한 로깅)
-          echo "📂 복사된 파일 확인:"
-          ls -la ${WORK_DIR}
-          
-          # package.json 확인
-          echo "📄 package.json 확인:"
-          cat ${WORK_DIR}/package.json | head -20 || echo "package.json 파일을 찾을 수 없습니다"
-          
-          # 권한 설정 (모든 사용자가 읽고 쓸 수 있도록)
-          chmod -R 777 ${WORK_DIR}
-          
-          # 파일 권한 확인
-          echo "📄 중요 파일 권한 확인:"
-          ls -la ${WORK_DIR}/package.json || echo "package.json 파일을 찾을 수 없습니다"
-          
-          echo "===================================================="
-        '''
-      }
-    }
+    stage('Check Docker Image') {
+      steps {
+        sh '''
+          echo "===================================================="
+          echo "🔍 Docker 이미지 확인"
+          echo "===================================================="
 
-    stage('Prepare Secret Files') {
-      steps {
-        withCredentials([
-          file(credentialsId: 'android-release-keystore', variable: 'KEYSTORE_FILE'),
-          file(credentialsId: 'google-services-json', variable: 'GOOGLE_SERVICES_JSON'),
-          file(credentialsId: 'firebase-service-account', variable: 'FIREBASE_SERVICE_ACCOUNT')
-        ]) {
-          sh '''
-            echo "===================================================="
-            echo "🔐 시크릿 파일 준비"
-            echo "===================================================="
-            
-            # 디렉토리 생성
-            mkdir -p ${WORK_DIR}/android/app/keystore
-            
-            # 시크릿 파일 복사
-            cp "$FIREBASE_SERVICE_ACCOUNT" ${WORK_DIR}/android/firebase_service_account.json
-            cp "$GOOGLE_SERVICES_JSON" ${WORK_DIR}/android/app/google-services.json
-            cp "$KEYSTORE_FILE" ${WORK_DIR}/android/app/keystore/release.keystore
-            
-            # 권한 설정
-            chmod -R 777 ${WORK_DIR}/android/app/keystore
-            chmod 666 ${WORK_DIR}/android/firebase_service_account.json
-            chmod 666 ${WORK_DIR}/android/app/google-services.json
-            chmod 666 ${WORK_DIR}/android/app/keystore/release.keystore
-            
-            echo "===================================================="
-          '''
-        }
-      }
-    }
+          # Docker 이미지 확인
+          if docker image inspect ${DOCKER_IMAGE} >/dev/null 2>&1; then
+            echo "✅ Docker 이미지 ${DOCKER_IMAGE}가 이미 존재합니다."
+          else
+            echo "🔄 Docker 이미지 ${DOCKER_IMAGE}를 다운로드합니다."
+            docker pull ${DOCKER_IMAGE} || {
+              echo "❌ Docker 이미지 다운로드 실패! 사용 가능한 이미지인지 확인하세요."
+              exit 1
+            }
+          fi
 
-    stage('Debug File System') {
-      steps {
-        sh '''
-          echo "===================================================="
-          echo "🔍 파일 시스템 디버깅"
-          echo "===================================================="
-          
-          # 현재 디렉토리 및 작업 디렉토리 확인
-          echo "📂 현재 디렉토리: $(pwd)"
-          echo "📂 작업 디렉토리: ${WORK_DIR}"
-          
-          # 작업 디렉토리 내용 확인
-          echo "📄 작업 디렉토리 내용:"
-          ls -la ${WORK_DIR}
-          
-          # package.json 파일 시스템 정보 확인
-          echo "📄 package.json 파일 시스템 정보:"
-          stat ${WORK_DIR}/package.json || echo "package.json 파일 정보를 가져올 수 없습니다"
-          
-          # Docker 정보 확인
-          echo "🐳 Docker 버전:"
-          docker --version
-          
-          # SELinux 상태 확인 (볼륨 마운트에 영향을 줄 수 있음)
-          echo "🔒 SELinux 상태:"
-          getenforce 2>/dev/null || echo "SELinux 상태를 확인할 수 없습니다"
-          
-          # Docker 호스트 정보 확인
-          echo "🐳 Docker 호스트 정보:"
-          docker info | grep -E "Storage Driver|Root Dir"
-          
-          echo "===================================================="
-          
-          # 작업 디렉토리를 아카이브로 만들어 Docker에서 추출하는 대안 테스트
-          echo "📦 작업 디렉토리 아카이브 생성"
-          tar -czf ${WORKSPACE}/workspace.tar.gz -C ${WORK_DIR} .
-          
-          echo "===================================================="
-        '''
-      }
-    }
+          echo "===================================================="
+        '''
+      }
+    }
 
-    stage('Docker Volume Test') {
-      steps {
-        sh '''
-          echo "===================================================="
-          echo "🔍 Docker 볼륨 마운트 테스트 (다양한 방법 시도)"
-          echo "===================================================="
-          
-          # 방법 1: 일반 볼륨 마운트
-          echo "🔍 방법 1: 일반 볼륨 마운트"
-          docker run --rm \
-            -v "${WORK_DIR}:/project" \
-            --workdir /project \
-            ${DOCKER_IMAGE} \
-            bash -c "ls -la && (cat package.json | head -5 || echo 'package.json 파일 없음')"
-          
-          # 방법 2: 파일 경로에 따옴표 추가
-          echo "🔍 방법 2: 파일 경로에 따옴표 추가"
-          docker run --rm \
-            -v "${WORK_DIR}":/project \
-            --workdir /project \
-            ${DOCKER_IMAGE} \
-            bash -c "ls -la && (cat package.json | head -5 || echo 'package.json 파일 없음')"
-          
-          # 방법 3: 아카이브 추출 방식
-          echo "🔍 방법 3: 아카이브 추출 방식"
-          docker run --rm \
-            -v "${WORKSPACE}/workspace.tar.gz:/workspace.tar.gz" \
-            ${DOCKER_IMAGE} \
-            bash -c '
-          echo "--- 컨테이너 내부 정보 ---"
-          whoami  # 현재 사용자 확인
-          ls -la /  # 루트 디렉토리 권한 확인
-          echo "-------------------------"
+    stage('Prepare Build Environment') {
+      steps {
+        sh '''
+          echo "===================================================="
+          echo "🔧 빌드 환경 준비 (Jenkins 워크스페이스 내 임시 디렉토리 ${WORK_DIR})"
+          echo "===================================================="
 
-          mkdir -p /project && tar -xzf /workspace.tar.gz -C /project && cd /project && ls -la && (cat package.json | head -5 || echo 'package.json 파일 없음')
-        '
-          
-          echo "===================================================="
-        '''
-      }
-    }
+          # 임시 작업 디렉토리 생성 (전체 경로 사용)
+          rm -rf ${WORK_DIR}
+          mkdir -p ${WORK_DIR}
 
-    stage('Build in Docker (Using Archive Method)') {
-      steps {
-        sh '''
-          echo "===================================================="
-          echo "🚀 Docker 내부에서 빌드 실행 (아카이브 방식)"
-          echo "===================================================="
-          
-          # Docker 컨테이너 실행 (아카이브 방식)
-          docker run --rm \
-            -v "${WORKSPACE}/workspace.tar.gz:/workspace.tar.gz" \
-            -v "${WORKSPACE}/apk:/output" \
-            ${DOCKER_IMAGE} \
-            bash -c '
-              set -e  # 에러 발생 시 즉시 스크립트 중단
-              
-              # 작업 디렉토리 준비
-              mkdir -p /project
-              tar -xzf /workspace.tar.gz -C /project
-              cd /project
-              
-              echo "📂 현재 디렉토리: $(pwd)"
-              ls -la
-              
-              echo "📦 Node.js 종속성 설치"
-              if [ ! -f "package.json" ]; then
-                echo "❌ package.json 파일이 없습니다!"
-                echo "현재 디렉토리 내용:"
-                ls -la
-                exit 1
-              fi
-              
-              # Node.js 버전 확인
-              NODE_VERSION=$(node --version || echo "Node.js가 설치되지 않았습니다")
-              NPM_VERSION=$(npm --version || echo "npm이 설치되지 않았습니다")
-              echo "Node.js 버전: $NODE_VERSION"
-              echo "npm 버전: $NPM_VERSION"
-              
-              npm install
-              
-              echo "📂 node_modules 설치 확인"
-              ls -la node_modules/@react-native || echo "React Native 모듈을 찾을 수 없습니다"
-              
-              echo "🔧 Android 빌드 준비"
-              cd android
-              chmod +x ./gradlew
-              
-              echo "🔧 local.properties 생성"
-              echo "sdk.dir=$ANDROID_HOME" > local.properties
-              
-              echo "🔧 Gradle 프로퍼티 설정"
-              cat >> gradle.properties << EOF
+          # 디버깅: 원본 디렉토리 구조 확인
+          echo "📂 원본 frontend 디렉토리 구조:"
+          ls -la front/frontend/ || echo "front/frontend 디렉토리를 찾을 수 없습니다."
 
-# CI 환경 키스토어 설정
-KEYSTORE_PASSWORD='"'"'$KEYSTORE_PASSWORD'"'"'
-KEY_ALIAS='"'"'$KEY_ALIAS'"'"'
-KEY_PASSWORD='"'"'$KEY_PASSWORD'"'"'
-EOF
-              
-              echo "🔧 Gradle 빌드 실행"
-              ./gradlew clean --stacktrace
-              ./gradlew assembleDebug --stacktrace
-              
-              echo "🔧 빌드 결과 확인"
-              find . -name "*.apk" 
-              
-              # APK 파일 복사
-              mkdir -p /output
-              find . -name "*.apk" -exec cp {} /output/ ";"
-            '
-          
-          # APK 파일 정리
-          mkdir -p apk-archive
-          find ${WORKSPACE}/apk -name "*.apk" -exec cp {} apk-archive/ ";" || echo "APK 파일이 없습니다"
-          
-          # 결과 확인
-          APK_COUNT=$(find apk-archive -name "*.apk" | wc -l)
-          
-          if [ "$APK_COUNT" -gt 0 ]; then
-            echo "✅ $APK_COUNT 개의 APK 파일이 있습니다:"
-            find apk-archive -name "*.apk" | xargs ls -la
-          else
-            echo "❌ APK 파일이 없습니다"
-            echo "No APK files found" > apk-archive/build-failed.txt
-          fi
-          
-          echo "===================================================="
-        '''
-        
-        archiveArtifacts artifacts: 'apk-archive/**', fingerprint: true, allowEmptyArchive: true
-      }
-    }
+          # 프로젝트 파일 복사 (모든 파일을 복사하기 위해 ./* 사용)
+          echo "📂 프로젝트 파일 복사 중..."
+          cp -a front/frontend/. ${WORK_DIR}/ || { echo "❌ 프로젝트 파일 복사 실패!"; exit 1; }
+          echo "✅ 프로젝트 파일 복사 완료."
 
-    stage('Deploy to Firebase') {
-      steps {
-        withCredentials([
-          string(credentialsId: 'FIREBASE_TOKEN', variable: 'FIREBASE_TOKEN')
-        ]) {
-          sh '''
-            echo "===================================================="
-            echo "🔥 Firebase 배포"
-            echo "===================================================="
-            
-            # APK 파일 찾기
-            APK_FILE=$(find "${WORKSPACE}/apk-archive" -name "*.apk" | head -1)
-            
-            if [ -z "$APK_FILE" ]; then
-              echo "❌ APK 파일을 찾을 수 없어 Firebase 배포를 건너뜁니다"
-              exit 0
-            fi
-            
-            echo "✅ 업로드할 APK 파일: $APK_FILE"
-            
-            # Firebase 배포 실행
-            docker run --rm \
-              -v "${APK_FILE}:/app.apk" \
-              -e FIREBASE_TOKEN="$FIREBASE_TOKEN" \
-              -e FIREBASE_APP_ID="$FIREBASE_APP_ID" \
-              ${DOCKER_IMAGE} \
-              bash -c '
-                # Firebase CLI 설치
-                npm install -g firebase-tools
-                
-                echo "🔥 Firebase App Distribution 실행"
-                firebase appdistribution:distribute "/app.apk" \
-                  --app "$FIREBASE_APP_ID" \
-                  --token "$FIREBASE_TOKEN" \
-                  --groups "testers" \
-                  --release-notes "Jenkins CI 자동 배포 빌드 #${BUILD_ID} (${GIT_COMMIT})"
-              '
-            
-            echo "===================================================="
-          '''
-        }
-      }
-    }
-  }
+          # 파일 목록 확인 (더 자세한 로깅)
+          echo "📂 복사된 파일 확인 (${WORK_DIR}):"
+          ls -la ${WORK_DIR}
 
-  post {
-    success {
-      sh '''
-        echo "===================================================="
-        echo "✅ Frontend CI/CD 성공 🎉"
-        echo "===================================================="
-      '''
-    }
-    failure {
-      sh '''
-        echo "===================================================="
-        echo "❌ Frontend CI/CD 실패 ❗"
-        echo "===================================================="
-        
-        # 디버깅 정보 수집
-        echo "# 빌드 실패 디버깅 정보" > debug-info.md
-        echo "" >> debug-info.md
-        
-        echo "## 빌드 디렉토리 정보" >> debug-info.md
-        ls -la ${WORK_DIR} 2>/dev/null >> debug-info.md || echo "빌드 디렉토리가 없습니다" >> debug-info.md
-        echo "" >> debug-info.md
-        
-        echo "## package.json 파일 내용" >> debug-info.md
-        cat ${WORK_DIR}/package.json 2>/dev/null >> debug-info.md || echo "package.json 파일이 없습니다" >> debug-info.md
-        echo "" >> debug-info.md
-        
-        echo "## Docker 상태" >> debug-info.md
-        docker info 2>/dev/null >> debug-info.md || echo "Docker 정보를 가져올 수 없습니다" >> debug-info.md
-        echo "" >> debug-info.md
-        
-        # 디버깅 정보 아카이브
-        mkdir -p debug-archive
-        cp debug-info.md debug-archive/
-        
-        echo "📦 디버깅 정보가 debug-archive에 저장되었습니다"
-      '''
-      
-      archiveArtifacts artifacts: 'debug-archive/**', fingerprint: true, allowEmptyArchive: true
-    }
-    always {
-      sh '''
-        echo "===================================================="
-        echo "🧹 작업 공간 정리"
-        echo "===================================================="
-        
-        # 임시 디렉토리 정리
-        rm -rf ${WORK_DIR} workspace.tar.gz apk apk-archive debug-archive || true
-      '''
-      cleanWs()
-    }
-  }
+          # package.json 확인
+          echo "📄 ${WORK_DIR}/package.json 확인:"
+          cat ${WORK_DIR}/package.json | head -20 || echo "package.json 파일을 찾을 수 없습니다"
+
+          # 권한 설정 (모든 사용자가 읽고 쓸 수 있도록 - Docker 마운트 시 권한 문제 방지)
+          echo "🔧 권한 설정 중 (chmod -R 777)..."
+          chmod -R 777 ${WORK_DIR} || { echo "❌ 권한 설정 실패!"; exit 1; }
+          echo "✅ 권한 설정 완료."
+
+          # 파일 권한 확인
+          echo "📄 중요 파일 권한 확인 (${WORK_DIR}/package.json):"
+          ls -la ${WORK_DIR}/package.json || echo "package.json 파일 정보를 가져올 수 없습니다"
+
+          echo "===================================================="
+        '''
+      }
+    }
+
+    stage('Prepare Secret Files') {
+      steps {
+        withCredentials([
+          file(credentialsId: 'android-release-keystore', variable: 'KEYSTORE_FILE'),
+          file(credentialsId: 'google-services-json', variable: 'GOOGLE_SERVICES_JSON'),
+          file(credentialsId: 'firebase-service-account', variable: 'FIREBASE_SERVICE_ACCOUNT')
+        ]) {
+          sh '''
+            echo "===================================================="
+            echo "🔐 시크릿 파일 준비 (${WORK_DIR} 내부)"
+            echo "===================================================="
+
+            # 필요한 디렉토리 생성
+            mkdir -p ${WORK_DIR}/android/app/keystore || { echo "❌ keystore 디렉토리 생성 실패!"; exit 1; }
+            mkdir -p ${WORK_DIR}/android || { echo "❌ android 디렉토리 생성 실패!"; exit 1; } # firebase_service_account.json 위치
+
+            # 시크릿 파일 복사
+            echo "📄 firebase_service_account.json 복사 중..."
+            cp "$FIREBASE_SERVICE_ACCOUNT" ${WORK_DIR}/android/firebase_service_account.json || { echo "❌ firebase_service_account.json 복사 실패!"; exit 1; }
+            echo "📄 google-services.json 복사 중..."
+            cp "$GOOGLE_SERVICES_JSON" ${WORK_DIR}/android/app/google-services.json || { echo "❌ google-services.json 복사 실패!"; exit 1; }
+            echo "📄 release.keystore 복사 중..."
+            cp "$KEYSTORE_FILE" ${WORK_DIR}/android/app/keystore/release.keystore || { echo "❌ release.keystore 복사 실패!"; exit 1; }
+            echo "✅ 시크릿 파일 복사 완료."
+
+            # 권한 설정 (Docker 컨테이너에서 접근 가능하도록)
+            echo "🔧 시크릿 파일 권한 설정 중..."
+            chmod -R 777 ${WORK_DIR}/android/app/keystore || true # 에러 무시
+            chmod 666 ${WORK_DIR}/android/firebase_service_account.json || true
+            chmod 666 ${WORK_DIR}/android/app/google-services.json || true
+            chmod 666 ${WORK_DIR}/android/app/keystore/release.keystore || true
+            echo "✅ 시크릿 파일 권한 설정 완료."
+
+            # 복사된 파일 존재 확인 (디버깅)
+            echo "📂 복사된 시크릿 파일 확인:"
+            ls -la ${WORK_DIR}/android/firebase_service_account.json || echo "firebase_service_account.json 없음"
+            ls -la ${WORK_DIR}/android/app/google-services.json || echo "google-services.json 없음"
+            ls -la ${WORK_DIR}/android/app/keystore/release.keystore || echo "release.keystore 없음"
+
+
+            echo "===================================================="
+          '''
+        }
+      }
+    }
+
+    stage('Debug File System') {
+      steps {
+        sh '''
+          echo "===================================================="
+          echo "🔍 파일 시스템 디버깅 (Jenkins 워크스페이스)"
+          echo "===================================================="
+
+          # 현재 디렉토리 및 작업 디렉토리 확인
+          echo "📂 현재 디렉토리: $(pwd)"
+          echo "📂 작업 디렉토리: ${WORK_DIR}"
+
+          # 작업 디렉토리 내용 확인
+          echo "📄 작업 디렉토리 내용 (${WORK_DIR}):"
+          ls -la ${WORK_DIR}
+
+          # package.json 파일 시스템 정보 확인
+          echo "📄 ${WORK_DIR}/package.json 파일 시스템 정보:"
+          stat ${WORK_DIR}/package.json || echo "package.json 파일 정보를 가져올 수 없습니다"
+
+          # Docker 정보 확인
+          echo "🐳 Docker 버전:"
+          docker --version || echo "Docker 버전 확인 불가"
+
+          # SELinux 상태 확인 (볼륨 마운트에 영향을 줄 수 있음)
+          echo "🔒 SELinux 상태:"
+          getenforce 2>/dev/null || echo "SELinux 상태를 확인할 수 없습니다"
+
+          # Docker 호스트 정보 확인
+          echo "🐳 Docker 호스트 정보:"
+          docker info | grep -E "Storage Driver|Root Dir" || echo "Docker 호스트 정보 확인 불가"
+
+          echo "===================================================="
+
+          # 작업 디렉토리를 아카이브로 만들어 Docker에서 추출하는 대안 테스트
+          echo "📦 작업 디렉토리 아카이브 생성 (${WORKSPACE}/workspace.tar.gz)"
+          tar -czf ${WORKSPACE}/workspace.tar.gz -C ${WORK_DIR} . || { echo "❌ 아카이브 생성 실패!"; exit 1; }
+          echo "✅ 작업 디렉토리 아카이브 생성 완료."
+
+          echo "===================================================="
+        '''
+      }
+    }
+
+    stage('Docker Volume Test') {
+      steps {
+        sh '''
+          echo "===================================================="
+          echo "🔍 Docker 볼륨 마운트 테스트 (다양한 방법 시도 - 컨테이너 내부 경로 /tmp/project)"
+          echo "===================================================="
+
+          # 방법 1: 일반 볼륨 마운트 - 컨테이너 내부 권한 문제로 실패 예상
+          echo "🔍 방법 1: 일반 볼륨 마운트 테스트..."
+          docker run --rm \\
+            -v "${WORK_DIR}:/project" \\
+            --workdir /project \\
+            ${DOCKER_IMAGE} \\
+            bash -c "ls -la && (cat package.json | head -5 || echo 'package.json 파일 없음')" || echo "➡️ 방법 1 실패 (예상대로 권한 문제 발생 가능)"
+
+          # 방법 2: 파일 경로에 따옴표 추가 - 컨테이너 내부 권한 문제로 실패 예상
+          echo "🔍 방법 2: 파일 경로에 따옴표 추가 테스트..."
+          docker run --rm \\
+            -v "${WORK_DIR}":/project \\
+            --workdir /project \\
+            ${DOCKER_IMAGE} \\
+            bash -c "ls -la && (cat package.json | head -5 || echo 'package.json 파일 없음')" || echo "➡️ 방법 2 실패 (예상대로 권한 문제 발생 가능)"
+
+          # 방법 3: 아카이브 추출 방식 - 경로를 /tmp/project로 변경 (성공 기대)
+          echo "🔍 방법 3: 아카이브 추출 방식 테스트 (경로 /tmp/project)..."
+          docker run --rm \\
+            -v "${WORKSPACE}/workspace.tar.gz:/workspace.tar.gz" \\
+            ${DOCKER_IMAGE} \\
+            bash -c '
+              set -e # 에러 발생 시 즉시 중단
+
+              echo "--- 컨테이너 내부 정보 ---"
+              whoami     # 현재 사용자 확인
+              pwd       # 현재 작업 디렉토리 확인
+              ls -la /  # 루트 디렉토리 권한 확인
+              ls -la /tmp # /tmp 디렉토리 권한 확인
+              echo "-------------------------"
+
+              # /tmp 아래에 프로젝트 디렉토리 생성 및 압축 해제
+              echo "📦 아카이브 추출 중... 대상: /tmp/project"
+              mkdir -p /tmp/project
+              tar -xzf /workspace.tar.gz -C /tmp/project
+              
+              # 추출된 파일 확인
+              echo "📂 추출된 파일 확인 (/tmp/project):"
+              cd /tmp/project
+              ls -la
+              echo "📄 /tmp/project/package.json 확인:"
+              cat package.json | head -5 || echo "package.json 파일 없음"
+            '
+          
+          echo "===================================================="
+        '''
+      }
+    }
+
+    stage('Build in Docker (Using Archive Method)') {
+      steps {
+        sh '''
+          echo "===================================================="
+          echo "🚀 Docker 내부에서 빌드 실행 (아카이브 방식, 경로 /tmp/project)"
+          echo "===================================================="
+
+          # Docker 컨테이너 실행
+          # /workspace.tar.gz: Jenkins에서 생성한 아카이브를 컨테이너 내부로 마운트
+          # /output: 컨테이너 내부 빌드 결과물을 Jenkins 워크스페이스의 /apk 디렉토리로 마운트
+          docker run --rm \\
+            -v "${WORKSPACE}/workspace.tar.gz:/workspace.tar.gz" \\
+            -v "${WORKSPACE}/apk:/output" \\
+            ${DOCKER_IMAGE} \\
+            bash -c '
+              set -e  # 에러 발생 시 즉시 스크립트 중단
+
+              echo "--- 빌드 컨테이너 내부 설정 ---"
+              whoami # 실행 사용자 확인
+              pwd # 현재 작업 디렉토리 확인
+              ls -la /tmp # /tmp 권한 확인
+              echo "---------------------------"
+
+              # 작업 디렉토리 준비 (/tmp 아래에 생성)
+              echo "📦 작업 디렉토리 준비 중... 대상: /tmp/project"
+              mkdir -p /tmp/project
+              tar -xzf /workspace.tar.gz -C /tmp/project
+              cd /tmp/project
+              echo "✅ 작업 디렉토리 준비 완료: $(pwd)"
+              ls -la # 디버깅: 복사된 파일 확인
+
+              echo "📦 Node.js 종속성 설치 중..."
+              if [ ! -f "package.json" ]; then
+                echo "❌ package.json 파일이 없습니다! 현재 위치: $(pwd)"
+                ls -la
+                exit 1
+              fi
+              
+              # Node.js 버전 확인 (선택 사항)
+              echo "Node.js 버전: $(node --version 2>/dev/null || echo 'Node.js가 설치되지 않았습니다')"
+              echo "npm 버전: $(npm --version 2>/dev/null || echo 'npm이 설치되지 않았습니다')"
+              
+              npm install || { echo "❌ npm install 실패!"; exit 1; }
+              echo "✅ Node.js 종속성 설치 완료."
+
+              echo "📂 node_modules 설치 확인"
+              ls -la node_modules/@react-native 2>/dev/null || echo "React Native 모듈을 찾을 수 없습니다 (node_modules/@react-native)"
+
+              echo "🔧 Android 빌드 준비 중..."
+              if [ ! -d "android" ]; then
+                echo "❌ android 디렉토리가 없습니다! 현재 위치: $(pwd)"
+                ls -la
+                exit 1
+              fi
+              cd android || { echo "❌ android 디렉토리로 이동 실패!"; exit 1; }
+              chmod +x ./gradlew || { echo "❌ gradlew 실행 권한 설정 실패!"; exit 1; }
+              echo "✅ Android 빌드 준비 완료: $(pwd)"
+
+              echo "🔧 local.properties 생성 중..."
+              # $ANDROID_HOME 변수는 cimg/android 이미지에 설정되어 있습니다.
+              echo "sdk.dir=$ANDROID_HOME" > local.properties || { echo "❌ local.properties 생성 실패!"; exit 1; }
+              echo "✅ local.properties 생성 완료."
+
+              echo "🔧 Gradle 프로퍼티 설정 중..."
+              # 따옴표 처리에 더 안전한 방식 사용
+              echo "KEYSTORE_PASSWORD=\'${KEYSTORE_PASSWORD}\'" >> gradle.properties
+              echo "KEY_ALIAS=\'${KEY_ALIAS}\'" >> gradle.properties
+              echo "KEY_PASSWORD=\'${KEY_PASSWORD}\'" >> gradle.properties
+              # Release 빌드를 위한 signingConfig 정보 추가 (필요시)
+              # build.gradle (:app) 파일에 signingConfig 설정이 되어 있어야 합니다.
+              # 예시:
+              # android {
+              #   signingConfigs {
+              #     release {
+              #       if (project.hasProperty('MYAPP_UPLOAD_STORE_FILE')) {
+              #         storeFile file(project.property('MYAPP_UPLOAD_STORE_FILE'))
+              #         storePassword project.property('MYAPP_UPLOAD_STORE_PASSWORD')
+              #         keyAlias project.property('MYAPP_UPLOAD_KEY_ALIAS')
+              #         keyPassword project.property('MYAPP_UPLOAD_KEY_PASSWORD')
+              #       }
+              #     }
+              #   }
+              #   buildTypes {
+              #     release {
+              #       signingConfig signingConfigs.release
+              #       ...
+              #     }
+              #   }
+              # }
+              # gradle.properties에 다음을 추가해야 할 수도 있습니다 (프로젝트 설정에 따라 다름)
+              # echo "MYAPP_UPLOAD_STORE_FILE=../app/keystore/release.keystore" >> gradle.properties
+              # echo "MYAPP_UPLOAD_STORE_PASSWORD=\'${KEYSTORE_PASSWORD}\'" >> gradle.properties
+              # echo "MYAPP_UPLOAD_KEY_ALIAS=\'${KEY_ALIAS}\'" >> gradle.properties
+              # echo "MYAPP_UPLOAD_KEY_PASSWORD=\'${KEY_PASSWORD}\'" >> gradle.properties
+
+              echo "📄 gradle.properties 내용:"
+              cat gradle.properties || echo "gradle.properties 파일을 찾을 수 없습니다."
+              echo "✅ Gradle 프로퍼티 설정 완료."
+
+              echo "🔧 Gradle 빌드 실행 (assembleRelease)..."
+              # assembleRelease는 서명을 포함합니다.
+              ./gradlew clean assembleRelease --stacktrace || { echo "❌ Gradle 빌드 실패!"; exit 1; }
+              echo "✅ Gradle 빌드 성공."
+
+              echo "🔧 빌드 결과 (APK/AAB) 확인 및 복사 중..."
+              mkdir -p /output || { echo "❌ /output 디렉토리 생성 실패!"; exit 1; } # Jenkins 워크스페이스 마운트 지점
+              
+              # 빌드된 APK 또는 AAB 파일을 찾아 /output으로 복사
+              find . -name "*.apk" -print -exec cp {} /output/ ";" || echo "APK 파일 복사 실패 또는 찾지 못함"
+              find . -name "*.aab" -print -exec cp {} /output/ ";" || echo "AAB 파일 복사 실패 또는 찾지 못함"
+              echo "✅ 빌드 결과 복사 완료."
+            '
+          
+          # Jenkins 워크스페이스에서 Docker가 복사한 APK/AAB 파일을 아카이브 디렉토리로 이동
+          echo "📦 Jenkins 워크스페이스에서 빌드 결과 정리 및 아카이브 준비 중..."
+          mkdir -p apk-archive || { echo "❌ Jenkins 워크스페이스 apk-archive 생성 실패!"; exit 1; }
+          # Docker의 /output에 복사된 파일들은 Jenkins 워크스페이스의 ${WORKSPACE}/apk 에 있습니다.
+          find ${WORKSPACE}/apk -name "*.apk" -o -name "*.aab" -exec mv {} apk-archive/ ";" || echo "APK/AAB 파일 이동 실패 또는 없음"
+          echo "✅ 빌드 결과 정리 및 아카이브 준비 완료."
+
+          # 아카이브할 파일 목록 최종 확인
+          echo "📊 아카이브할 파일 목록 (./apk-archive/):"
+          ls -la ./apk-archive/ || echo "./apk-archive/ 디렉토리가 없거나 비어있습니다."
+
+          # 아카이브할 파일 개수 확인
+          ARTIFACT_COUNT=$(find apk-archive -name "*.apk" -o -name "*.aab" | wc -l)
+
+          if [ "$ARTIFACT_COUNT" -gt 0 ]; then
+            echo "✅ 총 $ARTIFACT_COUNT 개의 빌드 결과(APK/AAB)가 아카이브될 예정입니다."
+          else
+            echo "⚠️ 아카이브할 빌드 결과 파일(APK/AAB)이 없습니다."
+            # 만약 파일이 없으면 빌드 실패로 처리하고 싶다면 아래 라인의 주석을 해제하세요.
+            # exit 1
+          fi
+
+          echo "===================================================="
+        '''
+
+        # 빌드 결과 아카이브
+        archiveArtifacts artifacts: 'apk-archive/**', fingerprint: true, allowEmptyArchive: true
+      }
+    }
+
+    stage('Deploy to Firebase') {
+      steps {
+        withCredentials([
+          string(credentialsId: 'FIREBASE_TOKEN', variable: 'FIREBASE_TOKEN')
+        ]) {
+          sh '''
+            echo "===================================================="
+            echo "🔥 Firebase 배포 중..."
+            echo "===================================================="
+
+            # Jenkins 워크스페이스의 아카이브된 APK/AAB 파일 찾기
+            # find는 여러 파일을 찾을 수 있으므로 첫 번째 파일을 사용하거나 특정 파일을 선택해야 합니다.
+            # 여기서는 일단 찾은 첫 번째 파일을 사용합니다. 필요에 따라 수정하세요.
+            APK_FILE=$(find "${WORKSPACE}/apk-archive" -name "*.apk" -o -name "*.aab" | head -1)
+
+            if [ -z "$APK_FILE" ]; then
+              echo "❌ 배포할 APK/AAB 파일을 찾을 수 없어 Firebase 배포를 건너뜁니다."
+              exit 0 # 배포 단계만 건너뛰고 전체 빌드는 성공 처리
+            fi
+
+            echo "✅ 업로드할 파일: $APK_FILE"
+
+            # Firebase 배포 실행 (docker run 내부)
+            # 배포할 파일을 컨테이너 내부로 마운트합니다.
+            docker run --rm \\
+              -v "${APK_FILE}:/app_artifact" \\ # 배포할 파일을 /app_artifact로 마운트
+              -e FIREBASE_TOKEN="${FIREBASE_TOKEN}" \\
+              -e FIREBASE_APP_ID="${FIREBASE_APP_ID}" \\
+              # cimg/android 이미지에 npm이 있으므로 그대로 사용
+              ${DOCKER_IMAGE} \\
+              bash -c '
+                set -e # 에러 발생 시 즉시 중단
+
+                echo "🔧 Firebase CLI 설치 중..."
+                # 이미 설치되어 있을 수도 있지만 안전하게 다시 설치
+                npm install -g firebase-tools || { echo "❌ Firebase CLI 설치 실패!"; exit 1; }
+                echo "✅ Firebase CLI 설치 완료."
+
+                echo "🔥 Firebase App Distribution 실행 중..."
+                # 마운트된 파일 경로 사용 (/app_artifact)
+                # --groups 옵션은 Firebase App Distribution 테스터 그룹 이름입니다.
+                # --release-notes는 배포 시 추가할 노트입니다.
+                firebase appdistribution:distribute "/app_artifact" \\
+                  --app "$FIREBASE_APP_ID" \\
+                  --token "$FIREBASE_TOKEN" \\
+                  --groups "testers" \\ # 실제 그룹 이름으로 변경하세요
+                  --release-notes "Jenkins CI 자동 배포 빌드 #${BUILD_ID} (Commit: ${GIT_COMMIT_SHORT})" || { echo "❌ Firebase 배포 실패!"; exit 1; }
+                echo "✅ Firebase 배포 성공."
+              ' || { echo "❌ Firebase 배포 Docker 컨테이너 실행 실패!"; exit 1; } # docker run 자체가 실패한 경우
+
+            echo "===================================================="
+          '''
+        }
+      }
+    }
+  }
+
+  post {
+    success {
+      sh '''
+        echo "===================================================="
+        echo "✅ Frontend CI/CD 성공 🎉"
+        echo "===================================================="
+      '''
+    }
+    failure {
+      sh '''
+        echo "===================================================="
+        echo "❌ Frontend CI/CD 실패 ❗"
+        echo "===================================================="
+
+        # 디버깅 정보 수집
+        echo "# 빌드 실패 디버깅 정보" > debug-info.md
+        echo "" >> debug-info.md
+
+        echo "## 빌드 디렉토리 정보 (Jenkins 워크스페이스)" >> debug-info.md
+        ls -la ${WORK_DIR} 2>/dev/null >> debug-info.md || echo "${WORK_DIR} 빌드 디렉토리가 없거나 접근할 수 없습니다." >> debug-info.md
+        echo "" >> debug-info.md
+
+        echo "## package.json 파일 내용 (Jenkins 워크스페이스)" >> debug-info.md
+        cat ${WORK_DIR}/package.json 2>/dev/null >> debug-info.md || echo "${WORK_DIR}/package.json 파일을 찾을 수 없습니다." >> debug-info.md
+        echo "" >> debug-info.md
+
+        echo "## Docker 상태" >> debug-info.md
+        docker info 2>/dev/null >> debug-info.md || echo "Docker 정보를 가져올 수 없습니다." >> debug-info.md
+        echo "" >> debug-info.md
+
+        echo "## 마지막 Docker Volume Test 로그 (에러 확인)" >> debug-info.md
+        # 이전 로그에서 Docker Volume Test 부분을 수동으로 복사하여 추가하거나,
+        # 가능하다면 해당 스텝의 상세 로그 파일을 첨부하도록 설정합니다.
+        echo "➡️ Jenkins 빌드 로그에서 'Docker Volume Test' 스텝 상세 로그를 확인하세요." >> debug-info.md
+        echo "" >> debug-info.md
+
+
+        # 디버깅 정보 아카이브
+        mkdir -p debug-archive || true
+        cp debug-info.md debug-archive/ || true # 복사 실패 시 에러 무시
+
+        echo "📦 디버깅 정보가 debug-archive에 저장되었습니다."
+      '''
+
+ 
+      archiveArtifacts artifacts: 'debug-archive/**', fingerprint: true, allowEmptyArchive: true
+    }
+    always {
+      sh '''
+        echo "===================================================="
+        echo "🧹 작업 공간 정리"
+        echo "===================================================="
+
+        # 임시 디렉토리 및 파일 정리 (에러 발생 시에도 정리 시도)
+        rm -rf ${WORK_DIR} ${WORKSPACE}/workspace.tar.gz ${WORKSPACE}/apk apk-archive debug-archive || true
+      '''
+
+      cleanWs()
+    }
+  }
 }
