@@ -41,20 +41,28 @@ pipeline {
           rm -rf _build_tmp
           mkdir -p _build_tmp
           
+          # 디버깅: 원본 디렉토리 구조 확인
+          echo "📂 원본 frontend 디렉토리 구조:"
+          ls -la front/frontend/
+          
           # 프로젝트 파일 복사 (모든 파일을 복사하기 위해 ./* 사용)
           echo "📂 프로젝트 파일 복사"
           cp -a front/frontend/. _build_tmp/
           
-          # 파일 목록 확인
+          # 파일 목록 확인 (더 자세한 로깅)
           echo "📂 복사된 파일 확인:"
           ls -la _build_tmp
           
           # package.json 확인
           echo "📄 package.json 확인:"
-          cat _build_tmp/package.json | grep -E "name|version" || echo "package.json 파일을 찾을 수 없습니다"
+          cat _build_tmp/package.json | head -20 || echo "package.json 파일을 찾을 수 없습니다"
           
           # 권한 설정 (모든 사용자가 읽고 쓸 수 있도록)
           chmod -R 777 _build_tmp
+          
+          # 파일 권한 확인
+          echo "📄 중요 파일 권한 확인:"
+          ls -la _build_tmp/package.json || echo "package.json 파일을 찾을 수 없습니다"
           
           echo "===================================================="
         '''
@@ -93,6 +101,29 @@ pipeline {
       }
     }
 
+    stage('Docker Volume Test') {
+      steps {
+        sh '''
+          echo "===================================================="
+          echo "🔍 Docker 볼륨 마운트 테스트"
+          echo "===================================================="
+          
+          # 테스트 파일 생성
+          echo "테스트 파일입니다." > _build_tmp/test-file.txt
+          
+          # Docker에서 볼륨 마운트 테스트
+          docker run --rm \
+            -v "$(pwd)/_build_tmp:/project" \
+            --workdir /project \
+            --entrypoint bash \
+            ${DOCKER_IMAGE} \
+            -c 'ls -la && cat test-file.txt && echo "볼륨 마운트 성공"'
+          
+          echo "===================================================="
+        '''
+      }
+    }
+
     stage('Build in Docker') {
       steps {
         sh '''
@@ -100,9 +131,18 @@ pipeline {
           echo "🚀 Docker 내부에서 빌드 실행"
           echo "===================================================="
           
-          # Docker 컨테이너 내부 디버깅
+          # Docker 컨테이너 내부 디버깅 (자세한 로깅)
           echo "📂 Docker 내부 디버깅:"
-          docker run --rm -v "$(pwd)/_build_tmp:/project" --workdir /project --entrypoint bash ${DOCKER_IMAGE} -c "ls -la && echo 'package.json:' && cat package.json | head -5"
+          docker run --rm \
+            -v "$(pwd)/_build_tmp:/project" \
+            --workdir /project \
+            --entrypoint bash \
+            ${DOCKER_IMAGE} \
+            -c "ls -la && echo '--- package.json 내용: ---' && cat package.json || echo 'package.json 파일이 없습니다'"
+          
+          # 현재 디렉토리의 권한 확인
+          echo "📄 현재 디렉토리 권한:"
+          ls -ld "$(pwd)/_build_tmp"
           
           # Docker 컨테이너 실행
           docker run --rm \
@@ -117,6 +157,13 @@ pipeline {
               ls -la
               
               echo "📦 Node.js 종속성 설치"
+              if [ ! -f "package.json" ]; then
+                echo "❌ package.json 파일이 없습니다!"
+                echo "현재 디렉토리 내용:"
+                ls -la
+                exit 1
+              fi
+              
               npm install
               
               echo "📂 node_modules 설치 확인"
@@ -268,12 +315,21 @@ EOF
         ls -la _build_tmp 2>/dev/null >> debug-info.md || echo "빌드 디렉토리가 없습니다" >> debug-info.md
         echo "" >> debug-info.md
         
+        echo "## package.json 파일 내용" >> debug-info.md
+        cat _build_tmp/package.json 2>/dev/null >> debug-info.md || echo "package.json 파일이 없습니다" >> debug-info.md
+        echo "" >> debug-info.md
+        
         echo "## node_modules 정보" >> debug-info.md
         ls -la _build_tmp/node_modules 2>/dev/null >> debug-info.md || echo "node_modules 디렉토리가 없습니다" >> debug-info.md
         echo "" >> debug-info.md
         
         echo "## Android 디렉토리 정보" >> debug-info.md
         ls -la _build_tmp/android 2>/dev/null >> debug-info.md || echo "안드로이드 디렉토리가 없습니다" >> debug-info.md
+        echo "" >> debug-info.md
+        
+        # Docker 상태 확인
+        echo "## Docker 정보" >> debug-info.md
+        docker info 2>/dev/null >> debug-info.md || echo "Docker 정보를 가져올 수 없습니다" >> debug-info.md
         echo "" >> debug-info.md
         
         # 디버깅 정보 아카이브
