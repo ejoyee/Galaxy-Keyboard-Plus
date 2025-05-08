@@ -23,13 +23,13 @@ router = APIRouter()
 async def upload_image(
     user_id: str = Form(...),
     access_id: str = Form(...),
-    image_time: str = Form(...),  # ✅ 문자열로 받기
+    image_time: str = Form(...),
     file: UploadFile = File(...),
 ):
     try:
         logger.info(f"📥 이미지 처리 시작 - user_id={user_id}, access_id={access_id}")
 
-        # ✅ 문자열로 받은 image_time → datetime 변환
+        # 문자열로 받은 image_time → datetime 변환
         try:
             image_time_obj = datetime.strptime(image_time, "%Y:%m:%d %H:%M:%S")
         except ValueError as e:
@@ -38,6 +38,32 @@ async def upload_image(
                 status_code=400,
                 detail="날짜 형식이 잘못되었습니다. (예: 2025:05:08 00:00:00)",
             )
+
+        logger.info(f"📥 이미지 업로드 시작 - user_id={user_id}, access_id={access_id}")
+
+        async with httpx.AsyncClient() as client:
+            # 중복 체크 요청
+            check_url = f"http://backend-service:8083/api/v1/images/check"
+            params = {"userId": user_id, "accessId": access_id}
+
+            check_response = await client.get(check_url, params=params)
+            logger.info(f"🔍 중복 체크 응답: {check_response.status_code}")
+            logger.debug(f"🔍 중복 체크 바디: {check_response.text}")
+
+            if check_response.status_code != 200:
+                raise HTTPException(status_code=500, detail="중복 확인 실패")
+
+            check_result = check_response.json().get("result", {})
+            if check_result.get("exist", False):
+                logger.warning(
+                    f"⚠️ 이미 존재하는 이미지입니다. 업로드 중단 - access_id={access_id}"
+                )
+                return {
+                    "access_id": access_id,
+                    "image_time": image_time,
+                    "status": "skipped",
+                    "message": "이미 등록된 이미지입니다.",
+                }
 
         image_bytes = await file.read()
         text_score = classify_image_from_bytes(image_bytes)
