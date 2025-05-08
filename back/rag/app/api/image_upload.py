@@ -10,11 +10,6 @@ from app.utils.vector_store import save_text_to_pinecone
 from app.utils.schedule_parser import extract_schedule
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
-console_handler = logging.StreamHandler()
-formatter = logging.Formatter("[%(asctime)s] %(levelname)s - %(message)s")
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
 
 router = APIRouter()
 
