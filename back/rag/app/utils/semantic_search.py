@@ -35,7 +35,9 @@ def determine_query_type(query: str) -> Literal["photo", "info", "ambiguous"]:
     return answer
 
 
-def search_similar_items(user_id: str, query: str, target: str) -> list[dict]:
+def search_similar_items(
+    user_id: str, query: str, target: str, top_k: int = 5
+) -> list[dict]:
     """Pinecone에서 해당 네임스페이스로 유사 항목 검색"""
     namespace = f"{user_id}_{target}"
     vector = get_text_embedding(query)
@@ -43,7 +45,7 @@ def search_similar_items(user_id: str, query: str, target: str) -> list[dict]:
     response = index.query(
         vector=vector,
         namespace=namespace,
-        top_k=5,
+        top_k=top_k,
         include_metadata=True,
     )
 
