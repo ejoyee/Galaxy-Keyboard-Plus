@@ -5,11 +5,10 @@ import tw from 'twrnc';
 import { getScreenshotUriById } from '../utils/camera';
 
 interface Props {
-  id: string;
-  score: number;
+  id: string; // score prop 제거
 }
 
-const PhotoThumb: React.FC<Props> = React.memo(({ id, score }) => {
+const PhotoThumb: React.FC<Props> = React.memo(({ id }) => {
   const [uri, setUri] = React.useState<string | null>(null);
 
   React.useEffect(() => {
@@ -30,9 +29,7 @@ const PhotoThumb: React.FC<Props> = React.memo(({ id, score }) => {
           <Text style={tw`text-[10px]`}>없음</Text>
         </View>
       )}
-      <Text style={tw`text-[10px] text-[#555] text-right mt-[4px]`}>
-        {score.toFixed(2)}
-      </Text>
+      {/* score 표시 제거 */}
     </View>
   );
 });

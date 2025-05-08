@@ -8,9 +8,19 @@ import { useAuthStore } from '../stores/authStore';
 /** ① 카카오 SDK → 백엔드 로그인 */
 export async function signInWithKakao() {
   // 1) Kakao SDK 로그인
+  console.log('▶ kakaoLogin 호출 전');
   const kRes = await kakaoLogin();    // {accessToken, idToken, ...}
+  console.log("kRes.accessToken: ", kRes.accessToken);
 
-  console.log(kRes, "kRes");
+
+  // try {
+  //   const kRes = await kakaoLogin();    // 여기서 반환이 안 되면 다음 줄이 절대 안 찍힙니다
+  //   console.log('▶ kakaoLogin 결과:', kRes);
+  // } catch (err) {
+  //   console.error('✖ kakaoLogin 에러:', err);
+  //   // 필요하면 Alert.alert로 띄워 보세요
+  // }
+
 
   // 2) 우리 서버에 전달해 JWT 세트 획득
   const { data } = await api.post('/auth/kakao/login', {

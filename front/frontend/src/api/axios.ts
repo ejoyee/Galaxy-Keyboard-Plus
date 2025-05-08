@@ -4,8 +4,8 @@ import { useAuthStore } from '../stores/authStore';
 import { refreshWithServer } from '../services/authService';
 
 export const api = axios.create({
-  // baseURL: 'https://k12e201.p.ssafy.io',
-  baseURL: BASE_URL,
+  baseURL: 'https://k12e201.p.ssafy.io',
+  // baseURL: BASE_URL,
   timeout: 8000,
 });
 

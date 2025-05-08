@@ -6,13 +6,13 @@ import {
   SafeAreaView,
   Text,
 } from 'react-native';
-import axios from 'axios';
 import {useHeaderHeight} from '@react-navigation/elements';
 import tw from 'twrnc';
 
 import HeaderBar from '../components/HeaderBar';
 import InputBar from '../components/InputBar';
 import MessageBubble, {Message} from '../components/MessageBubble';
+import {api} from '../api/axios'; // 기존 axios 인스턴스 가져오기
 import {useAuthStore} from '../stores/authStore';
 
 const HEADER_BG = '#FFEBD6';
@@ -60,12 +60,12 @@ export default function ChatScreen() {
       form.append('user_id', userId);
       form.append('query', trimmed);
 
-      const {data} = await axios.post(
-        'http://k12e201.p.ssafy.io:8090/rag/search/',
+      // api 인스턴스를 사용하여 요청
+      const {data} = await api.post(
+        '/rag/search/', // api 인스턴스의 baseURL 이후 경로
         form.toString(),
         {headers: {'Content-Type': 'application/x-www-form-urlencoded'}},
       );
-
       if (!data?.query_type) throw new Error('잘못된 API 응답');
 
       // 3) 봇 메시지 구성
@@ -91,7 +91,7 @@ export default function ChatScreen() {
     } finally {
       setIsLoading(false);
     }
-  }, [inputText]);
+  }, [inputText, userId]); // userId를 의존성 배열에 추가
 
   /* --------------- 자동 스크롤 ---------------- */
   useEffect(() => {
