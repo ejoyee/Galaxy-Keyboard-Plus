@@ -9,6 +9,7 @@ interface Tokens {
   accessToken: string;
   refreshToken: string;
 }
+
 interface AuthState extends Tokens {
   userId: string | null;
 
@@ -46,7 +47,6 @@ export const useAuthStore = create<AuthState>()(
 
       setTokens: ({ accessToken, refreshToken, userId }) =>
         set((state) => ({
-          // 전달된 필드만 덮어쓰고, userId는 값 없으면 기존 유지
           accessToken: accessToken ?? state.accessToken,
           refreshToken: refreshToken ?? state.refreshToken,
           userId: userId ?? state.userId,
