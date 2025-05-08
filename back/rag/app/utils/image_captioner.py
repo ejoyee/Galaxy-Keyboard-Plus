@@ -35,7 +35,10 @@ def generate_image_caption(image_bytes: bytes) -> str:
                 "content": [
                     {
                         "type": "text",
-                        "text": "이 이미지를 짧고 간결하게 설명해줘. 중요한 사물이나 동물, 위치만 말해줘.",
+                        "text": (
+                            "이 이미지를 자세히 설명해줘. 사진 속에 보이는 사물, 인물, 동물, 배경, 위치, 색감, 분위기 등을 가능한 한 구체적으로 묘사해줘. "
+                            "사진의 주요 구성 요소와 그 관계도 설명해줘. 불분명한 부분은 추정해서 말해줘도 돼."
+                        ),
                     },
                     {
                         "type": "image_url",
@@ -46,7 +49,6 @@ def generate_image_caption(image_bytes: bytes) -> str:
                 ],
             }
         ],
-        max_tokens=200,  # 출력 길이 제한해서 비용 절감
     )
 
     return response.choices[0].message.content.strip()
