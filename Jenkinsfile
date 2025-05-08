@@ -239,7 +239,6 @@ ENV=prod
 
                 # 컨테이너 강제 재생성
                 docker compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" up -d --no-deps --force-recreate ${svc}
-"""
               """
             }
           }
