@@ -7,9 +7,7 @@ from app.utils.image_classifier import classify_image_from_bytes
 from app.utils.image_captioner import generate_image_caption
 from app.utils.image_text_extractor import extract_text_from_image
 from app.utils.vector_store import save_text_to_pinecone
-from app.utils.schedule_parser import (
-    extract_schedule,
-)
+from app.utils.schedule_parser import extract_schedule
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -25,7 +23,7 @@ router = APIRouter()
 async def upload_image(
     user_id: str = Form(...),
     access_id: str = Form(...),
-    image_time: str = Form(...),
+    image_time: datetime = Form(...),  # ✅ datetime으로 직접 받기
     file: UploadFile = File(...),
 ):
     try:
@@ -46,20 +44,19 @@ async def upload_image(
             content = extracted_text
             logger.info(f"📝 텍스트 추출 완료 - {extracted_text}")
 
-        text_for_embedding = f"{access_id} ({image_time}): {content}"
+        text_for_embedding = f"{access_id} ({image_time.isoformat()}): {content}"
         namespace = save_text_to_pinecone(user_id, text_for_embedding, target)
         logger.info(f"✅ 벡터 저장 완료 - namespace={namespace}")
 
         image_payload = {
             "userId": user_id,
             "accessId": access_id,
-            "imageTime": image_time,
+            "imageTime": image_time.isoformat(),  # ✅ ISO 포맷으로 직렬화
             "type": target,
             "content": content,
         }
 
         async with httpx.AsyncClient() as client:
-            # Step 3: 이미지 정보 저장
             logger.info(f"📤 이미지 정보 전송 → payload: {image_payload}")
             logger.info(
                 f"📤 이미지 전송 바디(JSON):\n{json.dumps(image_payload, ensure_ascii=False, indent=2)}"
@@ -77,28 +74,16 @@ async def upload_image(
 
             image_id = image_response.json().get("result", {}).get("imageId")
 
-            # Step 4: 일정 등록까지 함께 처리
             if target == "info":
                 schedule_result = extract_schedule(content)
                 if schedule_result.get("is_schedule") and schedule_result.get(
                     "datetime"
                 ):
-                    # 기존 문자열을 datetime 객체로 파싱 후 ISO 형식으로 변환
-                    try:
-                        image_time_obj = datetime.strptime(
-                            image_time, "%Y-%m-%d %H:%M:%S"
-                        )
-                        image_time_iso = image_time_obj.isoformat()
-                    except ValueError as e:
-                        logger.warning(f"⚠️ image_time 파싱 실패: {e}, 원본 값 사용")
-                        image_time_iso = image_time  # fallback
-
-                    image_payload = {
+                    plan_payload = {
                         "userId": user_id,
-                        "accessId": access_id,
-                        "imageTime": image_time_iso,
-                        "type": target,
-                        "content": content,
+                        "planTime": schedule_result["datetime"],  # 이미 ISO8601 형식임
+                        "planContent": schedule_result.get("event", content),
+                        "imageId": image_id,
                     }
 
                     logger.info(f"📤 일정 등록 전송 → payload: {plan_payload}")
@@ -119,7 +104,7 @@ async def upload_image(
 
         return {
             "access_id": access_id,
-            "image_time": image_time,
+            "image_time": image_time.isoformat(),
             "type": target,
             "namespace": namespace,
             "content": text_for_embedding,
@@ -131,7 +116,11 @@ async def upload_image(
         logger.error(f"❌ 처리 중 오류 발생 (access_id={access_id}): {e}")
         return {
             "access_id": access_id,
-            "image_time": image_time,
+            "image_time": (
+                image_time.isoformat()
+                if isinstance(image_time, datetime)
+                else str(image_time)
+            ),
             "status": "error",
             "message": str(e),
         }
