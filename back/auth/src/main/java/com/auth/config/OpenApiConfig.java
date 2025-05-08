@@ -16,10 +16,6 @@ public class OpenApiConfig {
                 .title("Authentication API")
                 .version("v1.0.0")
                 .description("카카오 로그인, 토큰 재발급, 회원 탈퇴 API 문서")
-                .contact(new Contact()
-                    .name("개발팀")
-                    .email("dev-team@example.com")
-                )
             );
     }
 }

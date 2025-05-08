@@ -28,13 +28,13 @@ public class SecurityConfig {
 //                                "/oauth2/**",          // OAuth2 엔드포인트
                                 "/login/**","/error",
                                 "/swagger-ui.html",
-                                "/swagger-ui/index.html",
+                                "/swagger-ui/**",
                                 "/webjars/**",
-                                "/v3/api-docs",
                                 "/v3/api-docs/**",
                                 "/swagger-resources/**",
                                 "/swagger-resources/configuration/ui",
-                                "/swagger-resources/configuration/security" ).permitAll()
+                                "/swagger-resources/configuration/security"
+                        ).permitAll()
                         .anyRequest().authenticated())
 //                .oauth2Login(Customizer.withDefaults())
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);

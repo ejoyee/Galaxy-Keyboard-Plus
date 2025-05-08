@@ -49,3 +49,4 @@ logging:
   level:
     org.springframework.security.oauth2.client.endpoint: DEBUG
     org.springframework.web.client.RestTemplate: DEBUG
+
