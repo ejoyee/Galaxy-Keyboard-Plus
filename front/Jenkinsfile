@@ -143,9 +143,9 @@ EOF
           # 빌드 결과 디렉토리 생성
           mkdir -p apk
           
-          # APK 파일 찾기 및 복사
+          # APK 파일 찾기 및 복사 (백슬래시 없이 xargs 사용)
           echo "🔍 APK 파일 검색"
-          find _build_tmp/android -name "*.apk" -exec cp -v {} apk/ \; || echo "APK 파일을 찾을 수 없습니다"
+          find _build_tmp/android -name "*.apk" | xargs -I {} cp {} apk/ || echo "APK 파일을 찾을 수 없습니다"
           
           echo "===================================================="
         '''
@@ -161,8 +161,8 @@ EOF
           
           mkdir -p apk-archive
           
-          # APK 파일 찾기 및 복사
-          find apk -name "*.apk" -exec cp -v {} apk-archive/ \; || echo "APK 파일이 없습니다"
+          # APK 파일 찾기 및 복사 (백슬래시 없이 xargs 사용)
+          find apk -name "*.apk" | xargs -I {} cp {} apk-archive/ || echo "APK 파일이 없습니다"
           
           # 결과 확인
           APK_COUNT=$(find apk-archive -name "*.apk" | wc -l)
