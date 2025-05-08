@@ -12,8 +12,8 @@ pipeline {
     FIREBASE_APP_ID  = '1:189536895445:android:783ed885fd7c4b896bfd5c'
     // 빌드 강제 실행 여부
     FORCE_BUILD      = 'true'
-    // 커스텀 Docker 이미지 설정 - 여기서 직접 빌드하도록 변경
-    DOCKER_IMAGE     = 'android-build:latest'
+    // 사용할 Docker 이미지
+    DOCKER_IMAGE     = 'my-android-ci:latest'
   }
 
   stages {
@@ -134,26 +134,6 @@ pipeline {
       }
     }
 
-    stage('Build Docker Image') {
-      when { expression { env.BUILD_FRONTEND == 'true' } }
-      steps {
-        sh '''
-          echo "===================================================="
-          echo "🐳 Android 빌드 도커 이미지 생성"
-          echo "===================================================="
-          
-          # frontend 폴더에 Dockerfile 복사
-          cp front/frontend/Dockerfile .
-          
-          # 도커 이미지 빌드
-          docker build -t android-build:${BUILD_ID} .
-          
-          echo "✅ 도커 이미지 생성 완료"
-          echo "===================================================="
-        '''
-      }
-    }
-
     stage('Build with Docker') {
       when { expression { env.BUILD_FRONTEND == 'true' } }
       steps {
@@ -171,7 +151,7 @@ pipeline {
             -w /workspace \
             -e ANDROID_SDK_ROOT=/opt/android-sdk \
             -e ANDROID_HOME=/opt/android-sdk \
-            android-build:${BUILD_ID} \
+            ${DOCKER_IMAGE} \
             bash -c '
               echo "📂 작업 디렉토리 구조 확인"
               ls -la
@@ -192,7 +172,7 @@ pipeline {
           
           # 빌드 결과물 복사
           mkdir -p apk
-          find front/frontend/android -name "*.apk" -exec cp {} apk/ \;
+          find front/frontend/android -name "*.apk" -exec cp {} apk/ \\;
           
           # 빌드 결과 확인
           echo "📂 빌드 결과 확인:"
@@ -225,19 +205,21 @@ pipeline {
             
             echo "✅ 업로드할 APK 파일: $APK_FILE"
             
-            # Docker에서 Firebase 배포 실행 (기존에 빌드한 이미지 재사용)
+            # Docker에서 Firebase 배포 실행 (이미 빌드된 CI 이미지 사용)
             docker run --rm \
               -v "$(pwd):/workspace" \
               -w /workspace \
               -e FIREBASE_TOKEN="$FIREBASE_TOKEN" \
               -e FIREBASE_APP_ID="$FIREBASE_APP_ID" \
-              android-build:${BUILD_ID} \
+              ${DOCKER_IMAGE} \
               bash -c '
                 echo "==== Firebase App Distribution 배포 ===="
+                # Ruby Gem 경로 등 환경 설정 (필요한 경우)
                 export PATH=$PATH:/root/.gem/ruby/3.0.0/bin
                 
                 cd /workspace
                 
+                # Fastlane을 사용하여 Firebase App Distribution에 배포
                 fastlane run firebase_app_distribution_login token:"$FIREBASE_TOKEN"
                 
                 fastlane run firebase_app_distribution \
@@ -284,22 +266,6 @@ pipeline {
         archiveArtifacts artifacts: 'apk-archive/**', fingerprint: true, allowEmptyArchive: true
       }
     }
-
-    stage('Cleanup Docker') {
-      when { expression { env.BUILD_FRONTEND == 'true' } }
-      steps {
-        sh '''
-          echo "===================================================="
-          echo "🧹 Docker 이미지 정리"
-          echo "===================================================="
-          
-          # 빌드에 사용된 Docker 이미지 삭제
-          docker rmi android-build:${BUILD_ID} || true
-          
-          echo "===================================================="
-        '''
-      }
-    }
   }
 
   post {
@@ -324,7 +290,7 @@ pipeline {
         echo "===================================================="
         
         # 임시 디렉토리 정리
-        rm -rf android-build apk || true
+        rm -rf apk || true
       '''
       cleanWs()
     }
