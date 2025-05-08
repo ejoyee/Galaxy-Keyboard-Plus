@@ -140,29 +140,109 @@ pipeline {
       }
     }
 
-    stage('Docker Test') {
+    stage('Install Dependencies') {
       when { expression { env.BUILD_FRONTEND == 'true' } }
       steps {
         sh '''
           echo "===================================================="
-          echo "🔍 Docker 테스트"
+          echo "📦 Node.js 종속성 설치"
           echo "===================================================="
-
-          # Docker 내부 디렉토리 확인
-          echo "📂 Docker 내부 디렉토리 확인:"
-          docker run --rm ${DOCKER_IMAGE} bash -c 'ls -la /workspace || echo "워크스페이스 디렉토리가 없습니다" && ls -la / && mkdir -p /workspace && ls -la /workspace'
-
-          # 볼륨 마운트 테스트 - 루트 디렉토리만
-          echo "📂 볼륨 마운트 테스트 (루트):"
-          docker run --rm -v "$(pwd):/test_mount" ${DOCKER_IMAGE} bash -c 'ls -la /test_mount'
-
-          # 볼륨 마운트 테스트 - 프론트엔드 디렉토리
-          echo "📂 볼륨 마운트 테스트 (front/frontend):"
-          docker run --rm -v "$(pwd)/front/frontend:/test_mount" ${DOCKER_IMAGE} bash -c 'ls -la /test_mount'
           
-          # 볼륨 마운트 테스트 - 사용자 ID 지정
-          echo "📂 볼륨 마운트 테스트 (사용자 ID):"
-          docker run --rm -u $(id -u):$(id -g) -v "$(pwd)/front/frontend:/test_mount" ${DOCKER_IMAGE} bash -c 'ls -la /test_mount && id'
+          # front/frontend 디렉토리로 이동
+          cd front/frontend
+          
+          # Node.js 버전 확인
+          echo "📊 Node.js 버전 정보:"
+          node --version
+          npm --version
+          
+          # package-lock.json 삭제 (충돌 방지)
+          rm -f package-lock.json
+          
+          # 종속성 설치
+          echo "📦 npm 종속성 설치 중..."
+          npm install
+          
+          # 설치 확인
+          echo "📂 node_modules 디렉토리 확인:"
+          ls -la node_modules | head
+          
+          # React Native Gradle 플러그인 확인
+          echo "📂 React Native Gradle 플러그인 확인:"
+          ls -la node_modules/@react-native/gradle-plugin || echo "❌ React Native Gradle 플러그인이 설치되지 않았습니다"
+          
+          echo "===================================================="
+        '''
+      }
+    }
+
+    stage('Build with Docker (Copy Method)') {
+      when { expression { env.BUILD_FRONTEND == 'true' } }
+      steps {
+        sh '''
+          echo "===================================================="
+          echo "🚀 Docker를 통한 Android 빌드 (복사 방식)"
+          echo "===================================================="
+          
+          # 임시 작업 디렉토리 생성
+          TEMP_DIR="$(pwd)/temp_build"
+          mkdir -p ${TEMP_DIR}
+          
+          # 프로젝트 파일 복사
+          echo "📂 프로젝트 파일 복사 중..."
+          cp -a front/frontend/. ${TEMP_DIR}/
+          
+          # Docker에서 React Native 앱 빌드 실행
+          docker run --rm \
+            -v "${TEMP_DIR}:/workspace" \
+            -w /workspace \
+            -e ANDROID_SDK_ROOT=/opt/android-sdk \
+            -e ANDROID_HOME=/opt/android-sdk \
+            -e KEYSTORE_PASSWORD="${KEYSTORE_PASSWORD}" \
+            -e KEY_ALIAS="${KEY_ALIAS}" \
+            -e KEY_PASSWORD="${KEY_PASSWORD}" \
+            ${DOCKER_IMAGE} \
+            bash -c '
+              set -e  # 에러 발생 시 즉시 스크립트 중단
+              
+              echo "📂 현재 디렉토리: $(pwd)"
+              ls -la
+              
+              echo "📂 Android 디렉토리 확인:"
+              ls -la android || { echo "❌ Android 디렉토리가 없습니다"; exit 1; }
+              
+              echo "🔧 local.properties 생성"
+              echo "sdk.dir=/opt/android-sdk" > android/local.properties
+              
+              echo "🔧 Gradle 프로퍼티 설정"
+              cat >> android/gradle.properties << EOF
+
+# CI 환경 키스토어 설정
+KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD
+KEY_ALIAS=$KEY_ALIAS
+KEY_PASSWORD=$KEY_PASSWORD
+EOF
+              
+              echo "🔧 Android 빌드 실행"
+              cd android
+              chmod +x ./gradlew
+              ./gradlew clean
+              ./gradlew assembleDebug
+              
+              echo "🔧 빌드 결과 확인"
+              find . -name "*.apk" || echo "APK 파일을 찾을 수 없습니다"
+            '
+          
+          # 빌드 결과 확인
+          echo "📂 빌드 결과 확인:"
+          find ${TEMP_DIR}/android -name "*.apk" || echo "❌ APK 파일을 찾을 수 없습니다"
+          
+          # 결과물 복사
+          mkdir -p apk
+          find ${TEMP_DIR}/android -name "*.apk" | xargs -I {} cp {} apk/ || echo "❌ APK 파일 복사 실패"
+          
+          # 임시 디렉토리 정리
+          rm -rf ${TEMP_DIR}
           
           echo "===================================================="
         '''
@@ -170,7 +250,13 @@ pipeline {
     }
 
     stage('Direct Build') {
-      when { expression { env.BUILD_FRONTEND == 'true' } }
+      when { 
+        expression { env.BUILD_FRONTEND == 'true' }
+        // 이전 스테이지에서 APK 생성 실패했을 경우에만 실행
+        expression { 
+          return sh(script: 'find apk -name "*.apk" 2>/dev/null | wc -l', returnStdout: true).trim() == '0' 
+        }
+      }
       steps {
         sh '''
           echo "===================================================="
@@ -201,8 +287,8 @@ EOF
           
           # Gradle 빌드
           echo "🔧 Gradle 빌드 실행"
-          ./gradlew clean
-          ./gradlew assembleDebug
+          ./gradlew clean --info
+          ./gradlew assembleDebug --info
           
           # 빌드 결과물 확인
           echo "🔧 빌드 결과 확인:"
@@ -211,92 +297,6 @@ EOF
           # 결과물 복사
           mkdir -p ../../apk
           find . -name "*.apk" | xargs -I {} cp {} ../../apk/ || echo "APK 파일이 없습니다"
-          
-          echo "===================================================="
-        '''
-      }
-    }
-
-    stage('Copy Build with Docker') {
-      when { expression { env.BUILD_FRONTEND == 'true' } }
-      steps {
-        sh '''
-          echo "===================================================="
-          echo "🚀 Docker를 통한 Android 빌드 (복사 방식)"
-          echo "===================================================="
-          
-          # 임시 작업 디렉토리 생성
-          TEMP_DIR="$(pwd)/temp_build"
-          mkdir -p ${TEMP_DIR}
-          
-          # 프로젝트 파일 복사
-          echo "📂 프로젝트 파일 복사 중..."
-          cp -r front/frontend/* ${TEMP_DIR}/
-          
-          # Docker에서 React Native 앱 빌드 실행
-          docker run --rm \
-            -v "${TEMP_DIR}:/workspace" \
-            -w /workspace \
-            -e ANDROID_SDK_ROOT=/opt/android-sdk \
-            -e ANDROID_HOME=/opt/android-sdk \
-            -e KEYSTORE_PASSWORD="${KEYSTORE_PASSWORD}" \
-            -e KEY_ALIAS="${KEY_ALIAS}" \
-            -e KEY_PASSWORD="${KEY_PASSWORD}" \
-            ${DOCKER_IMAGE} \
-            bash -c '
-              set -e  # 에러 발생 시 즉시 스크립트 중단
-              
-              echo "📂 현재 디렉토리: $(pwd)"
-              ls -la
-              
-              echo "📂 Android 디렉토리 확인:"
-              ls -la android || { echo "❌ Android 디렉토리가 없습니다"; exit 1; }
-              
-              echo "🔧 Node 모듈 설치"
-              yarn install
-              
-              echo "🔧 Android 디렉토리로 이동"
-              cd android
-              
-              echo "📂 Android 디렉토리 내용:"
-              ls -la
-              
-              echo "🔧 local.properties 생성"
-              echo "sdk.dir=/opt/android-sdk" > local.properties
-              
-              echo "🔧 Gradle 프로퍼티 설정"
-              cat >> gradle.properties << EOF
-
-# CI 환경 키스토어 설정
-KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD
-KEY_ALIAS=$KEY_ALIAS
-KEY_PASSWORD=$KEY_PASSWORD
-EOF
-              
-              echo "🔧 Android SDK 환경 확인"
-              echo "ANDROID_HOME: $ANDROID_HOME"
-              echo "SDK 디렉토리 내용:"
-              ls -la $ANDROID_HOME || echo "Android SDK 디렉토리에 접근할 수 없습니다"
-              
-              echo "🔧 Gradle 빌드 실행"
-              chmod +x ./gradlew
-              ./gradlew clean
-              ./gradlew assembleDebug
-              
-              echo "🔧 빌드 결과 확인"
-              find . -name "*.apk" || echo "APK 파일을 찾을 수 없습니다"
-            '
-          
-          # 빌드 결과 확인
-          echo "📂 빌드 결과 확인:"
-          find ${TEMP_DIR} -name "*.apk" || echo "❌ APK 파일을 찾을 수 없습니다"
-          
-          # 결과물 복사
-          mkdir -p apk
-          find ${TEMP_DIR} -name "*.apk" | xargs -I {} cp {} apk/ || echo "❌ APK 파일 복사 실패"
-          
-          # 임시 디렉토리 정리
-          rm -rf ${TEMP_DIR}
           
           echo "===================================================="
         '''
@@ -313,30 +313,19 @@ EOF
           
           mkdir -p apk-archive
           
-          # APK 파일 검색 범위 확장
+          # APK 파일 전체 검색
           echo "🔍 APK 파일 검색 중..."
+          find "$(pwd)" -name "*.apk" 2>/dev/null | sort
           
-          # front/frontend/apk에서 검색
-          if [ -d "front/frontend/apk" ]; then
-            find "front/frontend/apk" -name "*.apk" -exec cp {} apk-archive/ \\; 2>/dev/null || true
-          fi
-          
-          # front/frontend/android에서 검색
-          if [ -d "front/frontend/android" ]; then
-            find "front/frontend/android" -name "*.apk" -exec cp {} apk-archive/ \\; 2>/dev/null || true
-          fi
-          
-          # apk 디렉토리에서 검색
-          if [ -d "apk" ]; then
-            find "apk" -name "*.apk" -exec cp {} apk-archive/ \\; 2>/dev/null || true
-          fi
+          # 모든 가능한 위치에서 APK 파일 찾기
+          find "$(pwd)" -name "*.apk" 2>/dev/null | xargs -I {} cp {} apk-archive/ 2>/dev/null || true
           
           # 결과 확인
-          FOUND_APKS=$(find "apk-archive" -name "*.apk" | wc -l)
+          APK_COUNT=$(find apk-archive -name "*.apk" | wc -l)
           
-          if [ "$FOUND_APKS" -gt 0 ]; then
-            echo "✅ $FOUND_APKS 개의 APK 파일을 아카이브에 복사했습니다:"
-            find "apk-archive" -name "*.apk" | xargs ls -la
+          if [ "$APK_COUNT" -gt 0 ]; then
+            echo "✅ $APK_COUNT 개의 APK 파일을 아카이브에 복사했습니다:"
+            find apk-archive -name "*.apk" | xargs ls -la
           else
             echo "❌ APK 파일을 찾을 수 없습니다"
             echo "No APK files found" > apk-archive/build-failed.txt
@@ -362,7 +351,7 @@ EOF
             echo "===================================================="
             
             # APK 파일 찾기
-            APK_FILE=$(find "$(pwd)" -name "*.apk" | head -1)
+            APK_FILE=$(find "$(pwd)/apk-archive" -name "*.apk" | head -1)
             
             if [ -z "$APK_FILE" ]; then
               echo "❌ APK 파일을 찾을 수 없어 Firebase 배포를 건너뜁니다"
@@ -421,18 +410,16 @@ EOF
         # 디버깅 정보 수집
         echo "🔍 빌드 실패 디버깅 정보:" > debug-info.txt
         
-        echo "🔍 사용자 정보:" >> debug-info.txt
-        id >> debug-info.txt
+        echo "🔍 React Native 환경:" >> debug-info.txt
+        cd front/frontend 2>/dev/null && ls -la node_modules/@react-native 2>/dev/null || echo "React Native 모듈을 찾을 수 없습니다" >> debug-info.txt
         echo "" >> debug-info.txt
         
-        echo "🔍 Docker 정보:" >> debug-info.txt
-        docker --version >> debug-info.txt
-        echo "" >> debug-info.txt
-        docker info >> debug-info.txt
+        echo "🔍 Android 디렉토리:" >> debug-info.txt
+        ls -la front/frontend/android 2>/dev/null || echo "Android 디렉토리를 찾을 수 없습니다" >> debug-info.txt
         echo "" >> debug-info.txt
         
-        echo "🔍 현재 디렉토리:" >> debug-info.txt
-        pwd >> debug-info.txt
+        echo "🔍 Gradle 설정:" >> debug-info.txt
+        cat front/frontend/android/settings.gradle 2>/dev/null || echo "설정 파일을 찾을 수 없습니다" >> debug-info.txt
         echo "" >> debug-info.txt
         
         # 디버깅 정보 아카이브
