@@ -64,7 +64,7 @@ async def upload_image(
         text_score = classify_image_from_bytes(image_bytes)
         logger.info(f"🔍 이미지 분류 점수: {text_score:.3f} (access_id={access_id})")
 
-        if text_score < 0.1:
+        if text_score <= 0.09:  # 테스트를 통해 얻은 임계값
             description = generate_image_caption(image_bytes)
             target = "photo"
             content = description
