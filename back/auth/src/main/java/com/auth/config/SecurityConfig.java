@@ -26,7 +26,15 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/auth/**",
 //                                "/oauth2/**",          // OAuth2 엔드포인트
-                                "/login/**","/error").permitAll()
+                                "/login/**","/error",
+                                "/swagger-ui.html",
+                                "/swagger-ui/**",
+                                "/webjars/**",
+                                "/v3/api-docs/**",
+                                "/swagger-resources/**",
+                                "/swagger-resources/configuration/ui",
+                                "/swagger-resources/configuration/security"
+                        ).permitAll()
                         .anyRequest().authenticated())
 //                .oauth2Login(Customizer.withDefaults())
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);

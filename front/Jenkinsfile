@@ -1,0 +1,283 @@
+pipeline {
+  agent any
+
+  environment {
+    // Android SDK 설정
+    ANDROID_SDK_ROOT = '/opt/android-sdk'
+    ANDROID_HOME     = '/opt/android-sdk'
+    PATH             = "${env.PATH}:/opt/android-sdk/cmdline-tools/latest/bin:/opt/android-sdk/platform-tools"
+    // Fastlane Firebase App Distribution 토큰
+    FIREBASE_TOKEN   = credentials('FIREBASE_TOKEN')
+  }
+
+  stages {
+    stage('Checkout') {
+      steps {
+        checkout scm
+        
+        // 빌드 시작 로그
+        sh '''
+          echo "===================================================="
+          echo "🚀 빌드 시작: $(date '+%Y-%m-%d %H:%M:%S')"
+          echo "🔍 빌드 ID: ${BUILD_ID}"
+          echo "🔍 Git 커밋: ${GIT_COMMIT}"
+          echo "🔍 브랜치: ${GIT_BRANCH}"
+          echo "===================================================="
+        '''
+      }
+    }
+
+    stage('Detect Frontend Changes') {
+      steps {
+        script {
+          def diff = sh(
+            script: "git diff --name-only ${env.GIT_PREVIOUS_SUCCESSFUL_COMMIT ?: 'HEAD~1'} ${env.GIT_COMMIT}",
+            returnStdout: true
+          ).trim()
+          
+          // 변경 파일 목록 출력
+          echo "==== 변경된 파일 목록 ===="
+          echo "${diff}"
+          echo "=========================="
+          
+          // front/frontend/ 하위 파일 변경이 있으면 빌드
+          env.BUILD_FRONTEND = diff.split('\n').any { it.startsWith('front/frontend/') } ? 'true' : 'false'
+          echo env.BUILD_FRONTEND=='true'
+               ? "▶ Frontend 변경 감지: 빌드합니다"
+               : "▶ Frontend 변경 없음: 스킵합니다"
+        }
+      }
+    }
+
+    stage('Build & Distribute Frontend') {
+      when { expression { env.BUILD_FRONTEND == 'true' } }
+      steps {
+        // 디렉토리 구조 확인
+        sh '''
+          echo "===================================================="
+          echo "📁 디렉토리 구조 확인"
+          echo "===================================================="
+          
+          # 시크릿 디렉토리 만들기
+          mkdir -p front/frontend/android/app/keystore
+          echo "✅ front/frontend/android/app/keystore 디렉토리 생성 완료"
+          
+          # 디렉토리 구조 확인
+          echo "📂 작업 디렉토리: $(pwd)"
+          
+          echo "📂 front 디렉토리 확인:"
+          ls -la front || { echo "❌ front 디렉토리가 없습니다"; exit 1; }
+          
+          echo "📂 front/frontend 디렉토리 확인:"
+          ls -la front/frontend || { echo "❌ front/frontend 디렉토리가 없습니다"; exit 1; }
+          
+          echo "📂 front/frontend/android 디렉토리 확인:"
+          ls -la front/frontend/android || { echo "❌ front/frontend/android 디렉토리가 없습니다"; exit 1; }
+          
+          echo "📂 front/frontend/android/app 디렉토리 확인:"
+          ls -la front/frontend/android/app || { echo "❌ front/frontend/android/app 디렉토리가 없습니다"; exit 1; }
+          
+          # Gemfile 확인
+          echo "📂 Gemfile 확인:"
+          if [ -f "front/frontend/Gemfile" ]; then
+            echo "✅ front/frontend/Gemfile 파일 존재"
+            cp front/frontend/Gemfile front/frontend/android/
+            echo "✅ Gemfile을 android 디렉토리로 복사 완료"
+          elif [ -f "front/frontend/android/Gemfile" ]; then
+            echo "✅ front/frontend/android/Gemfile 파일 존재"
+          else
+            echo "⚠️ Gemfile이 없습니다. 기본 Gemfile 생성 중..."
+            cat > front/frontend/android/Gemfile << 'EOL'
+source "https://rubygems.org"
+
+gem "fastlane"
+gem "fastlane-plugin-firebase_app_distribution"
+EOL
+            echo "✅ 기본 Gemfile 생성 완료"
+          fi
+          
+          echo "===================================================="
+        '''
+        
+        // 시크릿 파일 준비
+        withCredentials([
+          file(credentialsId: 'android-release-keystore', variable: 'KEYSTORE_FILE'),
+          string(credentialsId: 'KEYSTORE_PASSWORD', variable: 'KEYSTORE_PASSWORD'),
+          string(credentialsId: 'KEY_ALIAS', variable: 'KEY_ALIAS'),
+          string(credentialsId: 'KEY_PASSWORD', variable: 'KEY_PASSWORD'),
+          file(credentialsId: 'google-services-json', variable: 'GOOGLE_SERVICES_JSON'),
+          file(credentialsId: 'firebase-service-account', variable: 'FIREBASE_SERVICE_ACCOUNT')
+        ]) {
+          sh '''
+            echo "===================================================="
+            echo "🔐 시크릿 파일 준비"
+            echo "===================================================="
+            
+            cp "$KEYSTORE_FILE" front/frontend/android/app/keystore/release.keystore
+            echo "✅ Keystore 파일 복사 완료"
+            
+            cp "$GOOGLE_SERVICES_JSON" front/frontend/android/app/google-services.json
+            echo "✅ Google Services JSON 파일 복사 완료"
+            
+            cp "$FIREBASE_SERVICE_ACCOUNT" front/frontend/android/firebase_service_account.json
+            echo "✅ Firebase Service Account 파일 복사 완료"
+            
+            echo "===================================================="
+          '''
+        }
+        
+        // Docker 직접 실행 방식으로 변경 (이미지 빌드 없이)
+        sh '''
+          echo "===================================================="
+          echo "🐳 Docker 컨테이너에서 Android 빌드 실행"
+          echo "===================================================="
+          
+          # Android 디렉토리로 이동
+          cd front/frontend/android
+          
+          # Fastlane 디렉토리 확인 및 생성
+          if [ ! -d "fastlane" ]; then
+            echo "⚠️ fastlane 디렉토리가 없습니다. 기본 fastlane 설정 생성 중..."
+            mkdir -p fastlane
+            cat > fastlane/Fastfile << 'EOL'
+default_platform(:android)
+
+platform :android do
+  desc "Deploy a new version to Firebase App Distribution"
+  lane :release do |options|
+    gradle(
+      task: "clean assembleRelease"
+    )
+    firebase_app_distribution(
+      app: ENV["FIREBASE_APP_ID"] || "YOUR_FIREBASE_APP_ID",
+      groups: options[:groups],
+      release_notes: options[:notes],
+      firebase_cli_token: ENV["FIREBASE_TOKEN"]
+    )
+  end
+end
+EOL
+            echo "✅ 기본 Fastfile 생성 완료"
+            
+            # Appfile 생성
+            cat > fastlane/Appfile << 'EOL'
+json_key_file("firebase_service_account.json")
+package_name("com.yourcompany.yourapp") # 앱 패키지 이름 설정 필요
+EOL
+            echo "✅ 기본 Appfile 생성 완료"
+          fi
+          
+          # Docker 컨테이너 실행
+          docker run --rm \
+            -v "$(pwd):/app" \
+            -w /app \
+            -e ANDROID_SDK_ROOT=/opt/android-sdk \
+            -e ANDROID_HOME=/opt/android-sdk \
+            -e FIREBASE_TOKEN="$FIREBASE_TOKEN" \
+            -e KEYSTORE_PASSWORD="$KEYSTORE_PASSWORD" \
+            -e KEY_ALIAS="$KEY_ALIAS" \
+            -e KEY_PASSWORD="$KEY_PASSWORD" \
+            my-android-ci:latest \
+            bash -c '
+              set -e
+              
+              echo "======================================================"
+              echo "📂 작업 디렉토리 확인:"
+              pwd
+              ls -la
+              
+              echo "======================================================"
+              echo "📦 gem 및 bundler 설치 확인:"
+              gem install bundler -v 2.4.22 --no-document
+              bundler --version
+              
+              echo "======================================================"
+              echo "📦 1) 의존성 설치 시작"
+              yarn install
+              
+              echo "======================================================"
+              echo "📦 2) Bundle 설치 시작"
+              bundle config set --local path "vendor/bundle"
+              bundle install
+              
+              echo "======================================================"
+              echo "📦 3) Fastlane 플러그인 설치 시작"
+              bundle exec fastlane install_plugins
+              
+              echo "======================================================"
+              echo "📦 4) 릴리스 빌드 및 배포 시작"
+              bundle exec fastlane release groups:"testers" notes:"CI 자동 배포 빌드"
+              
+              echo "======================================================"
+              echo "✅ 빌드 완료"
+              
+              echo "📂 빌드 결과물 확인:"
+              find app/build/outputs -name "*.apk" || echo "APK 파일을 찾을 수 없습니다."
+            '
+          
+          BUILD_RESULT=$?
+          
+          if [ $BUILD_RESULT -ne 0 ]; then
+            echo "❌ Android 빌드 실패 (종료 코드: $BUILD_RESULT)"
+            exit $BUILD_RESULT
+          fi
+          
+          echo "✅ Android 빌드 성공"
+          echo "===================================================="
+        '''
+      }
+    }
+
+    stage('Archive APK') {
+      when { expression { env.BUILD_FRONTEND == 'true' } }
+      steps {
+        sh '''
+          echo "===================================================="
+          echo "📦 APK 아카이브 시작"
+          echo "===================================================="
+          
+          # APK 파일 존재 확인
+          APK_COUNT=$(find front/frontend/android/app/build/outputs -name "*.apk" 2>/dev/null | wc -l || echo 0)
+          
+          if [ "$APK_COUNT" -gt 0 ]; then
+            echo "✅ $APK_COUNT 개의 APK 파일 발견"
+            find front/frontend/android/app/build/outputs -name "*.apk" 2>/dev/null | sed 's/^/   /'
+          else
+            echo "❌ APK 파일을 찾을 수 없습니다"
+            echo "📂 빌드 디렉토리 확인:"
+            find front/frontend/android -type d -name "build" 2>/dev/null | sed 's/^/   빌드 디렉토리: /'
+          fi
+          
+          echo "===================================================="
+        '''
+        
+        archiveArtifacts artifacts: 'front/frontend/android/app/build/outputs/**/*.apk', fingerprint: true, allowEmptyArchive: true
+      }
+    }
+  }
+
+  post {
+    always {
+      sh '''
+        echo "===================================================="
+        echo "🧹 작업 공간 정리"
+        echo "===================================================="
+      '''
+      cleanWs()
+    }
+    success {
+      sh '''
+        echo "===================================================="
+        echo "✅ Frontend CI/CD 성공 🎉"
+        echo "===================================================="
+      '''
+    }
+    failure {
+      sh '''
+        echo "===================================================="
+        echo "❌ Frontend CI/CD 실패 ❗"
+        echo "===================================================="
+      '''
+    }
+  }
+}

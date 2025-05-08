@@ -19,7 +19,7 @@ spring:
     driver-class-name: org.postgresql.Driver
   jpa:
     hibernate:
-      ddl-auto: validate   # 생산 단계는 validate, 개발 초기엔 create
+      ddl-auto: none   # 생산 단계는 validate, 개발 초기엔 create
     properties:
       hibernate:
         format_sql: true
@@ -49,3 +49,11 @@ logging:
   level:
     org.springframework.security.oauth2.client.endpoint: DEBUG
     org.springframework.web.client.RestTemplate: DEBUG
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: always

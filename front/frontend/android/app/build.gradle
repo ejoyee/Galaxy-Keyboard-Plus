@@ -5,10 +5,17 @@ plugins {
     id 'com.google.firebase.appdistribution'
 }
 
-// 기존 플러그인 유지
-apply plugin: "com.android.application"
-apply plugin: "org.jetbrains.kotlin.android"
-apply plugin: "com.facebook.react"
+// 앱 모듈 build.gradle
+
+// Android 및 Kotlin 플러그인
+apply plugin: 'com.android.application'
+apply plugin: 'org.jetbrains.kotlin.android'
+// React Native 플러그인
+apply plugin: 'com.facebook.react'
+// Google 서비스, Firebase App Distribution 플러그인
+apply plugin: 'com.google.gms.google-services'
+apply plugin: 'com.google.firebase.appdistribution'
+// 벡터 아이콘 폰트 복사 스크립트
 apply from: "../../node_modules/react-native-vector-icons/fonts.gradle"
 
 /* ──────────────────
@@ -16,28 +23,6 @@ apply from: "../../node_modules/react-native-vector-icons/fonts.gradle"
    ────────────────── */
 
 react {
-    /* 디렉터리 설정 */
-    // 프로젝트 루트(기본값: '../..')
-    // root = file("../../")
-    // react-native 패키지 위치(기본값: ../../node_modules/react-native)
-    // reactNativeDir = file("../../node_modules/react-native")
-
-    /* 디버그 변형 */
-    // 디버깅 가능한 variant 목록(기본: ['debug'])
-    // debuggableVariants = ["liteDebug", "prodDebug"]
-
-    /* 번들링 옵션 */
-    // node 실행 파일 및 플래그(기본: ['node'])
-    // nodeExecutableAndArgs = ["node"]
-    // 번들 생성 명령(기본: 'bundle')
-    // bundleCommand = "ram-bundle"
-    // JS 진입 파일(기본: index.js 또는 index.android.js)
-    // entryFile = file("../js/MyApplication.android.js")
-
-    /* Hermes 컴파일러 */
-    // hermesCommand = "$rootDir/my-custom-hermesc/bin/hermesc"
-    // hermesFlags = ["-O", "-output-source-map"]
-
     /* 오토링킹 */
     autolinkLibrariesWithApp()
 
@@ -116,6 +101,6 @@ dependencies {
     
     // Firebase 종속성 추가 (버전 지정할 필요 없음)
     implementation 'com.google.firebase:firebase-analytics'
-    // 🔒 릴리스 빌드일 때만 추가
-    releaseImplementation 'com.google.firebase:firebase-app-distribution'
+    // Firebase Analytics
+    implementation 'com.google.firebase:firebase-analytics'
 }

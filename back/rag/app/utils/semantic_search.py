@@ -5,6 +5,7 @@ from typing import Literal
 from app.utils.embedding import get_text_embedding
 from pinecone import Pinecone
 from openai import OpenAI
+from app.utils.chat_vector_store import search_chat_history
 
 load_dotenv()
 
@@ -81,6 +82,34 @@ def generate_answer_from_info(query: str, results: list[dict]) -> str:
 사용자 질문: "{query}"
 
 이 정보를 기반으로 사용자 질문에 답변해줘."""
+
+    response = openai.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": prompt}],
+        max_tokens=300,
+    )
+
+    return response.choices[0].message.content.strip()
+
+
+def generate_answer_with_context(
+    user_id: str, query: str, info_results: list[dict]
+) -> str:
+    # chat history 불러오기
+    history = search_chat_history(user_id, query, top_k=5)
+
+    history_text = "\n".join([f"{h['role']}: {h['text']}" for h in history])
+    info_text = "\n".join([f"- {item['text']}" for item in info_results])
+
+    prompt = f"""아래는 이전 대화 기록입니다:
+{history_text}
+
+다음은 참고할 정보들입니다:
+{info_text}
+
+사용자 질문: "{query}"
+
+이 모든 내용을 바탕으로 사용자 질문에 대해 정확하고 간결하게 답변해줘."""
 
     response = openai.chat.completions.create(
         model="gpt-4o-mini",
