@@ -41,12 +41,17 @@ pipeline {
           rm -rf _build_tmp
           mkdir -p _build_tmp
           
-          # 프로젝트 파일 복사
+          # 프로젝트 파일 복사 (모든 파일을 복사하기 위해 ./* 사용)
           echo "📂 프로젝트 파일 복사"
-          cp -r front/frontend/* _build_tmp/
+          cp -a front/frontend/. _build_tmp/
           
-          # .git 디렉토리 제외 (불필요한 파일 제외)
-          rm -rf _build_tmp/.git
+          # 파일 목록 확인
+          echo "📂 복사된 파일 확인:"
+          ls -la _build_tmp
+          
+          # package.json 확인
+          echo "📄 package.json 확인:"
+          cat _build_tmp/package.json | grep -E "name|version" || echo "package.json 파일을 찾을 수 없습니다"
           
           # 권한 설정 (모든 사용자가 읽고 쓸 수 있도록)
           chmod -R 777 _build_tmp
@@ -94,6 +99,10 @@ pipeline {
           echo "===================================================="
           echo "🚀 Docker 내부에서 빌드 실행"
           echo "===================================================="
+          
+          # Docker 컨테이너 내부 디버깅
+          echo "📂 Docker 내부 디버깅:"
+          docker run --rm -v "$(pwd)/_build_tmp:/project" --workdir /project --entrypoint bash ${DOCKER_IMAGE} -c "ls -la && echo 'package.json:' && cat package.json | head -5"
           
           # Docker 컨테이너 실행
           docker run --rm \
@@ -143,7 +152,7 @@ EOF
           # 빌드 결과 디렉토리 생성
           mkdir -p apk
           
-          # APK 파일 찾기 및 복사 (백슬래시 없이 xargs 사용)
+          # APK 파일 찾기 및 복사
           echo "🔍 APK 파일 검색"
           find _build_tmp/android -name "*.apk" | xargs -I {} cp {} apk/ || echo "APK 파일을 찾을 수 없습니다"
           
@@ -161,7 +170,7 @@ EOF
           
           mkdir -p apk-archive
           
-          # APK 파일 찾기 및 복사 (백슬래시 없이 xargs 사용)
+          # APK 파일 찾기 및 복사
           find apk -name "*.apk" | xargs -I {} cp {} apk-archive/ || echo "APK 파일이 없습니다"
           
           # 결과 확인
