@@ -2,11 +2,17 @@ pipeline {
   agent any
 
   environment {
-    FIREBASE_TOKEN   = credentials('FIREBASE_TOKEN')
-    FIREBASE_APP_ID  = '1:189536895445:android:783ed885fd7c4b896bfd5c'
+    FIREBASE_TOKEN = credentials('FIREBASE_TOKEN')
+    FIREBASE_APP_ID = '1:189536895445:android:783ed885fd7c4b896bfd5c'
+
     KEYSTORE_PASSWORD = credentials('KEYSTORE_PASSWORD')
-    KEY_ALIAS        = credentials('KEY_ALIAS')
-    KEY_PASSWORD     = credentials('KEY_PASSWORD')
+    KEY_ALIAS         = credentials('KEY_ALIAS')
+    KEY_PASSWORD      = credentials('KEY_PASSWORD')
+
+    // Firebase 빌드에 필요한 시크릿 파일들
+    KEYSTORE_FILE            = credentials('android-release-keystore')
+    GOOGLE_SERVICES_JSON     = credentials('google-services-json')
+    FIREBASE_SERVICE_ACCOUNT = credentials('firebase-service-account')
   }
 
   stages {
@@ -25,24 +31,12 @@ pipeline {
     stage('Prepare Project') {
       steps {
         sh '''
-          echo "📦 작업 디렉토리 준비 및 압축"
-          [ -d workspace.tar.gz ] && echo "⚠️ 이전 디렉토리 제거" && rm -rf workspace.tar.gz
+          echo 📦 작업 디렉토리 준비
           rm -rf workspace
           mkdir -p workspace
           cp -a front/frontend/. workspace/
           chmod -R 777 workspace
-
-          if [ -f workspace/package.json ]; then
-            echo "📄 package.json 확인 완료"
-          else
-            echo "❌ package.json 누락"
-            exit 1
-          fi
-
-          tar -czf workspace.tar.gz -C workspace .
-          echo "📊 압축 파일 상태:"
-          ls -lh workspace.tar.gz
-          stat workspace.tar.gz
+          [ -f workspace/package.json ] && echo 📄 package.json 확인 완료
         '''
       }
     }
@@ -50,16 +44,16 @@ pipeline {
     stage('Prepare Secrets') {
       steps {
         withCredentials([
-          file(credentialsId: 'android-release-keystore', variable: 'KEYSTORE_FILE'),
-          file(credentialsId: 'google-services-json', variable: 'GOOGLE_SERVICES_JSON'),
-          file(credentialsId: 'firebase-service-account', variable: 'FIREBASE_SERVICE_ACCOUNT')
+          file(credentialsId: 'android-release-keystore', variable: 'KEYSTORE_PATH'),
+          file(credentialsId: 'google-services-json',     variable: 'GOOGLE_JSON'),
+          file(credentialsId: 'firebase-service-account', variable: 'FIREBASE_JSON')
         ]) {
           sh '''
-            echo "🔐 시크릿 파일 복사"
+            echo 🔐 시크릿 파일 복사
             mkdir -p workspace/android/app/keystore
-            cp "$KEYSTORE_FILE" workspace/android/app/keystore/release.keystore
-            cp "$GOOGLE_SERVICES_JSON" workspace/android/app/google-services.json
-            cp "$FIREBASE_SERVICE_ACCOUNT" workspace/android/firebase_service_account.json
+            cp "$KEYSTORE_PATH" workspace/android/app/keystore/release.keystore
+            cp "$GOOGLE_JSON" workspace/android/app/google-services.json
+            cp "$FIREBASE_JSON" workspace/android/firebase_service_account.json
             chmod -R 777 workspace/android
           '''
         }
@@ -69,22 +63,13 @@ pipeline {
     stage('Build and Deploy') {
       steps {
         sh '''
-          echo "🚀 Docker 빌드 및 배포 시작"
-          docker run --rm \
-            -v $(pwd):/app \
-            -e FIREBASE_TOKEN=$FIREBASE_TOKEN \
-            -e FIREBASE_APP_ID=$FIREBASE_APP_ID \
+          echo 🚀 Docker 빌드 및 배포 시작
+          docker run --rm -v "$PWD/workspace:/app" \
+            -e FIREBASE_TOKEN="$FIREBASE_TOKEN" \
+            -e FIREBASE_APP_ID="$FIREBASE_APP_ID" \
             cimg/android:2023.08 bash -c "
               set -e
-              echo '📂 압축 해제'
-              if [ -d /app/workspace.tar.gz ]; then
-                echo '❌ 경고: /app/workspace.tar.gz 는 디렉토리입니다. 마운트 오류 발생'
-                exit 1
-              fi
-
-              mkdir -p /tmp/project
-              tar -xzf /app/workspace.tar.gz -C /tmp/project
-              cd /tmp/project
+              cd /app
 
               echo '📦 npm install'
               npm install
@@ -93,9 +78,9 @@ pipeline {
               cd android
               chmod +x ./gradlew
               echo 'sdk.dir=$ANDROID_HOME' > local.properties
-              echo 'KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD' >> gradle.properties
-              echo 'KEY_ALIAS=$KEY_ALIAS' >> gradle.properties
-              echo 'KEY_PASSWORD=$KEY_PASSWORD' >> gradle.properties
+              echo 'KEYSTORE_PASSWORD=${KEYSTORE_PASSWORD}' >> gradle.properties
+              echo 'KEY_ALIAS=${KEY_ALIAS}' >> gradle.properties
+              echo 'KEY_PASSWORD=${KEY_PASSWORD}' >> gradle.properties
               ./gradlew clean assembleRelease --stacktrace
 
               echo '📦 빌드 산출물 복사'
@@ -104,11 +89,11 @@ pipeline {
 
               echo '🔥 Firebase 배포'
               npm install -g firebase-tools
-              firebase appdistribution:distribute /tmp/output/*.apk \
-                --app \"$FIREBASE_APP_ID\" \
-                --token \"$FIREBASE_TOKEN\" \
-                --groups \"testers\" \
-                --release-notes \"CI 자동 배포 #${BUILD_ID}\"
+              firebase appdistribution:distribute /tmp/output/*.apk \\
+                --app $FIREBASE_APP_ID \\
+                --token $FIREBASE_TOKEN \\
+                --groups testers \\
+                --release-notes 'CI 자동 배포'
             "
         '''
       }
@@ -116,14 +101,12 @@ pipeline {
   }
 
   post {
-    always {
+    failure {
       sh '''
-        echo "❌ 빌드 실패 디버깅 저장"
+        echo ❌ 빌드 실패 디버깅 저장
         mkdir -p debug-archive
-        echo "## package.json 내용"
-        cat workspace/package.json || echo "없음"
-        echo "\\n## .tar.gz 상태"
-        stat workspace.tar.gz || echo "stat 실패"
+        echo "## package.json 내용" && cat workspace/package.json || echo 없음
+        echo "\\n## 디렉토리 상태" && ls -al workspace || echo 없음
       '''
       archiveArtifacts artifacts: 'debug-archive/**', allowEmptyArchive: true
     }
