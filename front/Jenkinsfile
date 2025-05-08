@@ -9,8 +9,8 @@ pipeline {
     KEYSTORE_PASSWORD = credentials('KEYSTORE_PASSWORD')
     KEY_ALIAS        = credentials('KEY_ALIAS')
     KEY_PASSWORD     = credentials('KEY_PASSWORD')
-    // 사용할 Docker 이미지
-    DOCKER_IMAGE     = 'my-android-ci:latest'
+    // CircleCI Android 이미지 사용
+    DOCKER_IMAGE     = 'cimg/android:2023.08'
   }
 
   stages {
@@ -25,6 +25,29 @@ pipeline {
           echo "🔍 빌드 ID: ${BUILD_ID}"
           echo "🔍 Git 커밋: ${GIT_COMMIT}"
           echo "🔍 브랜치: ${GIT_BRANCH}"
+          echo "===================================================="
+        '''
+      }
+    }
+
+    stage('Check Docker Image') {
+      steps {
+        sh '''
+          echo "===================================================="
+          echo "🔍 Docker 이미지 확인"
+          echo "===================================================="
+          
+          # Docker 이미지 확인
+          if docker image inspect ${DOCKER_IMAGE} >/dev/null 2>&1; then
+            echo "✅ Docker 이미지 ${DOCKER_IMAGE}가 이미 존재합니다."
+          else
+            echo "🔄 Docker 이미지 ${DOCKER_IMAGE}를 다운로드합니다."
+            docker pull ${DOCKER_IMAGE} || {
+              echo "❌ Docker 이미지 다운로드 실패! 사용 가능한 이미지인지 확인하세요."
+              exit 1
+            }
+          fi
+          
           echo "===================================================="
         '''
       }
@@ -111,13 +134,19 @@ pipeline {
           # 테스트 파일 생성
           echo "테스트 파일입니다." > _build_tmp/test-file.txt
           
-          # Docker에서 볼륨 마운트 테스트
+          # Docker에서 볼륨 마운트 테스트 (간단한 명령어로 테스트)
           docker run --rm \
             -v "$(pwd)/_build_tmp:/project" \
             --workdir /project \
-            --entrypoint bash \
             ${DOCKER_IMAGE} \
-            -c 'ls -la && cat test-file.txt && echo "볼륨 마운트 성공"'
+            ls -la /project
+          
+          # package.json 파일 확인
+          docker run --rm \
+            -v "$(pwd)/_build_tmp:/project" \
+            --workdir /project \
+            ${DOCKER_IMAGE} \
+            cat /project/package.json | head -5
           
           echo "===================================================="
         '''
@@ -136,9 +165,8 @@ pipeline {
           docker run --rm \
             -v "$(pwd)/_build_tmp:/project" \
             --workdir /project \
-            --entrypoint bash \
             ${DOCKER_IMAGE} \
-            -c "ls -la && echo '--- package.json 내용: ---' && cat package.json || echo 'package.json 파일이 없습니다'"
+            bash -c "ls -la && echo '--- package.json 내용: ---' && cat package.json | head -10"
           
           # 현재 디렉토리의 권한 확인
           echo "📄 현재 디렉토리 권한:"
@@ -148,9 +176,8 @@ pipeline {
           docker run --rm \
             -v "$(pwd)/_build_tmp:/project" \
             --workdir /project \
-            --entrypoint bash \
             ${DOCKER_IMAGE} \
-            -c '
+            bash -c '
               set -e  # 에러 발생 시 즉시 스크립트 중단
               
               echo "📂 현재 디렉토리: $(pwd)"
@@ -164,6 +191,21 @@ pipeline {
                 exit 1
               fi
               
+              # CircleCI Android 이미지에 Node.js 및 npm 설치 확인
+              NODE_VERSION=$(node --version || echo "Node.js가 설치되지 않았습니다")
+              NPM_VERSION=$(npm --version || echo "npm이 설치되지 않았습니다")
+              echo "Node.js 버전: $NODE_VERSION"
+              echo "npm 버전: $NPM_VERSION"
+              
+              # Node.js가 설치되어 있지 않으면 설치
+              if [[ "$NODE_VERSION" == *"설치되지 않았습니다"* ]]; then
+                echo "Node.js 설치 중..."
+                curl -sL https://deb.nodesource.com/setup_18.x | bash -
+                apt-get update && apt-get install -y nodejs
+                echo "Node.js 설치 완료: $(node --version)"
+                echo "npm 설치 완료: $(npm --version)"
+              fi
+              
               npm install
               
               echo "📂 node_modules 설치 확인"
@@ -174,19 +216,20 @@ pipeline {
               chmod +x ./gradlew
               
               echo "🔧 local.properties 생성"
-              echo "sdk.dir=/opt/android-sdk" > local.properties
+              echo "sdk.dir=$ANDROID_HOME" > local.properties
               
               echo "🔧 Gradle 프로퍼티 설정"
               cat >> gradle.properties << EOF
 
 # CI 환경 키스토어 설정
-KEYSTORE_PASSWORD='$KEYSTORE_PASSWORD'
-KEY_ALIAS='$KEY_ALIAS'
-KEY_PASSWORD='$KEY_PASSWORD'
+KEYSTORE_PASSWORD='"'"'$KEYSTORE_PASSWORD'"'"'
+KEY_ALIAS='"'"'$KEY_ALIAS'"'"'
+KEY_PASSWORD='"'"'$KEY_PASSWORD'"'"'
 EOF
               
               echo "🔧 Android SDK 확인"
-              ls -la $ANDROID_SDK_ROOT || echo "Android SDK 디렉토리가 없습니다"
+              echo "ANDROID_HOME: $ANDROID_HOME"
+              ls -la $ANDROID_HOME || echo "Android SDK 디렉토리가 없습니다"
               
               echo "🔧 Gradle 빌드 실행"
               ./gradlew clean --stacktrace
@@ -267,23 +310,15 @@ EOF
               -e FIREBASE_APP_ID="$FIREBASE_APP_ID" \
               ${DOCKER_IMAGE} \
               bash -c '
-                export GEM_HOME=/root/.gem
-                export PATH=$PATH:$GEM_HOME/bin
-                
-                # Fastlane 설치 확인
-                bundle --version || gem install bundler
-                
-                # Fastlane으로 배포
-                bundle config set path "vendor/bundle"
-                bundle install
+                # Firebase CLI 설치
+                npm install -g firebase-tools
                 
                 echo "🔥 Firebase App Distribution 실행"
-                bundle exec fastlane run firebase_app_distribution \
-                  app:"$FIREBASE_APP_ID" \
-                  firebase_cli_token:"$FIREBASE_TOKEN" \
-                  apk_path:"/firebase_workspace/'"$APK_FILE"'" \
-                  groups:"testers" \
-                  release_notes:"Jenkins CI 자동 배포 빌드 #${BUILD_ID} (${GIT_COMMIT})"
+                firebase appdistribution:distribute "/firebase_workspace/'"$APK_FILE"'" \
+                  --app "$FIREBASE_APP_ID" \
+                  --token "$FIREBASE_TOKEN" \
+                  --groups "testers" \
+                  --release-notes "Jenkins CI 자동 배포 빌드 #${BUILD_ID} (${GIT_COMMIT})"
               '
             
             echo "===================================================="
