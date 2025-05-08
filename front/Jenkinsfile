@@ -2,20 +2,27 @@ pipeline {
   agent any
 
   environment {
-    DOCKER_IMAGE       = 'cimg/android:2023.08'
-    FIREBASE_TOKEN     = credentials('FIREBASE_TOKEN')
-    FIREBASE_APP_ID    = '1:189536895445:android:783ed885fd7c4b896bfd5c'
-    KEYSTORE_PASSWORD  = credentials('KEYSTORE_PASSWORD')
-    KEY_ALIAS          = credentials('KEY_ALIAS')
-    KEY_PASSWORD       = credentials('KEY_PASSWORD')
-    WORK_DIR           = "${WORKSPACE}/workspace"
-    TAR_PATH           = "${WORKSPACE}/workspace.tar.gz"
+    FIREBASE_TOKEN    = credentials('FIREBASE_TOKEN')
+    FIREBASE_APP_ID   = '1:189536895445:android:783ed885fd7c4b896bfd5c'
+
+    KEYSTORE_PASSWORD = credentials('KEYSTORE_PASSWORD')
+    KEY_ALIAS         = credentials('KEY_ALIAS')
+    KEY_PASSWORD      = credentials('KEY_PASSWORD')
+
+    // 작업 디렉토리
+    WORK_DIR = "${WORKSPACE}/workspace"
+    TAR_FILE = "${WORKSPACE}/workspace.tar.gz"
   }
 
   stages {
-    stage('Checkout & Init') {
+    stage('Checkout') {
       steps {
         checkout scm
+      }
+    }
+
+    stage('Checkout & Init') {
+      steps {
         sh 'chmod -R 777 .'
       }
     }
@@ -23,21 +30,16 @@ pipeline {
     stage('Prepare Project') {
       steps {
         sh '''
-          echo "📦 작업 디렉토리 준비 및 압축"
-          rm -rf ${WORK_DIR} ${TAR_PATH}
-          mkdir -p ${WORK_DIR}
-          cp -a front/frontend/. ${WORK_DIR}/
-          chmod -R 777 ${WORK_DIR}
-
-          echo "📄 package.json 확인"
-          [ -f ${WORK_DIR}/package.json ]
-
-          echo "📦 압축 생성"
-          tar -czf ${TAR_PATH} -C ${WORK_DIR} .
-
-          echo "📊 압축 파일 상태:"
-          ls -lh ${TAR_PATH}
-          stat ${TAR_PATH}
+          echo 📦 작업 디렉토리 준비 및 압축
+          rm -rf "${WORK_DIR}" "${TAR_FILE}"
+          mkdir -p "${WORK_DIR}"
+          cp -a front/frontend/. "${WORK_DIR}/"
+          chmod -R 777 "${WORK_DIR}"
+          [ -f "${WORK_DIR}/package.json" ] && echo 📄 package.json 확인 완료
+          tar -czf "${TAR_FILE}" -C "${WORK_DIR}" .
+          echo 📊 압축 파일 상태:
+          ls -lh "${TAR_FILE}"
+          stat "${TAR_FILE}"
         '''
       }
     }
@@ -45,17 +47,17 @@ pipeline {
     stage('Prepare Secrets') {
       steps {
         withCredentials([
-          file(credentialsId: 'android-release-keystore', variable: 'KEYSTORE_FILE'),
-          file(credentialsId: 'google-services-json', variable: 'GOOGLE_SERVICES_JSON'),
-          file(credentialsId: 'firebase-service-account', variable: 'FIREBASE_SERVICE_ACCOUNT')
+          file(credentialsId: 'KEYSTORE_FILE', variable: 'KEYSTORE_FILE'),
+          file(credentialsId: 'GOOGLE_SERVICES_JSON', variable: 'GOOGLE_SERVICES_JSON'),
+          file(credentialsId: 'FIREBASE_SERVICE_ACCOUNT', variable: 'FIREBASE_SERVICE_ACCOUNT')
         ]) {
           sh '''
-            echo "🔐 시크릿 파일 복사"
-            mkdir -p ${WORK_DIR}/android/app/keystore
-            cp "$KEYSTORE_FILE" ${WORK_DIR}/android/app/keystore/release.keystore
-            cp "$GOOGLE_SERVICES_JSON" ${WORK_DIR}/android/app/google-services.json
-            cp "$FIREBASE_SERVICE_ACCOUNT" ${WORK_DIR}/android/firebase_service_account.json
-            chmod -R 777 ${WORK_DIR}/android
+            echo 🔐 시크릿 파일 복사
+            mkdir -p "${WORK_DIR}/android/app/keystore"
+            cp "$KEYSTORE_FILE" "${WORK_DIR}/android/app/keystore/release.keystore"
+            cp "$GOOGLE_SERVICES_JSON" "${WORK_DIR}/android/app/google-services.json"
+            cp "$FIREBASE_SERVICE_ACCOUNT" "${WORK_DIR}/android/firebase_service_account.json"
+            chmod -R 777 "${WORK_DIR}/android"
           '''
         }
       }
@@ -64,43 +66,48 @@ pipeline {
     stage('Build and Deploy') {
       steps {
         sh '''
-          echo "🚀 Docker 빌드 및 배포 시작"
+          echo 🚀 Docker 빌드 및 배포 시작
 
-          echo "🐳 컨테이너 생성 및 파일 복사"
-          CONTAINER_ID=$(docker create ${DOCKER_IMAGE})
-          docker cp ${TAR_PATH} $CONTAINER_ID:/tmp/project.tar.gz
-          docker start $CONTAINER_ID
-          docker exec $CONTAINER_ID bash -c '
+          echo 🐳 컨테이너 생성 및 파일 복사
+          docker rm -f temp_android_build || true
+          docker create --name temp_android_build cimg/android:2023.08 sleep infinity
+          docker cp "${TAR_FILE}" temp_android_build:/tmp/project.tar.gz
+          docker start temp_android_build
+
+          docker exec temp_android_build bash -c "
             set -e
-            echo "📂 압축 해제"
+            echo '📂 압축 해제'
             mkdir -p /tmp/project
             tar -xzf /tmp/project.tar.gz -C /tmp/project
             cd /tmp/project
 
-            echo "📦 npm install"
+            echo '📦 npm install'
             npm install
 
-            echo "🛠️ Android 빌드"
+            echo '🛠️ Android 빌드'
             cd android
             chmod +x ./gradlew
-            echo "sdk.dir=$ANDROID_HOME" > local.properties
-            echo "KEYSTORE_PASSWORD=${KEYSTORE_PASSWORD}" >> gradle.properties
-            echo "KEY_ALIAS=${KEY_ALIAS}" >> gradle.properties
-            echo "KEY_PASSWORD=${KEY_PASSWORD}" >> gradle.properties
+            echo 'sdk.dir=\$ANDROID_HOME' > local.properties
+            echo 'KEYSTORE_PASSWORD=${KEYSTORE_PASSWORD}' >> gradle.properties
+            echo 'KEY_ALIAS=${KEY_ALIAS}' >> gradle.properties
+            echo 'KEY_PASSWORD=${KEY_PASSWORD}' >> gradle.properties
             ./gradlew clean assembleRelease --stacktrace
 
-            echo "📦 빌드 산출물 복사"
+            echo '📦 빌드 산출물 복사'
             mkdir -p /tmp/output
-            find . -name \"*.apk\" -o -name \"*.aab\" -exec cp {} /tmp/output/ \\;
+            find . -name '*.apk' -o -name '*.aab' -exec cp {} /tmp/output/ \\;
 
-            echo "🔥 Firebase 배포"
+            echo '🔥 Firebase 배포'
             npm install -g firebase-tools
             firebase appdistribution:distribute /tmp/output/*.apk \\
-              --app "$FIREBASE_APP_ID" \\
-              --token "$FIREBASE_TOKEN" \\
-              --groups "testers" \\
-              --release-notes "CI 자동 배포 #${BUILD_ID}"
-          '
+              --app '${FIREBASE_APP_ID}' \\
+              --token '${FIREBASE_TOKEN}' \\
+              --groups 'testers' \\
+              --release-notes 'CI 자동 배포 #${BUILD_ID}'
+
+            echo '✅ 배포 완료'
+          "
+          docker rm -f temp_android_build
         '''
       }
     }
@@ -109,17 +116,16 @@ pipeline {
   post {
     failure {
       sh '''
-        echo "❌ 빌드 실패 디버깅 저장"
+        echo ❌ 빌드 실패 디버깅 저장
         mkdir -p debug-archive
-        echo "## package.json" > debug-archive/info.md
-        cat ${WORK_DIR}/package.json || echo "없음" >> debug-archive/info.md
-        echo "\\n## .tar.gz 상태" >> debug-archive/info.md
-        stat ${TAR_PATH} >> debug-archive/info.md || echo "stat 실패" >> debug-archive/info.md
+
+        echo "## package.json 내용"
+        cat "${WORK_DIR}/package.json" || echo "없음"
+
+        echo "\\n## .tar.gz 상태"
+        stat "${TAR_FILE}" || echo "stat 실패"
       '''
-      archiveArtifacts artifacts: 'debug-archive/**', fingerprint: true
-    }
-    always {
-      cleanWs()
+      archiveArtifacts artifacts: 'debug-archive/**', allowEmptyArchive: true
     }
   }
 }
