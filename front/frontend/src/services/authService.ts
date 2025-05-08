@@ -7,19 +7,38 @@ import { useAuthStore } from '../stores/authStore';
 
 /** ① 카카오 SDK → 백엔드 로그인 */
 export async function signInWithKakao() {
-  // 1) Kakao SDK 로그인
-  const kRes = await kakaoLogin();    // {accessToken, idToken, ...}
+  console.log('[AuthService] signInWithKakao 시작');
+  try {
+    // 1) Kakao SDK 로그인
+    console.log('[AuthService] Kakao SDK 로그인 시도...');
+    const kRes = await kakaoLogin(); // {accessToken, idToken, ...}
+    console.log('[AuthService] Kakao SDK 로그인 성공:', kRes);
+    console.log("[AuthService] Kakao accessToken:", kRes.accessToken);
 
-  console.log(kRes, "kRes");
+    // 2) 우리 서버에 전달해 JWT 세트 획득
+    console.log('[AuthService] 백엔드 서버에 로그인 요청 시도...');
+    const { data } = await api.post('/auth/kakao/login', {
+      kakaoAccessToken: kRes.accessToken,
+    });
+    // data: { accessToken, refreshToken, userId }
+    console.log('[AuthService] 백엔드 서버 로그인 성공:', data);
 
-  // 2) 우리 서버에 전달해 JWT 세트 획득
-  const { data } = await api.post('/auth/kakao/login', {
-    kakaoAccessToken: kRes.accessToken,
-  });
-  // data: { accessToken, refreshToken, userId }
-
-  // 3) 전역 상태 & SecureStore 에 저장
-  useAuthStore.getState().setTokens(data);
+    // 3) 전역 상태 & SecureStore 에 저장
+    console.log('[AuthService] 전역 상태에 토큰 저장 시도...');
+    useAuthStore.getState().setTokens(data);
+    console.log('[AuthService] 전역 상태에 토큰 저장 완료');
+    console.log('[AuthService] signInWithKakao 성공');
+  } catch (error: any) {
+    console.error('✖ [AuthService] signInWithKakao 실패:', error);
+    // Kakao SDK 에러 객체에 code 또는 message 속성이 있을 수 있습니다.
+    if (error.code) console.error('✖ [AuthService] Kakao SDK 에러 코드:', error.code);
+    if (error.message) console.error('✖ [AuthService] 에러 메시지:', error.message);
+    // Axios 에러인 경우 추가 정보 로깅
+    if (error.isAxiosError) {
+      console.error('✖ [AuthService] Axios 에러 응답:', error.response?.data);
+    }
+    throw error; // 에러를 다시 throw하여 호출부에서 처리할 수 있도록 함
+  }
 }
 
 /** ② access 토큰 재발급 */
