@@ -10,7 +10,6 @@ pipeline {
     DOCKER_IMAGE        = 'cimg/android:2023.08'
     WORK_DIR            = "${WORKSPACE}/workspace"
     TAR_PATH            = "${WORKSPACE}/workspace.tar.gz"
-    APK_DIR             = "${WORKSPACE}/apk"
     ARCHIVE_DIR         = "${WORKSPACE}/apk-archive"
   }
 
@@ -18,32 +17,28 @@ pipeline {
     stage('Checkout & Init') {
       steps {
         checkout scm
-        sh '''
-          echo "📁 GitLab 프로젝트 전체 권한 변경"
-          chmod -R 777 .
-        '''
+        sh 'chmod -R 777 .'
       }
     }
 
     stage('Prepare Project') {
       steps {
         sh '''
-          echo "📦 작업 디렉토리 준비 및 아카이브 생성"
+          echo "📦 작업 디렉토리 준비 및 압축"
           rm -rf ${WORK_DIR} ${TAR_PATH}
           mkdir -p ${WORK_DIR}
           cp -a front/frontend/. ${WORK_DIR}/
           chmod -R 777 ${WORK_DIR}
 
-          echo "📄 package.json 존재 확인:"
-          ls -l ${WORK_DIR}/package.json || { echo "❌ package.json 없음"; exit 1; }
+          echo "📄 package.json 확인"
+          [ -f ${WORK_DIR}/package.json ] || { echo "❌ package.json 없음"; exit 1; }
 
-          echo "📦 .tar.gz 생성"
+          echo "📦 압축 생성"
           tar -czf ${TAR_PATH} -C ${WORK_DIR} .
-          echo "📦 아카이브 생성 완료: ${TAR_PATH}"
+          [ -f ${TAR_PATH} ] || { echo "❌ 압축 파일 생성 실패"; exit 1; }
 
-          echo "📊 생성된 tar 파일 정보:"
+          echo "📊 .tar.gz 파일 상태"
           ls -lh ${TAR_PATH}
-          command -v file >/dev/null && file ${TAR_PATH} || echo "⚠️ file 명령어 없음"
           stat ${TAR_PATH}
         '''
       }
@@ -71,72 +66,70 @@ pipeline {
     stage('Build and Deploy') {
       steps {
         sh '''
-          echo "🚀 Docker 빌드 및 Firebase 배포 시작"
+          echo "🚀 Docker 빌드 시작"
 
-          echo "🧪 Docker 마운트 전 아카이브 상태 확인"
+          echo "📁 마운트 전 .tar.gz 상태 검사"
+          [ -f "${TAR_PATH}" ] || { echo "❌ ${TAR_PATH} 존재하지 않음"; exit 1; }
           ls -lh "${TAR_PATH}"
-          command -v file >/dev/null && file "${TAR_PATH}" || echo "⚠️ file 명령 없음"
           stat "${TAR_PATH}"
 
           docker run --rm \
-            -v "${TAR_PATH}:/workspace.tar.gz" \
+            -v "${TAR_PATH}:/input/project.tar.gz" \
             -e FIREBASE_TOKEN="${FIREBASE_TOKEN}" \
             -e FIREBASE_APP_ID="${FIREBASE_APP_ID}" \
             ${DOCKER_IMAGE} \
             bash -c '
               set -e
+              echo "📁 /input 디렉토리 검사"
+              ls -l /input || echo "❌ /input 디렉토리 없음"
 
-              echo "📦 컨테이너 내부 /workspace.tar.gz 상태 확인"
-              command -v file >/dev/null && file /workspace.tar.gz || echo "⚠️ file 명령 없음 (컨테이너 내부)"
-              ls -lh /workspace.tar.gz || echo "❌ 파일 존재 안 함"
-              stat /workspace.tar.gz || echo "❌ stat 실패"
-
-              if [ -d /workspace.tar.gz ]; then
-                echo "❌ /workspace.tar.gz 는 디렉토리입니다! 잘못된 마운트"
+              echo "📄 /input/project.tar.gz 존재 확인"
+              if [ -d /input/project.tar.gz ]; then
+                echo "❌ 경고: /input/project.tar.gz 가 디렉토리입니다! 마운트 잘못됨"
+                exit 1
+              elif [ ! -f /input/project.tar.gz ]; then
+                echo "❌ project.tar.gz 파일 없음"
                 exit 1
               fi
 
-              echo "📂 /tmp/project 생성 및 압축 해제 시도"
+              echo "📂 압축 해제 중..."
               mkdir -p /tmp/project
-              tar -xzf /workspace.tar.gz -C /tmp/project || { echo "❌ tar 추출 실패"; exit 1; }
+              tar -xzf /input/project.tar.gz -C /tmp/project
 
-              echo "📁 추출 후 디렉토리 상태:"
-              ls -al /tmp/project || echo "❌ 디렉토리 없음"
-              cd /tmp/project
+              echo "📁 디렉토리 확인:"
+              ls -al /tmp/project
 
               echo "📦 npm install 시작"
-              npm install || { echo "❌ npm install 실패"; exit 1; }
+              cd /tmp/project
+              npm install
 
+              echo "🛠️ Gradle 빌드 시작"
               cd android
               chmod +x ./gradlew
               echo "sdk.dir=$ANDROID_HOME" > local.properties
               echo "KEYSTORE_PASSWORD=${KEYSTORE_PASSWORD}" >> gradle.properties
               echo "KEY_ALIAS=${KEY_ALIAS}" >> gradle.properties
               echo "KEY_PASSWORD=${KEY_PASSWORD}" >> gradle.properties
+              ./gradlew clean assembleRelease --stacktrace
 
-              echo "🛠️ Gradle 빌드 시작"
-              ./gradlew clean assembleRelease --stacktrace || { echo "❌ Gradle 빌드 실패"; exit 1; }
-
-              echo "📁 빌드 산출물 복사"
+              echo "📦 결과 파일 복사"
               mkdir -p /tmp/output
               find . -name "*.apk" -o -name "*.aab" -exec cp {} /tmp/output/ \\;
 
-              echo "🔥 Firebase CLI 설치 및 배포 시작"
-              npm install -g firebase-tools || { echo "❌ Firebase CLI 설치 실패"; exit 1; }
-
-              ls -lh /tmp/output/
+              echo "🔥 Firebase CLI 설치 및 배포"
+              npm install -g firebase-tools
               firebase appdistribution:distribute /tmp/output/*.apk \
                 --app "$FIREBASE_APP_ID" \
                 --token "$FIREBASE_TOKEN" \
                 --groups "testers" \
-                --release-notes "CI 자동 배포 #${BUILD_ID}" || { echo "❌ Firebase 배포 실패"; exit 1; }
+                --release-notes "CI 자동 배포 #${BUILD_ID}"
 
-              echo "✅ Firebase 배포 완료"
+              echo "✅ 배포 완료"
             '
 
-          echo "📦 결과 복사"
+          echo "📦 결과 복사 및 아카이브"
           mkdir -p ${ARCHIVE_DIR}
-          cp -v ${APK_DIR}/*.apk ${ARCHIVE_DIR}/ || echo "⚠️ APK 파일 없음"
+          cp -v ${WORK_DIR}/android/app/build/outputs/apk/release/*.apk ${ARCHIVE_DIR}/ || echo "⚠️ APK 복사 실패"
         '''
         archiveArtifacts artifacts: 'apk-archive/**', fingerprint: true, allowEmptyArchive: true
       }
@@ -149,13 +142,11 @@ pipeline {
     }
     failure {
       sh '''
-        echo "❌ 빌드 실패, 디버깅 로그 수집 시작"
+        echo "❌ 빌드 실패 디버깅 아카이브"
         mkdir -p debug-archive
         echo "## package.json 내용" > debug-archive/info.txt
-        cat ${WORK_DIR}/package.json >> debug-archive/info.txt 2>/dev/null || echo "package.json 없음" >> debug-archive/info.txt
-
+        cat ${WORK_DIR}/package.json >> debug-archive/info.txt 2>/dev/null || echo "없음" >> debug-archive/info.txt
         echo "## .tar.gz 상태" >> debug-archive/info.txt
-        command -v file >/dev/null && file ${TAR_PATH} >> debug-archive/info.txt 2>/dev/null || echo "file 실패" >> debug-archive/info.txt
         stat ${TAR_PATH} >> debug-archive/info.txt 2>/dev/null || echo "stat 실패" >> debug-archive/info.txt
       '''
       archiveArtifacts artifacts: 'debug-archive/**', fingerprint: true, allowEmptyArchive: true
