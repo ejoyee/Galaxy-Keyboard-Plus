@@ -39,7 +39,7 @@ pipeline {
         script {
           // Docker 컨테이너 안에서 한 번에 처리
           docker.image('my-android-ci:latest')
-                .inside('-i --rm -u root:root') {
+                .inside('-i -t --rm -u root:root') {
             // 1) 시크릿 복사
             withCredentials([
               file(  credentialsId: 'android-release-keystore',    variable: 'KEYSTORE_FILE'),
