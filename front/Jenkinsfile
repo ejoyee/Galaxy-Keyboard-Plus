@@ -271,12 +271,12 @@ EOF
               
               # APK 파일 복사
               mkdir -p /output
-              find . -name "*.apk" -exec cp {} /output/ \;
+              find . -name "*.apk" -exec cp {} /output/ ";"
             '
           
           # APK 파일 정리
           mkdir -p apk-archive
-          find ${WORKSPACE}/apk -name "*.apk" -exec cp {} apk-archive/ \; || echo "APK 파일이 없습니다"
+          find ${WORKSPACE}/apk -name "*.apk" -exec cp {} apk-archive/ ";" || echo "APK 파일이 없습니다"
           
           # 결과 확인
           APK_COUNT=$(find apk-archive -name "*.apk" | wc -l)
