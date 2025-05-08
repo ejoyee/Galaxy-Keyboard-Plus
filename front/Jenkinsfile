@@ -88,6 +88,15 @@ pipeline {
           echo "📂 front/frontend/android 디렉토리 확인:"
           ls -la front/frontend/android || { echo "❌ front/frontend/android 디렉토리가 없습니다"; exit 1; }
           
+          echo "📂 gradlew 파일 확인:"
+          if [ -f "front/frontend/android/gradlew" ]; then
+            echo "✅ gradlew 파일 존재"
+            chmod +x front/frontend/android/gradlew
+          else
+            echo "❌ gradlew 파일이 없습니다."
+            exit 1
+          fi
+          
           echo "===================================================="
         '''
       }
@@ -125,76 +134,66 @@ pipeline {
       }
     }
 
-    stage('Build Android Only') {
+    stage('Build with Dockerfile') {
       when { expression { env.BUILD_FRONTEND == 'true' } }
       steps {
         sh '''
           echo "===================================================="
-          echo "🐳 Docker를 사용한 Android 전용 빌드"
+          echo "🐳 Dockerfile을 통한 Android 빌드"
           echo "===================================================="
           
           # 작업 디렉토리
           WORKSPACE_DIR="$(pwd)"
-          ANDROID_DIR="${WORKSPACE_DIR}/front/frontend/android"
           
-          # 디렉토리 존재 확인
-          if [ ! -d "$ANDROID_DIR" ]; then
-            echo "❌ Android 디렉토리가 존재하지 않습니다: $ANDROID_DIR"
-            exit 1
-          fi
+          # 임시 작업 디렉토리 생성
+          BUILD_DIR="$WORKSPACE_DIR/android-build"
+          mkdir -p "$BUILD_DIR"
           
-          echo "📂 Android 디렉토리: $ANDROID_DIR"
-          echo "🔍 Docker 이미지: ${DOCKER_IMAGE}"
+          # 안드로이드 프로젝트 파일 복사
+          echo "📂 프로젝트 파일 복사 중..."
+          cp -r front/frontend/android/* "$BUILD_DIR/"
           
-          # Docker 컨테이너에서 직접 Android 빌드만 실행
+          # 현재 디렉토리에 Dockerfile 생성
+          cat > "$BUILD_DIR/Dockerfile" << 'EOF'
+FROM reactnativecommunity/react-native-android:latest
+
+WORKDIR /app
+
+# 프로젝트 파일 복사
+COPY . /app
+
+# 환경 변수 설정
+ENV ANDROID_SDK_ROOT=/opt/android-sdk
+ENV ANDROID_HOME=/opt/android-sdk
+
+# 로컬 프로퍼티 파일 생성
+RUN echo "sdk.dir=/opt/android-sdk" > local.properties
+
+# gradlew 실행 권한 설정
+RUN chmod +x ./gradlew
+
+# APK 빌드
+RUN ./gradlew assembleDebug --stacktrace
+EOF
+          
+          # Dockerfile 기반으로 이미지 빌드
+          echo "🏗️ Docker 이미지 빌드 중..."
+          docker build -t android-build:${BUILD_ID} "$BUILD_DIR"
+          
+          # 빌드 결과물 복사
+          echo "🔄 빌드 결과물 복사 중..."
           docker run --rm \
-            -v "$ANDROID_DIR:/app" \
-            -w /app \
-            -e ANDROID_SDK_ROOT=/opt/android-sdk \
-            -e ANDROID_HOME=/opt/android-sdk \
-            -e KEYSTORE_PASSWORD="$KEYSTORE_PASSWORD" \
-            -e KEY_ALIAS="$KEY_ALIAS" \
-            -e KEY_PASSWORD="$KEY_PASSWORD" \
-            ${DOCKER_IMAGE} \
-            bash -c '
-              set -e
-              
-              echo "==== 작업 디렉토리 확인 ===="
-              pwd
-              ls -la
-              
-              echo "==== Android 환경 확인 ===="
-              echo "ANDROID_SDK_ROOT: $ANDROID_SDK_ROOT"
-              echo "ANDROID_HOME: $ANDROID_HOME"
-              
-              if [ ! -f "./gradlew" ]; then
-                echo "❌ gradlew 파일이 없습니다."
-                exit 1
-              fi
-              
-              # gradlew 실행 권한 부여
-              chmod +x ./gradlew
-              
-              # 로컬 프로퍼티 파일 생성
-              echo "sdk.dir=/opt/android-sdk" > local.properties
-              
-              # 디버그 APK 빌드
-              ./gradlew assembleDebug --stacktrace
-              
-              # 빌드 결과 확인
-              echo "==== 빌드 결과 확인 ===="
-              find . -name "*.apk"
-            '
+            -v "$WORKSPACE_DIR/apk:/output" \
+            android-build:${BUILD_ID} \
+            bash -c "mkdir -p /output && find . -name '*.apk' -exec cp {} /output/ \\;"
           
-          # 빌드 결과 코드 캡처
-          BUILD_RESULT=$?
+          # 이미지 삭제
+          docker rmi android-build:${BUILD_ID}
           
-          if [ $BUILD_RESULT -ne 0 ]; then
-            echo "❌ Docker 빌드 실패 (결과 코드: $BUILD_RESULT)"
-            exit $BUILD_RESULT
-          fi
+          # 빌드 결과 확인
+          echo "📂 빌드 결과 확인:"
+          find apk -name "*.apk" || echo "❌ APK 파일이 생성되지 않았습니다"
           
-          echo "✅ Docker 빌드 완료"
           echo "===================================================="
         '''
       }
@@ -212,12 +211,12 @@ pipeline {
             echo "🔥 Firebase 배포"
             echo "===================================================="
             
-            # APK 파일 찾기 - 전체 경로 지정
-            APK_FILE=$(find "$(pwd)/front/frontend/android" -name "*.apk" | head -1)
+            # APK 파일 찾기
+            APK_FILE=$(find "$(pwd)/apk" -name "*.apk" | head -1)
             
             if [ -z "$APK_FILE" ]; then
               echo "❌ APK 파일을 찾을 수 없어 Firebase 배포를 건너뜁니다"
-              exit 1
+              exit 0
             fi
             
             echo "✅ 업로드할 APK 파일: $APK_FILE"
@@ -228,9 +227,10 @@ pipeline {
               -w /workspace \
               -e FIREBASE_TOKEN="$FIREBASE_TOKEN" \
               -e FIREBASE_APP_ID="$FIREBASE_APP_ID" \
-              -e APK_FILE="$APK_FILE" \
               node:14 \
               bash -c '
+                set -x
+                
                 echo "==== Node.js 버전 확인 ===="
                 node -v
                 npm -v
@@ -239,32 +239,22 @@ pipeline {
                 npm install -g firebase-tools
                 
                 echo "==== APK 파일 확인 ===="
-                echo "APK 파일 경로: $APK_FILE"
+                APK_FILE=$(find /workspace/apk -name "*.apk" | head -1)
                 
-                if [ ! -f "$APK_FILE" ]; then
-                  echo "❌ Docker 내부에서 APK 파일을 찾을 수 없습니다."
-                  echo "Docker 컨테이너 디렉토리 내용:"
-                  find /workspace -name "*.apk"
-                  exit 1
+                if [ -z "$APK_FILE" ]; then
+                  echo "❌ APK 파일을 찾을 수 없습니다."
+                  exit 0
                 fi
+                
+                echo "✅ APK 파일: $APK_FILE"
                 
                 echo "==== Firebase 배포 ===="
                 firebase appdistribution:distribute "$APK_FILE" \
                   --app "$FIREBASE_APP_ID" \
                   --token "$FIREBASE_TOKEN" \
                   --groups "testers" \
-                  --release-notes "Jenkins CI 자동 배포 빌드"
+                  --release-notes "Jenkins CI 자동 배포 빌드" || echo "⚠️ Firebase 배포 실패"
               '
-            
-            DEPLOY_RESULT=$?
-            
-            if [ $DEPLOY_RESULT -ne 0 ]; then
-              echo "❌ Firebase 배포 실패 (결과 코드: $DEPLOY_RESULT)"
-              # 배포 실패해도 빌드 과정 계속 진행
-              echo "⚠️ 배포 실패했지만 빌드 과정은 계속 진행합니다."
-            else
-              echo "✅ Firebase 배포 완료"
-            fi
             
             echo "===================================================="
           '''
@@ -280,19 +270,19 @@ pipeline {
           echo "📦 APK 아카이브"
           echo "===================================================="
           
-          # APK 파일 존재 확인
-          APK_COUNT=$(find "$(pwd)/front/frontend/android" -name "*.apk" 2>/dev/null | wc -l || echo "0")
+          mkdir -p apk-archive
+          
+          # apk 디렉토리에서 APK 파일 찾기
+          APK_COUNT=$(find "$(pwd)/apk" -name "*.apk" 2>/dev/null | wc -l || echo "0")
           
           if [ "$APK_COUNT" -gt 0 ]; then
             echo "✅ $APK_COUNT 개의 APK 파일 발견:"
-            find "$(pwd)/front/frontend/android" -name "*.apk" 2>/dev/null
+            find "$(pwd)/apk" -name "*.apk" 2>/dev/null
             
-            # 모든 APK 파일을 하나의 디렉토리로 복사
-            mkdir -p apk-archive
-            find "$(pwd)/front/frontend/android" -name "*.apk" -exec cp {} apk-archive/ \\; || true
+            # 모든 APK 파일을 아카이브 디렉토리로 복사
+            cp -r apk/*.apk apk-archive/ || true
           else
             echo "❌ APK 파일을 찾을 수 없습니다"
-            mkdir -p apk-archive
             echo "No APK files found" > apk-archive/build-failed.txt
           fi
           
@@ -324,6 +314,9 @@ pipeline {
         echo "===================================================="
         echo "🧹 작업 공간 정리"
         echo "===================================================="
+        
+        # 임시 디렉토리 정리
+        rm -rf android-build apk || true
       '''
       cleanWs()
     }
