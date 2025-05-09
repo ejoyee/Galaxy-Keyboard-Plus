@@ -32,8 +32,8 @@ export const uploadImagesToServer = async (
     try {
       console.log('▶ fetch 요청 accessToken:', accessToken); // accessToken 확인 로그 추가
       const response = await fetch(
-        // 'https://k12e201.p.ssafy.io/rag/upload-image/',
-        'http://k12e201.p.ssafy.io:8090/rag/upload-image/',
+        'https://k12e201.p.ssafy.io/rag/upload-image/',
+        // 'http://k12e201.p.ssafy.io:8090/rag/upload-image/',
         {
           method: 'POST',
           body: formData,
