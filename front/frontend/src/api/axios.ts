@@ -8,7 +8,7 @@ import { refreshWithServer } from '../services/authService';
 export const api = axios.create({
   baseURL: 'https://k12e201.p.ssafy.io',
   // baseURL: BASE_URL,
-  timeout: 8000,
+  timeout: 200000,
 });
 
 // ★ 토큰 주입

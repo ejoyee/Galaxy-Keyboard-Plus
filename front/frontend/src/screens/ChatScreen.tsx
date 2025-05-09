@@ -9,11 +9,11 @@ import {
 import {useHeaderHeight} from '@react-navigation/elements';
 import tw from 'twrnc';
 
-import axios from 'axios'; // axios 직접 임포트
 import HeaderBar from '../components/HeaderBar';
 import InputBar from '../components/InputBar';
 import MessageBubble, {Message} from '../components/MessageBubble';
-// import {api} from '../api/axios'; // 기존 axios 인스턴스 주석 처리
+import {api} from '../api/axios'; // 기존 axios 인스턴스 주석 처리
+// import axios from 'axios'; // axios 직접 임포트
 import {useAuthStore} from '../stores/authStore';
 
 const HEADER_BG = '#FFEBD6';
@@ -65,18 +65,18 @@ export default function ChatScreen() {
       console.log('▶ ChatScreen - query:', trimmed); // query(trimmed) 콘솔 로그 추가
 
       // // api 인스턴스를 사용하여 요청 (기존 코드 주석 처리)
-      // const {data} = await api.post(
-      //   '/rag/search/', // api 인스턴스의 baseURL 이후 경로
-      //   form.toString(),
-      //   {headers: {'Content-Type': 'application/x-www-form-urlencoded'}},
-      // );
-
-      // axios 직접 호출로 변경
-      const {data} = await axios.post(
-        'http://k12e201.p.ssafy.io:8090/rag/search/', // 새 URL로 직접 호출
+      const {data} = await api.post(
+        '/rag/search/', // api 인스턴스의 baseURL 이후 경로
         form.toString(),
         {headers: {'Content-Type': 'application/x-www-form-urlencoded'}},
       );
+
+      // axios 직접 호출로 변경
+      // const {data} = await axios.post(
+      //   'http://k12e201.p.ssafy.io:8090/rag/search/', // 새 URL로 직접 호출
+      //   form.toString(),
+      //   {headers: {'Content-Type': 'application/x-www-form-urlencoded'}},
+      // );
 
       // 3) 봇 메시지 구성
       const caption =
