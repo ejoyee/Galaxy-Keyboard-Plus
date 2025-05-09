@@ -14,6 +14,11 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 def resize_image(image_bytes: bytes, max_size=(512, 512)) -> bytes:
     """이미지 해상도를 줄여서 비용 절감"""
     image = Image.open(io.BytesIO(image_bytes))
+
+    # RGBA 또는 기타 비-JPEG 호환 모드일 경우 RGB로 변환
+    if image.mode != "RGB":
+        image = image.convert("RGB")
+
     image.thumbnail(max_size)  # aspect ratio 유지
     output = io.BytesIO()
     image.save(output, format="JPEG")
