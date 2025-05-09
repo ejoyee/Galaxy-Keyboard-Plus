@@ -1,425 +1,188 @@
+// pipeline {
+//   agent any
+
+//   environment {
+//     FIREBASE_APP_ID = '1:189536895445:android:783ed885fd7c4b896bfd5c'
+//   }
+
+//   stages {
+//     stage('Checkout') {
+//       steps {
+//         checkout scm
+//       }
+//     }
+
+//     stage('Prepare Project') {
+//       steps {
+//         sh '''
+//           echo 📦 작업 디렉토리 준비
+//           rm -rf workspace
+//           mkdir -p workspace
+//           cp -a front/frontend/. workspace/
+//           chmod -R 777 workspace
+//           [ -f workspace/package.json ] && echo 📄 package.json 확인 완료
+//         '''
+//       }
+//     }
+
+//     stage('Prepare Secrets') {
+//       steps {
+//         withCredentials([
+//           file(credentialsId: 'android-release-keystore', variable: 'KEYSTORE_PATH'),
+//           file(credentialsId: 'google-services-json', variable: 'GOOGLE_JSON'),
+//           file(credentialsId: 'firebase-service-account', variable: 'FIREBASE_JSON')
+//         ]) {
+//           sh '''
+//             echo 🔐 시크릿 파일 복사
+//             mkdir -p workspace/android/app/keystore
+//             cp "$KEYSTORE_PATH" workspace/android/app/keystore/release.keystore
+//             cp "$GOOGLE_JSON" workspace/android/app/google-services.json
+//             cp "$FIREBASE_JSON" workspace/android/firebase_service_account.json
+//             chmod -R 777 workspace/android
+//           '''
+//         }
+//       }
+//     }
+
+//     stage('Build and Deploy') {
+//       steps {
+//         withCredentials([
+//           string(credentialsId: 'FIREBASE_TOKEN', variable: 'FIREBASE_TOKEN'),
+//           string(credentialsId: 'KEYSTORE_PASSWORD', variable: 'KEYSTORE_PASSWORD'),
+//           string(credentialsId: 'KEY_ALIAS', variable: 'KEY_ALIAS'),
+//           string(credentialsId: 'KEY_PASSWORD', variable: 'KEY_PASSWORD')
+//         ]) {
+//           sh '''
+//             echo 🚀 Docker 빌드 및 배포 시작
+
+//             docker run --rm \
+//               -v $PWD/workspace:/app \
+//               -e FIREBASE_TOKEN=$FIREBASE_TOKEN \
+//               -e FIREBASE_APP_ID=$FIREBASE_APP_ID \
+//               reactnativecommunity/react-native-android bash -c "
+//                 set -e
+//                 cd /app
+
+//                 echo '📦 npm install'
+//                 npm install
+
+//                 echo '🛠️ Android 빌드'
+//                 cd android
+//                 chmod +x ./gradlew
+//                 echo 'sdk.dir=/opt/android-sdk' > local.properties
+//                 echo 'KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD' >> gradle.properties
+//                 echo 'KEY_ALIAS=$KEY_ALIAS' >> gradle.properties
+//                 echo 'KEY_PASSWORD=$KEY_PASSWORD' >> gradle.properties
+//                 ./gradlew clean assembleRelease --stacktrace
+
+//                 echo '📦 빌드 산출물 복사'
+//                 mkdir -p /tmp/output
+//                 find . -name '*.apk' -o -name '*.aab' -exec cp {} /tmp/output/ \\;
+
+//                 echo '🔥 Firebase 배포'
+//                 npm install -g firebase-tools
+//                 firebase appdistribution:distribute /tmp/output/*.apk \
+//                   --app $FIREBASE_APP_ID \
+//                   --token $FIREBASE_TOKEN \
+//                   --groups testers \
+//                   --release-notes 'CI 자동 배포'
+//               "
+//           '''
+//         }
+//       }
+//     }
+//   }
+
+//   post {
+//     failure {
+//       sh '''
+//         echo ❌ 빌드 실패 디버깅 저장
+//         mkdir -p debug-archive
+//         echo "## package.json 내용" && cat workspace/package.json || echo 없음
+//         echo "\\n## 디렉토리 상태" && ls -al workspace || echo 없음
+//       '''
+//       archiveArtifacts artifacts: '**/workspace/**', allowEmptyArchive: true
+//     }
+//   }
+// }
+
+
 pipeline {
   agent any
 
-  environment {
-    // Android SDK 설정
-    ANDROID_SDK_ROOT = '/opt/android-sdk'
-    ANDROID_HOME     = '/opt/android-sdk'
-    PATH             = "${env.PATH}:/opt/android-sdk/cmdline-tools/latest/bin:/opt/android-sdk/platform-tools"
-    // Fastlane Firebase App Distribution 토큰
-    FIREBASE_TOKEN   = credentials('FIREBASE_TOKEN')
-    // Firebase 앱 ID
-    FIREBASE_APP_ID  = '1:189536895445:android:783ed885fd7c4b896bfd5c'
-    // 빌드 강제 실행 여부
-    FORCE_BUILD      = 'true'
-    // 키스토어 관련 설정
-    KEYSTORE_PASSWORD = credentials('KEYSTORE_PASSWORD')
-    KEY_ALIAS        = credentials('KEY_ALIAS')
-    KEY_PASSWORD     = credentials('KEY_PASSWORD')
-    // 사용할 Docker 이미지
-    DOCKER_IMAGE     = 'my-android-ci:latest'
-  }
-
   stages {
-    stage('Checkout') {
+    stage('Print Jenkins Credentials') {
       steps {
-        checkout scm
-        
-        // 빌드 시작 로그
-        sh '''
-          echo "===================================================="
-          echo "🚀 빌드 시작: $(date '+%Y-%m-%d %H:%M:%S')"
-          echo "🔍 빌드 ID: ${BUILD_ID}"
-          echo "🔍 Git 커밋: ${GIT_COMMIT}"
-          echo "🔍 브랜치: ${GIT_BRANCH}"
-          echo "===================================================="
-        '''
-      }
-    }
-
-    stage('Detect Frontend Changes') {
-      steps {
-        script {
-          def diff = sh(
-            script: "git diff --name-only ${env.GIT_PREVIOUS_SUCCESSFUL_COMMIT ?: 'HEAD~1'} ${env.GIT_COMMIT}",
-            returnStdout: true
-          ).trim()
-          
-          // 변경 파일 목록 출력
-          echo "==== 변경된 파일 목록 ===="
-          echo "${diff}"
-          echo "=========================="
-          
-          // "front/" 하위 파일 변경이 있으면 빌드
-          env.BUILD_FRONTEND = diff.split('\n').any { it.startsWith('front/') } ? 'true' : 'false'
-          
-          // 강제 빌드 옵션이 true이면 무조건 빌드
-          if (env.FORCE_BUILD == 'true') {
-            env.BUILD_FRONTEND = 'true'
-            echo "🔧 강제 빌드 옵션이 활성화되어 있습니다."
-          }
-          
-          echo env.BUILD_FRONTEND=='true'
-               ? "▶ Frontend 변경 감지: 빌드합니다"
-               : "▶ Frontend 변경 없음: 스킵합니다"
-        }
-      }
-    }
-
-    stage('Check Project Structure') {
-      when { expression { env.BUILD_FRONTEND == 'true' } }
-      steps {
-        sh '''
-          echo "===================================================="
-          echo "🔍 프로젝트 구조 확인"
-          echo "===================================================="
-          
-          # 디렉토리 구조 확인
-          echo "📂 작업 디렉토리: $(pwd)"
-          
-          echo "📂 front/frontend 디렉토리 확인:"
-          ls -la front/frontend || { echo "❌ front/frontend 디렉토리가 없습니다"; exit 1; }
-          
-          # package.json 확인
-          if [ -f "front/frontend/package.json" ]; then
-            echo "✅ package.json 파일 존재"
-            cat front/frontend/package.json | grep "name\\|version"
-          else
-            echo "❌ package.json 파일이 없습니다. React Native 프로젝트가 아닐 수 있습니다."
-            exit 1
-          fi
-          
-          echo "📂 front/frontend/android 디렉토리 확인:"
-          ls -la front/frontend/android || { echo "❌ front/frontend/android 디렉토리가 없습니다"; exit 1; }
-          
-          echo "📂 gradlew 파일 확인:"
-          if [ -f "front/frontend/android/gradlew" ]; then
-            echo "✅ gradlew 파일 존재"
-            chmod +x front/frontend/android/gradlew
-          else
-            echo "❌ gradlew 파일이 없습니다."
-            exit 1
-          fi
-          
-          # Android 프로젝트 구조 상세 확인
-          echo "📂 Android 프로젝트 구조:"
-          find front/frontend/android -type d | sort
-          
-          echo "===================================================="
-        '''
-      }
-    }
-
-    stage('Prepare Files') {
-      when { expression { env.BUILD_FRONTEND == 'true' } }
-      steps {
-        // 시크릿 파일 준비
         withCredentials([
-          file(credentialsId: 'android-release-keystore', variable: 'KEYSTORE_FILE'),
-          file(credentialsId: 'google-services-json', variable: 'GOOGLE_SERVICES_JSON'),
-          file(credentialsId: 'firebase-service-account', variable: 'FIREBASE_SERVICE_ACCOUNT')
+          // Secret text
+          string(credentialsId: 'POSTGRES_AUTH_USER',       variable: 'POSTGRES_AUTH_USER'),
+          string(credentialsId: 'POSTGRES_AUTH_DB_NAME',    variable: 'POSTGRES_AUTH_DB_NAME'),
+          string(credentialsId: 'POSTGRES_AUTH_PASSWORD',   variable: 'POSTGRES_AUTH_PASSWORD'),
+          string(credentialsId: 'POSTGRES_SCHED_USER',      variable: 'POSTGRES_SCHED_USER'),
+          string(credentialsId: 'POSTGRES_SCHED_DB_NAME',   variable: 'POSTGRES_SCHED_DB_NAME'),
+          string(credentialsId: 'POSTGRES_SCHED_PASSWORD',  variable: 'POSTGRES_SCHED_PASSWORD'),
+          string(credentialsId: 'OPENAI_API_KEY',           variable: 'OPENAI_API_KEY'),
+          string(credentialsId: 'CLAUDE_API_KEY',           variable: 'CLAUDE_API_KEY'),
+          string(credentialsId: 'gitlab-token',             variable: 'GITLAB_TOKEN'),
+          string(credentialsId: 'gitlab-token-cicd',        variable: 'GITLAB_TOKEN_CICD'),
+          string(credentialsId: 'PINECONE_API_KEY',         variable: 'PINECONE_API_KEY'),
+          string(credentialsId: 'PINECONE_INDEX_NAME',      variable: 'PINECONE_INDEX_NAME'),
+          string(credentialsId: 'GOOGLE_APPLICATION_CREDENTIALS', variable: 'GOOGLE_APP_CRED'),
+          string(credentialsId: 'KEYSTORE_PASSWORD',        variable: 'KEYSTORE_PASSWORD'),
+          string(credentialsId: 'KEY_ALIAS',                variable: 'KEY_ALIAS'),
+          string(credentialsId: 'KEY_PASSWORD',             variable: 'KEY_PASSWORD'),
+          string(credentialsId: 'FIREBASE_TOKEN',           variable: 'FIREBASE_TOKEN'),
+          string(credentialsId: 'FRONTEND_API_URL',         variable: 'FRONTEND_API_URL'),
+          string(credentialsId: 'FIREBASE_CREDENTIALS_JSON_BASE64', variable: 'FIREBASE_CRED_BASE64'),
+          string(credentialsId: 'JWT_SECRET_KEY',           variable: 'JWT_SECRET_KEY'),
+          string(credentialsId: 'KAKAO_CLIENT_ID',          variable: 'KAKAO_CLIENT_ID'),
+          string(credentialsId: 'JWT_AT_VALIDITY',          variable: 'JWT_AT_VALIDITY'),
+          string(credentialsId: 'JWT_RT_VALIDITY',          variable: 'JWT_RT_VALIDITY'),
+
+          // Username + password
+          usernamePassword(credentialsId: 'jjin4363@gmail.com',
+                           usernameVariable: 'JENKINS_USER',
+                           passwordVariable: 'JENKINS_PSW'),
+
+          // Secret files (we'll print the path to the temp file)
+          file(credentialsId: 'moca-457801-bfa12690864b.json',      variable: 'GCP_SA_FILE'),
+          file(credentialsId: 'android-release-keystore',          variable: 'ANDROID_KEYSTORE_FILE'),
+          file(credentialsId: 'firebase-service-account',          variable: 'FIREBASE_SA_FILE'),
+          file(credentialsId: 'google-services-json',              variable: 'GOOGLE_SERVICES_FILE')
         ]) {
           sh '''
-            echo "===================================================="
-            echo "🔐 시크릿 파일 준비"
-            echo "===================================================="
-            
-            # 디렉토리 생성
-            mkdir -p front/frontend/android/app/keystore
-            
-            # 시크릿 파일 복사 (올바른 경로에 맞게 조정)
-            cp "$FIREBASE_SERVICE_ACCOUNT" front/frontend/android/firebase_service_account.json
-            cp "$GOOGLE_SERVICES_JSON" front/frontend/android/app/google-services.json
-            cp "$KEYSTORE_FILE" front/frontend/android/app/keystore/release.keystore
-            
-            # 파일 존재 여부 확인
-            ls -la front/frontend/android/firebase_service_account.json
-            ls -la front/frontend/android/app/google-services.json
-            ls -la front/frontend/android/app/keystore/release.keystore
-            
-            echo "✅ 시크릿 파일 복사 완료"
-            echo "===================================================="
+            echo "POSTGRES_AUTH_USER=$POSTGRES_AUTH_USER"
+            echo "POSTGRES_AUTH_DB_NAME=$POSTGRES_AUTH_DB_NAME"
+            echo "POSTGRES_AUTH_PASSWORD=$POSTGRES_AUTH_PASSWORD"
+            echo "POSTGRES_SCHED_USER=$POSTGRES_SCHED_USER"
+            echo "POSTGRES_SCHED_DB_NAME=$POSTGRES_SCHED_DB_NAME"
+            echo "POSTGRES_SCHED_PASSWORD=$POSTGRES_SCHED_PASSWORD"
+            echo "OPENAI_API_KEY=$OPENAI_API_KEY"
+            echo "CLAUDE_API_KEY=$CLAUDE_API_KEY"
+            echo "gitlab-token=$GITLAB_TOKEN"
+            echo "gitlab-token-cicd=$GITLAB_TOKEN_CICD"
+            echo "PINECONE_API_KEY=$PINECONE_API_KEY"
+            echo "PINECONE_INDEX_NAME=$PINECONE_INDEX_NAME"
+            echo "GOOGLE_APPLICATION_CREDENTIALS=$GOOGLE_APP_CRED"
+            echo "KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD"
+            echo "KEY_ALIAS=$KEY_ALIAS"
+            echo "KEY_PASSWORD=$KEY_PASSWORD"
+            echo "FIREBASE_TOKEN=$FIREBASE_TOKEN"
+            echo "FRONTEND_API_URL=$FRONTEND_API_URL"
+            echo "FIREBASE_CREDENTIALS_JSON_BASE64=$FIREBASE_CRED_BASE64"
+            echo "JWT_SECRET_KEY=$JWT_SECRET_KEY"
+            echo "KAKAO_CLIENT_ID=$KAKAO_CLIENT_ID"
+            echo "JWT_AT_VALIDITY=$JWT_AT_VALIDITY"
+            echo "JWT_RT_VALIDITY=$JWT_RT_VALIDITY"
+            echo "jjin4363@gmail.com_USERNAME=$JENKINS_USER"
+            echo "jjin4363@gmail.com_PASSWORD=$JENKINS_PSW"
+            echo "GCP_SA_FILE_PATH=$GCP_SA_FILE"
+            echo "ANDROID_KEYSTORE_FILE_PATH=$ANDROID_KEYSTORE_FILE"
+            echo "FIREBASE_SA_FILE_PATH=$FIREBASE_SA_FILE"
+            echo "GOOGLE_SERVICES_FILE_PATH=$GOOGLE_SERVICES_FILE"
           '''
         }
       }
-    }
-
-    stage('Prepare Build Directory') {
-      when { expression { env.BUILD_FRONTEND == 'true' } }
-      steps {
-        sh '''
-          echo "===================================================="
-          echo "📦 빌드 디렉토리 준비"
-          echo "===================================================="
-          
-          # 임시 빌드 디렉토리 생성
-          mkdir -p android-build
-          
-          # 프로젝트 파일 복사
-          echo "📂 프로젝트 파일 복사 중..."
-          cp -r front/frontend/* android-build/
-          
-          # 복사 확인
-          echo "📂 빌드 디렉토리 확인:"
-          ls -la android-build
-          
-          echo "📂 빌드 디렉토리 Android 폴더 확인:"
-          ls -la android-build/android
-          
-          echo "✅ 빌드 디렉토리 준비 완료"
-          echo "===================================================="
-        '''
-      }
-    }
-
-    stage('Prepare Fastlane') {
-      when { expression { env.BUILD_FRONTEND == 'true' } }
-      steps {
-        sh '''
-          echo "===================================================="
-          echo "🚀 Fastlane 환경 준비"
-          echo "===================================================="
-          
-          cd android-build/android
-          
-          # Fastlane 디렉토리 확인 및 필요시 초기화
-          if [ ! -d "fastlane" ]; then
-            echo "🔧 Fastlane 초기화"
-            touch Gemfile
-            echo 'source "https://rubygems.org"' > Gemfile
-            echo 'gem "fastlane"' >> Gemfile
-            echo 'plugins_path = File.join(File.dirname(__FILE__), "fastlane", "Pluginfile")' >> Gemfile
-            echo 'eval_gemfile(plugins_path) if File.exist?(plugins_path)' >> Gemfile
-            
-            mkdir -p fastlane
-            echo 'lane :beta do' > fastlane/Fastfile
-            echo '  gradle(task: "clean assembleRelease")' >> fastlane/Fastfile
-            echo '  firebase_app_distribution(app: ENV["FIREBASE_APP_ID"])' >> fastlane/Fastfile
-            echo 'end' >> fastlane/Fastfile
-            
-            touch fastlane/Pluginfile
-            echo 'gem "fastlane-plugin-firebase_app_distribution"' > fastlane/Pluginfile
-          else
-            echo "✅ Fastlane 디렉토리가 이미 존재합니다"
-          fi
-          
-          echo "===================================================="
-        '''
-      }
-    }
-
-    stage('Debug Environment') {
-      when { expression { env.BUILD_FRONTEND == 'true' } }
-      steps {
-        sh '''
-          echo "===================================================="
-          echo "🔍 Docker 환경 디버깅"
-          echo "===================================================="
-          
-          # Docker 버전 확인
-          docker --version
-          
-          # 이미지 목록 확인
-          docker images | grep my-android-ci
-          
-          # 테스트로 Docker 컨테이너 실행
-          docker run --rm ${DOCKER_IMAGE} bash -c 'echo "Docker 컨테이너 테스트" && java -version && node --version'
-          
-          echo "===================================================="
-        '''
-      }
-    }
-
-    stage('Build with Docker') {
-      when { expression { env.BUILD_FRONTEND == 'true' } }
-      steps {
-        sh '''
-          echo "===================================================="
-          echo "🚀 Docker를 통한 Android 빌드"
-          echo "===================================================="
-          
-          # 작업 디렉토리
-          WORKSPACE_DIR="$(pwd)"
-          BUILD_DIR="$WORKSPACE_DIR/android-build"
-          
-          # Docker에서 React Native 앱 빌드 실행
-          docker run --rm \
-            -v "$BUILD_DIR:/app" \
-            -w /app \
-            -e ANDROID_SDK_ROOT=/opt/android-sdk \
-            -e ANDROID_HOME=/opt/android-sdk \
-            -e KEYSTORE_PASSWORD="$KEYSTORE_PASSWORD" \
-            -e KEY_ALIAS="$KEY_ALIAS" \
-            -e KEY_PASSWORD="$KEY_PASSWORD" \
-            ${DOCKER_IMAGE} \
-            bash -c '
-              set -x  # 실행 명령어 출력
-              
-              echo "📂 현재 디렉토리: $(pwd)"
-              ls -la
-              
-              echo "🔧 Node 모듈 설치"
-              yarn install
-              
-              echo "🔧 Android 디렉토리로 이동"
-              cd android
-              ls -la
-              
-              echo "🔧 local.properties 생성"
-              echo "sdk.dir=/opt/android-sdk" > local.properties
-              cat local.properties
-              
-              echo "🔧 Gradle 프로퍼티 설정"
-              cat >> gradle.properties << EOF
-              
-              # CI 환경 키스토어 설정
-              KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD
-              KEY_ALIAS=$KEY_ALIAS
-              KEY_PASSWORD=$KEY_PASSWORD
-              EOF
-              
-              cat gradle.properties
-              
-              echo "🔧 Android SDK 환경 확인"
-              echo "ANDROID_HOME: $ANDROID_HOME"
-              ls -la $ANDROID_HOME || echo "Android SDK 디렉토리에 접근할 수 없습니다"
-              
-              echo "🔧 Gradle 버전 확인"
-              ./gradlew --version
-              
-              echo "🔧 Gradle 빌드 실행"
-              chmod +x ./gradlew
-              ./gradlew clean --info
-              ./gradlew assembleDebug --info
-              
-              echo "🔧 빌드 결과 확인"
-              find . -name "*.apk"
-            '
-          
-          # 빌드 결과물 복사
-          mkdir -p apk
-          find android-build/android -name "*.apk" -exec cp {} apk/ \\;
-          
-          # 빌드 결과 확인
-          echo "📂 빌드 결과 확인:"
-          find android-build/android -name "*.apk" || echo "❌ Android 프로젝트 내에 APK 파일이 생성되지 않았습니다"
-          find apk -name "*.apk" || echo "❌ APK 디렉토리에 APK 파일이 복사되지 않았습니다"
-          
-          echo "===================================================="
-        '''
-      }
-    }
-
-    stage('Deploy to Firebase') {
-      when { expression { env.BUILD_FRONTEND == 'true' } }
-      steps {
-        // Firebase 배포
-        withCredentials([
-          string(credentialsId: 'FIREBASE_TOKEN', variable: 'FIREBASE_TOKEN')
-        ]) {
-          sh '''
-            echo "===================================================="
-            echo "🔥 Firebase 배포"
-            echo "===================================================="
-            
-            # APK 파일 찾기
-            APK_FILE=$(find "$(pwd)/apk" -name "*.apk" | head -1)
-            
-            if [ -z "$APK_FILE" ]; then
-              echo "❌ APK 파일을 찾을 수 없어 Firebase 배포를 건너뜁니다"
-              exit 0
-            fi
-            
-            echo "✅ 업로드할 APK 파일: $APK_FILE"
-            
-            # Docker에서 Firebase 배포 실행
-            docker run --rm \
-              -v "$(pwd):/workspace" \
-              -w /workspace \
-              -e FIREBASE_TOKEN="$FIREBASE_TOKEN" \
-              -e FIREBASE_APP_ID="$FIREBASE_APP_ID" \
-              ${DOCKER_IMAGE} \
-              bash -c '
-                cd /workspace/android-build/android
-                
-                # Bundler 환경 설정
-                export GEM_HOME=/root/.gem
-                export PATH=$PATH:$GEM_HOME/bin
-                
-                # Fastlane으로 배포
-                bundle config set path "vendor/bundle"
-                bundle install
-                bundle exec fastlane run firebase_app_distribution \
-                  app:"$FIREBASE_APP_ID" \
-                  firebase_cli_token:"$FIREBASE_TOKEN" \
-                  apk_path:"/workspace/'"$APK_FILE"'" \
-                  groups:"testers" \
-                  release_notes:"Jenkins CI 자동 배포 빌드 #${BUILD_ID} (${GIT_COMMIT})" || echo "⚠️ Firebase 배포 실패"
-              '
-            
-            echo "===================================================="
-          '''
-        }
-      }
-    }
-
-    stage('Archive APK') {
-      when { expression { env.BUILD_FRONTEND == 'true' } }
-      steps {
-        sh '''
-          echo "===================================================="
-          echo "📦 APK 아카이브"
-          echo "===================================================="
-          
-          mkdir -p apk-archive
-          
-          # apk 디렉토리에서 APK 파일 찾기
-          APK_COUNT=$(find "$(pwd)/apk" -name "*.apk" 2>/dev/null | wc -l || echo "0")
-          
-          if [ "$APK_COUNT" -gt 0 ]; then
-            echo "✅ $APK_COUNT 개의 APK 파일 발견:"
-            find "$(pwd)/apk" -name "*.apk" 2>/dev/null
-            
-            # 모든 APK 파일을 아카이브 디렉토리로 복사
-            cp -r apk/*.apk apk-archive/ || true
-          else
-            echo "❌ APK 파일을 찾을 수 없습니다"
-            echo "No APK files found" > apk-archive/build-failed.txt
-          fi
-          
-          echo "===================================================="
-        '''
-        
-        archiveArtifacts artifacts: 'apk-archive/**', fingerprint: true, allowEmptyArchive: true
-      }
-    }
-  }
-
-  post {
-    success {
-      sh '''
-        echo "===================================================="
-        echo "✅ Frontend CI/CD 성공 🎉"
-        echo "===================================================="
-      '''
-    }
-    failure {
-      sh '''
-        echo "===================================================="
-        echo "❌ Frontend CI/CD 실패 ❗"
-        echo "===================================================="
-      '''
-    }
-    always {
-      sh '''
-        echo "===================================================="
-        echo "🧹 작업 공간 정리"
-        echo "===================================================="
-        
-        # 임시 디렉토리 정리
-        rm -rf apk android-build || true
-      '''
-      cleanWs()
     }
   }
 }
