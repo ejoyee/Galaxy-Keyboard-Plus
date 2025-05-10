@@ -95,7 +95,7 @@ services:
     ports:
       - "0.0.0.0:6380:6380"
     restart: always
-    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    command: redis-server --port 6380 --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
     volumes:
       - redis_ratelimiter_data:/data
     networks:
