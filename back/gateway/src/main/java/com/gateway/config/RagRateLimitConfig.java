@@ -1,20 +1,47 @@
 package com.gateway.config;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cloud.gateway.filter.ratelimit.KeyResolver;
 import org.springframework.cloud.gateway.filter.ratelimit.RedisRateLimiter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.data.redis.connection.ReactiveRedisConnectionFactory;
+import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
 import reactor.core.publisher.Mono;
 
 @Configuration
 public class RagRateLimitConfig {
 
+    @Value("${spring.redis.host}")
+    private String redisHost;
+
+    @Value("${spring.redis.port}")
+    private int redisPort;
+
+    /**
+     * Reactive API용 RedisConnectionFactory 빈 등록
+     * – application.yml의 host/port를 사용
+     */
+    @Bean
+    public ReactiveRedisConnectionFactory reactiveRedisConnectionFactory() {
+        LettuceConnectionFactory factory = new LettuceConnectionFactory(redisHost, redisPort);
+        factory.afterPropertiesSet();
+        return factory;
+    }
+
+    /**
+     * Gateway RequestRateLimiter 빈
+     * – ReactiveRedisConnectionFactory를 내부에서 사용
+     */
     @Bean("ragServerRateLimiter")
     public RedisRateLimiter ragServerRateLimiter() {
-        // 첫번째: 분당 토큰 1개, 두번째: 버스트 최대 10개, 세번째: 요청당 소모 토큰 수 1
+        // 분당 1토큰, 버스트 최대10토큰, 요청당 1토큰 소모
         return new RedisRateLimiter(1, 10, 1);
     }
 
+    /**
+     * 사용자별 KeyResolver (JWT or IP)
+     */
     @Bean("userKeyResolver")
     public KeyResolver userKeyResolver() {
         return exchange -> {
