@@ -26,7 +26,12 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
     @Value("${jwt.secret}")
     private String secretKey;
 
-    private static final List<String> PROTECTED_PATHS = List.of("/api", "/rag");
+
+    // 테스트용
+    private static final List<String> PROTECTED_PATHS = List.of("/api");
+
+
+    // private static final List<String> PROTECTED_PATHS = List.of("/api", "/rag");
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
