@@ -15,8 +15,9 @@ public class RagRateLimitConfig {
 
     @Bean("ragServerRateLimiter")
     public RedisRateLimiter ragServerRateLimiter() {
-        // application.yml의 설정을 자동으로 가져옴
-        return new RedisRateLimiter(40, 10);
+        // burstCapacity가 replenishRate보다 크거나 같아야 함
+        // 초당 단위로 계산: 분당 40개 = 초당 0.67개
+        return new RedisRateLimiter(1, 10);  // 초당 1개, 버스트 10개
     }
 
     @Bean("userKeyResolver")
@@ -32,7 +33,6 @@ public class RagRateLimitConfig {
             }
             
             // 인증 토큰이 없는 경우 IP 기반
-            // 에러가 있는 부분을 완전히 다시 작성
             var remoteAddress = exchange.getRequest().getRemoteAddress();
             if (remoteAddress != null) {
                 String ip = remoteAddress.getAddress().getHostAddress();
