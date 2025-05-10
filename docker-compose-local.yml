@@ -75,7 +75,7 @@ services:
   redis-ratelimiter:
     container_name: moca-redis-ratelimiter
     image: redis:7-alpine
-    ports: ["637979:637979"]
+    ports: ["6380:6380"]
     restart: always
     command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
     volumes:

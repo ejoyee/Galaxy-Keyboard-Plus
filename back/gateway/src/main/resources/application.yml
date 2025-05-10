@@ -29,11 +29,11 @@ management:
 jwt:
   secret: ${JWT_SECRET_KEY}
 
-# Redis 설정 (Rate Limiter 전용) - 포트 637979
+# Redis 설정 (Rate Limiter 전용)
 spring:
   redis:
     host: redis-ratelimiter  # Docker Compose 서비스 이름
-    port: 637979  # 커스텀 포트
+    port: 6380  # 커스텀 포트
     timeout: 2000ms
     lettuce:
       pool:
