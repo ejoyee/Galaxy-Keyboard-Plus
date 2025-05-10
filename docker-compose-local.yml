@@ -19,6 +19,8 @@ services:
     command: ["java","-jar","/app/app.jar","--spring.profiles.active=local"]
     env_file: .env.dev
     ports: ["8000:8000"]
+    depends_on:
+      - redis-ratelimiter
     restart: always
     networks:
       - web
@@ -68,6 +70,18 @@ services:
     restart: always
     networks:
       - internal
+  
+  # Redis 서비스 (Rate Limiter 전용)
+  redis-ratelimiter:
+    container_name: moca-redis-ratelimiter
+    image: redis:7-alpine
+    ports: ["637979:637979"]
+    restart: always
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_ratelimiter_data:/data
+    networks:
+      - internal
 
   postgres_auth:
     container_name: postgres-auth
@@ -102,6 +116,7 @@ services:
 volumes:
   pg_auth:
   pg_sched:
+  redis_ratelimiter_data:
 
 networks:
   web:
