@@ -1,23 +1,20 @@
 package com.gateway.config;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cloud.gateway.filter.ratelimit.KeyResolver;
 import org.springframework.cloud.gateway.filter.ratelimit.RedisRateLimiter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.data.redis.connection.RedisConnectionFactory;
 import reactor.core.publisher.Mono;
 
-/**
- * RAG 서비스 전용 Rate Limiter 설정
- * - application.yml의 redis-rate-limiter 설정 사용
- */
 @Configuration
 public class RagRateLimitConfig {
 
     @Bean("ragServerRateLimiter")
-    public RedisRateLimiter ragServerRateLimiter() {
-        // burstCapacity가 replenishRate보다 크거나 같아야 함
-        // 초당 단위로 계산: 분당 40개 = 초당 0.67개
-        return new RedisRateLimiter(1, 10);  // 초당 1개, 버스트 10개
+    public RedisRateLimiter ragServerRateLimiter(RedisConnectionFactory redisConnectionFactory) {
+        // RedisConnectionFactory를 주입받아 사용
+        return new RedisRateLimiter(1, 10, redisConnectionFactory);
     }
 
     @Bean("userKeyResolver")
