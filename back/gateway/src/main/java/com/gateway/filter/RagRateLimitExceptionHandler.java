@@ -17,10 +17,6 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Map;
 
-/**
- * RAG 서비스 Rate Limit 예외 핸들러
- * Rate Limit 초과시 친화적인 메시지 제공
- */
 @Component
 public class RagRateLimitExceptionHandler extends DefaultErrorWebExceptionHandler {
 
@@ -39,7 +35,8 @@ public class RagRateLimitExceptionHandler extends DefaultErrorWebExceptionHandle
         return RouterFunctions.route(RequestPredicates.all(), this::renderErrorResponse);
     }
 
-    private Mono<ServerResponse> renderErrorResponse(ServerRequest request) {
+    @Override  // protected로 변경
+    protected Mono<ServerResponse> renderErrorResponse(ServerRequest request) {
         Map<String, Object> error = getErrorAttributes(request, org.springframework.boot.web.error.ErrorAttributeOptions.defaults());
         
         // Rate Limit 초과 에러 처리
