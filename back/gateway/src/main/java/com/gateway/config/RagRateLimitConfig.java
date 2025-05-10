@@ -8,19 +8,15 @@ import reactor.core.publisher.Mono;
 
 /**
  * RAG 서비스 전용 Rate Limiter 설정
- * - 분당 40개 요청
- * - 버스트 10개
+ * - application.yml의 redis-rate-limiter 설정 사용
  */
 @Configuration
 public class RagRateLimitConfig {
 
     @Bean("ragServerRateLimiter")
     public RedisRateLimiter ragServerRateLimiter() {
-        return new RedisRateLimiter(
-            40.0/60,  // replenishRate: 분당 40개 = 초당 0.67개
-            10,       // burstCapacity: 최대 10개의 연속 요청
-            1         // requestedTokens: 요청당 1개 토큰
-        );
+        // application.yml의 설정을 자동으로 가져옴
+        return new RedisRateLimiter(40, 10);
     }
 
     @Bean("userKeyResolver")
@@ -31,7 +27,6 @@ public class RagRateLimitConfig {
             
             if (authHeader != null && authHeader.startsWith("Bearer ")) {
                 // JWT 토큰에서 사용자 식별자 추출
-                // 실제 사용자별은아님 해시충돌가능성 존재
                 String token = authHeader.substring(7);
                 return Mono.just("rag-user:" + token.hashCode());
             }
