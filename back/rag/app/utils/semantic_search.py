@@ -118,3 +118,41 @@ def generate_answer_with_context(
     )
 
     return response.choices[0].message.content.strip()
+
+
+def generate_combined_answer_with_context(
+    user_id: str, query: str, info_results: list[dict], photo_results: list[dict]
+) -> dict:
+    """정보 + 이미지 설명을 바탕으로 종합 답변 생성"""
+    history = search_chat_history(user_id, query, top_k=5)
+
+    history_text = "\n".join([f"{h['role']}: {h['text']}" for h in history])
+    info_text = "\n".join([f"- {item['text']}" for item in info_results])
+    photo_text = "\n".join(
+        [f"- {item['id']}: {item['text']}" for item in photo_results]
+    )
+
+    prompt = f"""아래는 이전 대화 기록입니다:
+{history_text}
+
+다음은 참고할 정보들입니다:
+{info_text}
+
+다음은 관련된 사진 설명입니다:
+{photo_text}
+
+사용자 질문: "{query}"
+
+위의 모든 내용을 바탕으로 사용자 질문에 정확하게 답변해줘."""
+
+    response = openai.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": prompt}],
+        max_tokens=400,
+    )
+
+    return {
+        "answer": response.choices[0].message.content.strip(),
+        "photo_results": photo_results,
+        "info_results": info_results,
+    }
