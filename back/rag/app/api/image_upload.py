@@ -64,11 +64,17 @@ async def upload_image(
         text_score = classify_image_from_bytes(image_bytes)
         logger.info(f"🔍 이미지 분류 점수: {text_score:.3f} (access_id={access_id})")
 
-        if text_score <= 0.09:  # 테스트를 통해 얻은 임계값
-            description = generate_image_caption(image_bytes)
+        if text_score <= 0.09:  # photo
+            caption = generate_image_caption(image_bytes)
+            ocr_text = extract_text_from_image(image_bytes)
+
             target = "photo"
-            content = description
-            logger.info(f"🖼️ 이미지 설명 생성 완료 - {description}")
+
+            # 두 개의 텍스트를 하나로 결합 (개행으로 구분)
+            content = f"[Caption]\n{caption}\n\n[OCR]\n{ocr_text}".strip()
+
+            logger.info(f"🖼️ 이미지 설명 생성 완료 - {caption}")
+            logger.info(f"🔤 OCR 텍스트 추출 완료 - {ocr_text}")
         else:
             extracted_text = extract_text_from_image(image_bytes)
             target = "info"
