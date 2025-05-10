@@ -6,6 +6,7 @@ from app.utils.embedding import get_text_embedding
 from pinecone import Pinecone
 from openai import OpenAI
 from app.utils.chat_vector_store import search_chat_history
+import json
 
 load_dotenv()
 
@@ -156,3 +157,37 @@ def generate_combined_answer_with_context(
         "photo_results": photo_results,
         "info_results": info_results,
     }
+
+
+def filter_relevant_items_with_llm(
+    query: str, items: list[dict], item_type: str
+) -> list[dict]:
+    """
+    LLM에게 항목 중 질문과 관련 있는 것만 추려달라고 요청
+    item_type: "정보" 또는 "사진"
+    """
+    bullet_list = "\n".join([f"- {item['id']}: {item['text']}" for item in items])
+    prompt = f"""
+다음은 사용자의 질문입니다:
+"{query}"
+
+다음은 {item_type} 항목 리스트입니다:
+{bullet_list}
+
+이 중 질문과 직접 관련이 있는 항목만 골라줘. 
+그 항목들의 ID만 리스트 형태로 반환해줘. (예: ["123", "456"])
+    """.strip()
+
+    response = openai.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": prompt}],
+        max_tokens=100,
+        temperature=0.3,
+    )
+
+    try:
+        relevant_ids = json.loads(response.choices[0].message.content.strip())
+        return [item for item in items if item["id"] in relevant_ids]
+    except Exception:
+        # 실패 시 전체 반환
+        return items
