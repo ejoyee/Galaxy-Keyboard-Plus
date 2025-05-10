@@ -191,3 +191,31 @@ def filter_relevant_items_with_llm(
     except Exception:
         # 실패 시 전체 반환
         return items
+
+
+def extract_personal_info_context(history: list[dict]) -> str:
+    # 예시: 이름, 애완동물, 선호 등 추론
+    notes_text = "\n".join([f"{h['role']}: {h['text']}" for h in history])
+
+    prompt = f"""아래 대화에서 사용자의 개인화 정보(이름, 가족, 반려동물, 일정 등)를 요약해줘.
+문장이 아닌 키워드 또는 간단한 문장으로 적어줘.
+
+대화:
+{notes_text}
+"""
+    response = openai.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": prompt}],
+        max_tokens=100,
+    )
+    return response.choices[0].message.content.strip()
+
+
+def enhance_query_with_personal_context(user_id: str, query: str) -> str:
+    # 과거 대화 기반 개인 정보 요약
+    history = search_chat_history(user_id, query, top_k=20)
+    personal_context = extract_personal_info_context(history)
+
+    if personal_context:
+        return f"{query}\n\n(참고: {personal_context})"
+    return query

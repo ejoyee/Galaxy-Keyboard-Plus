@@ -6,6 +6,7 @@ from app.utils.semantic_search import (
     generate_answer_with_context,
     generate_combined_answer_with_context,
     filter_relevant_items_with_llm,
+    enhance_query_with_personal_context,
 )
 from app.utils.chat_vector_store import save_chat_vector_to_pinecone
 import json, time
@@ -22,19 +23,28 @@ async def search(
 ):
     timestamp = int(time.time())
 
+    # 사용자 쿼리 저장
     save_chat_vector_to_pinecone(user_id, "user", query, timestamp)
 
-    # 초기 검색
-    raw_info_results = search_similar_items(user_id, query, "info", top_k_info)
-    raw_photo_results = search_similar_items(user_id, query, "photo", top_k_photo)
+    enhanced_query = enhance_query_with_personal_context(user_id, query)
 
-    # LLM 기반 필터링
-    info_results = filter_relevant_items_with_llm(query, raw_info_results, "정보")
-    photo_results = filter_relevant_items_with_llm(query, raw_photo_results, "사진")
+    # 벡터 검색
+    raw_info_results = search_similar_items(user_id, enhanced_query, "info", top_k_info)
+    raw_photo_results = search_similar_items(
+        user_id, enhanced_query, "photo", top_k_photo
+    )
 
-    # 통합 응답 생성
+    # LLM 필터링
+    info_results = filter_relevant_items_with_llm(
+        enhanced_query, raw_info_results, "정보"
+    )
+    photo_results = filter_relevant_items_with_llm(
+        enhanced_query, raw_photo_results, "사진"
+    )
+
+    # 통합 답변 생성
     result = generate_combined_answer_with_context(
-        user_id, query, info_results, photo_results
+        user_id, enhanced_query, info_results, photo_results
     )
 
     # 응답 저장
