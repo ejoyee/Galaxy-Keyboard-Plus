@@ -1,3 +1,4 @@
+# src/main/resources/application.yml
 server:
   port: 8000
 
@@ -29,7 +30,6 @@ management:
 jwt:
   secret: ${JWT_SECRET_KEY}
 
-# Redis 설정 (Rate Limiter 전용)
 spring:
   redis:
     host: redis-ratelimiter
