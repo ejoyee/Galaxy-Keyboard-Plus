@@ -32,10 +32,14 @@ public class RagRateLimitConfig {
             }
             
             // 인증 토큰이 없는 경우 IP 기반
-            return exchange.getRequest()
-                .getRemoteAddress()
-                .map(addr -> "rag-ip:" + addr.getAddress().getHostAddress())
-                .orElse(Mono.just("rag-anonymous"));
+            // 에러가 있는 부분을 완전히 다시 작성
+            var remoteAddress = exchange.getRequest().getRemoteAddress();
+            if (remoteAddress != null) {
+                String ip = remoteAddress.getAddress().getHostAddress();
+                return Mono.just("rag-ip:" + ip);
+            }
+            
+            return Mono.just("rag-anonymous");
         };
     }
 }
