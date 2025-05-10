@@ -1,10 +1,12 @@
+// src/main/java/com/gateway/config/RagRateLimitConfig.java
 package com.gateway.config;
 
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.cloud.gateway.filter.ratelimit.KeyResolver;
-import org.springframework.cloud.gateway.filter.ratelimit.RedisRateLimiter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Primary;
+import org.springframework.cloud.gateway.filter.ratelimit.KeyResolver;
+import org.springframework.cloud.gateway.filter.ratelimit.RedisRateLimiter;
 import org.springframework.data.redis.connection.ReactiveRedisConnectionFactory;
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
 import reactor.core.publisher.Mono;
@@ -21,8 +23,10 @@ public class RagRateLimitConfig {
     /**
      * Reactive API용 RedisConnectionFactory 빈 등록
      * – application.yml의 host/port를 사용
+     * – @Primary로 지정하여 자동 구성 빈보다 우선적으로 주입되게 함
      */
     @Bean
+    @Primary
     public ReactiveRedisConnectionFactory reactiveRedisConnectionFactory() {
         LettuceConnectionFactory factory = new LettuceConnectionFactory(redisHost, redisPort);
         factory.afterPropertiesSet();
