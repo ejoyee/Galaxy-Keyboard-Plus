@@ -94,6 +94,6 @@ spring:
 
       # Rate Limiter 전역 설정 (중요!)
       redis-rate-limiter:
-        replenish-rate: 40  # 분당 40개
+        replenish-rate: 1  # 분당 40개
         burst-capacity: 10  # 버스트 10개
         requested-tokens: 1
