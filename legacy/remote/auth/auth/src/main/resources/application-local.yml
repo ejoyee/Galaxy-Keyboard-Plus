@@ -13,7 +13,7 @@ spring:
   data:
     redis:
       host: k12e201.p.ssafy.io
-      port: 6379
+      port: 6380
       timeout: 6000
 
 server:
