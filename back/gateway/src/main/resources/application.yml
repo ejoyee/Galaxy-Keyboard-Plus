@@ -32,8 +32,8 @@ jwt:
 # Redis 설정 (Rate Limiter 전용)
 spring:
   redis:
-    host: redis-ratelimiter  # Docker Compose 서비스 이름
-    port: 6380  # 커스텀 포트
+    host: redis-ratelimiter
+    port: 6380
     timeout: 2000ms
     lettuce:
       pool:
@@ -42,31 +42,40 @@ spring:
         min-idle: 0
         max-wait: -1ms
 
+  data:
+    redis:
+      host: redis-ratelimiter
+      port: 6380
+      timeout: 2000ms
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 0
+          max-wait: -1ms
+
   application:
     name: moca-gateway
 
   cloud:
     gateway:
       routes:
-        # 1) 인증 서비스 --------------------------------------------
         - id: auth-route
-          uri: http://auth-service:8082  # Docker Compose 서비스 이름
+          uri: http://auth-service:8082
           predicates:
             - Path=/auth/**
           metadata:
-            description: "Authentication Service - User login and token management"
+            description: "Authentication Service"
 
-        # 2) 백엔드 서비스 ----------------------------------------
         - id: backend-route
-          uri: http://backend-service:8083  # Docker Compose 서비스 이름
+          uri: http://backend-service:8083
           predicates:
             - Path=/api/**
           metadata:
-            description: "Main Backend Service - User profiles and schedules"
+            description: "Backend Service"
 
-        # 3) RAG 서비스 (Rate Limit 적용) --------------------------
         - id: rag-route
-          uri: http://rag-service:8090  # Docker Compose 서비스 이름
+          uri: http://rag-service:8090
           predicates:
             - Path=/rag/**
           filters:
@@ -75,9 +84,8 @@ spring:
                 rate-limiter: "#{@ragServerRateLimiter}"
                 key-resolver: "#{@userKeyResolver}"
           metadata:
-            description: "RAG Service with Rate Limiting - AI assistance"
+            description: "RAG Service with Rate Limiting"
 
-      # CORS 설정
       globalcors:
         corsConfigurations:
           '[/**]':
@@ -87,13 +95,11 @@ spring:
             allowCredentials: false
             maxAge: 3600
 
-      # Health Check 설정
       httpclient:
         connect-timeout: 3000
         response-timeout: 5s
 
-      # Rate Limiter 전역 설정 (중요!)
       redis-rate-limiter:
-        replenish-rate: 1  # 분당 40개
-        burst-capacity: 10  # 버스트 10개
+        replenish-rate: 1
+        burst-capacity: 10
         requested-tokens: 1
