@@ -50,7 +50,7 @@ spring:
       routes:
         # 1) 인증 서비스 --------------------------------------------
         - id: auth-route
-          uri: http://moca-auth-service:8082  # Docker Compose 서비스 이름
+          uri: http://auth-service:8082  # Docker Compose 서비스 이름
           predicates:
             - Path=/auth/**
           metadata:
@@ -58,7 +58,7 @@ spring:
 
         # 2) 백엔드 서비스 ----------------------------------------
         - id: backend-route
-          uri: http://moca-backend-service:8083  # Docker Compose 서비스 이름
+          uri: http://backend-service:8083  # Docker Compose 서비스 이름
           predicates:
             - Path=/api/**
           metadata:
@@ -66,7 +66,7 @@ spring:
 
         # 3) RAG 서비스 (Rate Limit 적용) --------------------------
         - id: rag-route
-          uri: http://moca-rag-service:8090  # Docker Compose 서비스 이름
+          uri: http://rag-service:8090  # Docker Compose 서비스 이름
           predicates:
             - Path=/rag/**
           filters:
