@@ -40,7 +40,7 @@ public class RagRateLimitConfig {
     @Bean("ragServerRateLimiter")
     public RedisRateLimiter ragServerRateLimiter() {
         // 분당 1토큰, 버스트 최대10토큰, 요청당 1토큰 소모
-        return new RedisRateLimiter(1, 10, 1);
+        return new RedisRateLimiter(17, 1000, 1);
     }
 
     /**
