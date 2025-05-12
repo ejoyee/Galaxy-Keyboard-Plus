@@ -228,6 +228,11 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
             ((LatinIME) mListener).resetSearchCombiner();
         }
 
+        // ▼ 추가 : Listener(=LatinIME) 에 버퍼 초기화 요청
+        if (mListener instanceof LatinIME) {
+            ((LatinIME) mListener).resetSearchBuffers();
+        }
+
         // 아이콘 ❌로 교체
         mSearchKey.setImageDrawable(mIconClose);
 
@@ -245,6 +250,11 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
     public void exitSearchMode() {
         if (!mInSearchMode) return;
         mInSearchMode = false;
+
+        // ▼ 추가 : Listener(=LatinIME) 에 버퍼 초기화 요청
+        if (mListener instanceof LatinIME) {
+            ((LatinIME) mListener).resetSearchBuffers();
+        }
 
         mSearchKey.setImageDrawable(mIconSearch);      // 🔍 복원
         mInputContainer.setVisibility(GONE);

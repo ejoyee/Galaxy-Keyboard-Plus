@@ -117,6 +117,9 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     static final String TAG = LatinIME.class.getSimpleName();
     private static final boolean TRACE = false;
 
+    // LatinIME.java (다른 멤버 변수들과 같은 레벨)
+    private final StringBuilder mSearchCommitted = new StringBuilder();
+
     private static final int EXTENDED_TOUCHABLE_REGION_HEIGHT = 100;
     private static final int PERIOD_FOR_AUDIO_AND_HAPTIC_FEEDBACK_IN_KEY_REPEAT = 2;
     private static final int PENDING_IMS_CALLBACK_DURATION_MILLIS = 800;
@@ -1478,79 +1481,58 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         // ── 검색 모드에서는 HangulCombiner 로 자모를 조합하여 EditText 에 표시 ──
         if (mSuggestionStripView != null && mSuggestionStripView.isInSearchMode()) {
             final MainKeyboardView kv   = mKeyboardSwitcher.getMainKeyboardView();
-            final int             keyX = kv.getKeyX(x);
-            final int             keyY = kv.getKeyY(y);
-            final EditText        et   = mSuggestionStripView.getSearchInput();
+            final int keyX = kv.getKeyX(x), keyY = kv.getKeyY(y);
+            final EditText et = mSuggestionStripView.getSearchInput();
 
-            /* ------------------------------------------------------------------ *
-             * 1)  공백(SPACE) :  지금까지 조합한 글자를 ‘확정+공백’ 으로 커밋하고
-             *     Combiner 상태를 깨끗이 초기화한다.
-             * ------------------------------------------------------------------ */
+            /* ── 1)  공백(SPACE) : 조합 완료 + 공백 커밋 ─────────────────────── */
             if (codePoint == Constants.CODE_SPACE) {
-                // 1-a. 현재까지 조합된 문자열 확보
-                final String composed = mSearchCombiner.getCombiningStateFeedback().toString();
-                // 1-b. Combiner 내부 상태 초기화
+                // 1-a  조합중 글자를 확정버퍼에 붙임
+                mSearchCommitted.append(mSearchCombiner.getCombiningStateFeedback());
+                // 1-b  combiner 리셋
                 mSearchCombiner.reset();
-                // 1-c. EditText 에 확정 + 공백 추가
-                et.append(" ");
+                // 1-c  공백도 확정버퍼에 붙임
+                mSearchCommitted.append(' ');
+
+                et.setText(mSearchCommitted.toString());       // 공백까지 포함
                 et.setSelection(et.length());
                 return;
             }
 
-            /* ------------------------------------------------------------------ *
-             * 2)  백스페이스
-             * ------------------------------------------------------------------ */
+            /* ── 2)  백스페이스 ──────────────────────────────────────────────── */
             if (codePoint == Constants.CODE_DELETE) {
-                // 2-a. Combiner 에 아직 조합중인 글자가 있으면 Combiner 내부만 지운다
                 if (mSearchCombiner.getCombiningStateFeedback().length() > 0) {
+                    // 2-a  combiner 내부 한 글자 삭제
                     Event ev = createSoftwareKeypressEvent(codePoint, keyX, keyY, isKeyRepeat);
                     mSearchCombiner.processEvent(null, ev);
-
-                    // 2-b. 조합되지 않은 ‘확정 텍스트’(마지막 공백 뒤) + 새 composing 을 재구성
-                    final String prefix   = et.getText().toString();
-                    final int    lastSp   = prefix.lastIndexOf(' ') + 1;   // 공백 없으면 0
-                    final String stable   = prefix.substring(0, lastSp);
-                    final String composed = mSearchCombiner.getCombiningStateFeedback().toString();
-
-                    et.setText(stable + composed);
-                    et.setSelection(et.length());
-                    return;
+                } else if (mSearchCommitted.length() > 0) {
+                    // 2-b  확정버퍼에서 한 글자 삭제
+                    mSearchCommitted.deleteCharAt(mSearchCommitted.length() - 1);
                 }
-
-                // 2-c. Combiner 가 비어 있으면 EditText 에서 직전 글자 삭제
-                final Editable txt = et.getText();
-                if (txt.length() > 0) {
-                    txt.delete(txt.length() - 1, txt.length());
-                }
+                // 2-c  화면 갱신
+                et.setText(mSearchCommitted.toString()
+                        + mSearchCombiner.getCombiningStateFeedback());
+                et.setSelection(et.length());
                 return;
             }
 
-            /* ------------------------------------------------------------------ *
-             * 3)  일반 한글 자모 및 기타 인쇄 가능 문자
-             * ------------------------------------------------------------------ */
+            /* ── 3)  일반 자모/문자 입력 ─────────────────────────────────────── */
             if (codePoint > 0) {
                 Event ev = createSoftwareKeypressEvent(codePoint, keyX, keyY, isKeyRepeat);
                 mSearchCombiner.processEvent(null, ev);
 
-                // 3-a. ‘확정 텍스트’(마지막 공백 뒤) + 새 composing 으로 갱신
-                final String prefix   = et.getText().toString();
-                final int    lastSp   = prefix.lastIndexOf(' ') + 1;
-                final String stable   = prefix.substring(0, lastSp);
-                final String composed = mSearchCombiner.getCombiningStateFeedback().toString();
-
-                et.setText(stable + composed);
+                et.setText(mSearchCommitted.toString()
+                        + mSearchCombiner.getCombiningStateFeedback());
                 et.setSelection(et.length());
                 return;
             }
 
-            /* ------------------------------------------------------------------ *
-             * 4)  나머지 (한/영 전환, 이모티콘 키, Shift 등) → 기존 IME 로직으로 전달
-             * ------------------------------------------------------------------ */
+            /* ── 4)  그 밖의 기능키(한/영, 이모지 등) → 원래 IME 로 전달 ───── */
             Event ev = createSoftwareKeypressEvent(
                     getCodePointForKeyboard(codePoint), keyX, keyY, isKeyRepeat);
             onEvent(ev);
             return;
         }
+
 
 
         // TODO: this processing does not belong inside LatinIME, the caller should be doing this.
@@ -2125,6 +2107,12 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
 
     /** 검색 모드 조합기 초기화 용도로만 쓰입니다 */
     public void resetSearchCombiner() {
+        mSearchCombiner.reset();
+    }
+
+    // LatinIME.java (public 메서드로 추가)
+    public void resetSearchBuffers() {
+        mSearchCommitted.setLength(0);
         mSearchCombiner.reset();
     }
 
