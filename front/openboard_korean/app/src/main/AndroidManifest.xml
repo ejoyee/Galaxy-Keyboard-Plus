@@ -19,8 +19,16 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- ────────── 미디어 읽기 권한 ────────── -->
+    <!-- Android 13 (API 33)+ : 모든 이미지(사진) -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <!-- ※ 동영상도 필요하면 READ_MEDIA_VIDEO 추가 -->
+
+    <!-- Android 23~32 : 외부 저장소 읽기 -->
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+
     <uses-permission android:name="android.permission.READ_USER_DICTIONARY" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.VIBRATE" />
