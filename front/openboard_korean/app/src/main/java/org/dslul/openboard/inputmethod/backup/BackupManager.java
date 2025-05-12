@@ -29,12 +29,20 @@ public class BackupManager {
     private static final int MAX_REQUESTS_PER_MINUTE = 1000;
     private static final int REQUEST_INTERVAL_MS = 120; // 60ms 간격 = 1000개/분
 
+    private static volatile boolean isBackupRunning = false;
+
     /**
      * 전체 백업 흐름 실행 함수
      */
     public static void startBackup(Context context) {
-        // 0. 테스트 디버깅
-//        UploadStateTracker.clear(context);
+
+        // 0.실행 중이면 중복 방지
+        if (isBackupRunning) {
+            Log.d(TAG, "⏳ 백업이 이미 실행 중입니다. 중복 실행 방지됨.");
+            return;
+        }
+
+        isBackupRunning = true;
 
         // 1. 권한 확인 (API 33 이상은 READ_MEDIA_IMAGES, 그 이하는 READ_EXTERNAL_STORAGE)
         if (!hasReadPermission(context)) {
@@ -88,6 +96,7 @@ public class BackupManager {
 
         if (newImages.isEmpty()) {
             Log.i(TAG, "🟰 업로드할 새로운 이미지가 없습니다.");
+            isBackupRunning = false;
             return;
         }
 
@@ -130,6 +139,9 @@ public class BackupManager {
                                 long endTimeMillis = System.currentTimeMillis();
                                 long durationMillis = endTimeMillis - startTimeMillis;
                                 Log.i(TAG, "✅ 전체 백업 완료 - 걸린 시간: " + durationMillis + "ms");
+
+                                isBackupRunning = false;
+
                             }
                         }
                 );
