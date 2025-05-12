@@ -24,6 +24,7 @@ import android.content.res.TypedArray;
 import android.graphics.Color;
 import android.graphics.drawable.Drawable;
 import android.util.AttributeSet;
+import android.util.Log;
 import android.util.TypedValue;
 import android.view.GestureDetector;
 import android.view.LayoutInflater;
@@ -52,6 +53,8 @@ import org.dslul.openboard.inputmethod.latin.SuggestedWords;
 import org.dslul.openboard.inputmethod.latin.SuggestedWords.SuggestedWordInfo;
 import org.dslul.openboard.inputmethod.latin.common.Constants;
 import org.dslul.openboard.inputmethod.latin.define.DebugFlags;
+import org.dslul.openboard.inputmethod.latin.network.ApiClient;
+import org.dslul.openboard.inputmethod.latin.network.MessageResponse;
 import org.dslul.openboard.inputmethod.latin.settings.Settings;
 import org.dslul.openboard.inputmethod.latin.settings.SettingsValues;
 import org.dslul.openboard.inputmethod.latin.suggestions.MoreSuggestionsView.MoreSuggestionsListener;
@@ -59,6 +62,8 @@ import org.dslul.openboard.inputmethod.latin.suggestions.MoreSuggestionsView.Mor
 import java.util.ArrayList;
 
 import androidx.core.view.ViewCompat;
+
+import retrofit2.Call;
 
 public final class SuggestionStripView extends RelativeLayout implements OnClickListener,
         OnLongClickListener {
@@ -79,6 +84,9 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
     // 기존 필드 바로 아래
     private Drawable mIconSearch;   // 돋보기
     private Drawable mIconClose;    // X 아이콘
+
+    private static final String TAG_NET = "SearchAPI";
+    private static final String DEFAULT_USER_ID = "36648ad3-ed4b-4eb0-bcf1-1dc66fa5d258"; // TODO: 실제 계정으로 치환
 
 
     static final boolean DBG = DebugFlags.DEBUG_ENABLED;
@@ -263,14 +271,41 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
     }
 
     private void dispatchSearchQuery() {
-        final String query = mSearchInput.getText().toString();
+        final String query = mSearchInput.getText().toString().trim();
         if (query.isEmpty()) return;
 
-        // 검색어를 커밋하고 엔터(SEARCH) 액션 실행
+        Log.d(TAG_NET, "▶ REQUEST\n" +
+                "URL   : http://k12e201.p.ssafy.io:8090/rag/search/\n" +
+                "user_id = " + DEFAULT_USER_ID + "\n" +
+                "query   = " + query);
+
+        // ① Retrofit 호출
+        ApiClient.service()
+                .search(DEFAULT_USER_ID, query)
+                .enqueue(new retrofit2.Callback<MessageResponse>() {
+                    @Override
+                    public void onResponse(Call<MessageResponse> call,
+                                           retrofit2.Response<MessageResponse> res) {
+                        if (res.isSuccessful()) {
+                            Log.d(TAG_NET, "✅ 200 OK\nURL : " + call.request().url()
+                                    + "\nBODY: " + query
+                                    + "\nRESP: " + new com.google.gson.Gson().toJson(res.body()));
+                        } else {
+                            Log.e(TAG_NET, "❌ " + res.code() + " " + res.message());
+                        }
+                    }
+                    @Override
+                    public void onFailure(Call<MessageResponse> call, Throwable t) {
+                        Log.e(TAG_NET, "❌ onFailure", t);
+                    }
+                });
+
+        // ② IME 텍스트 커밋(선택) – 결과를 채팅창 등에 그대로 넣고 싶다면
         mListener.onTextInput(query);
-        mListener.onCodeInput(Constants.CODE_ENTER,          // ↵
-                Constants.SUGGESTION_STRIP_COORDINATE,
-                Constants.SUGGESTION_STRIP_COORDINATE, false);
+
+        // ③ UI 복귀
+        exitSearchMode();
+
     }
 
     public boolean isInSearchMode() { return mInSearchMode; }

@@ -111,6 +111,17 @@
             android:maxWidth="100dp"
             android:orientation="horizontal"
             android:soundEffectsEnabled="false" />
-
     </LinearLayout>
+    <!-- 기존 RelativeLayout 맨 아래쪽에 추가 -->
+    <TextView
+        android:id="@+id/search_answer"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textColor="@android:color/white"
+        android:textSize="14sp"
+        android:padding="6dp"
+        android:maxLines="6"
+        android:scrollbars="vertical"
+        android:visibility="gone"/>
+
 </merge>
