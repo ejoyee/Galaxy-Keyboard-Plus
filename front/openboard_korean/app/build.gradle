@@ -88,6 +88,8 @@ dependencies {
     implementation 'com.squareup.okhttp3:okhttp:4.9.3'
     implementation 'com.squareup.okhttp3:logging-interceptor:4.9.3' // 로그 확인용 (선택)
 
+    // 마크다운 파서
+    implementation 'io.noties.markwon:core:4.6.2'
 
     // EncryptedSharedPreferences를 위한 보안 라이브러리
     implementation "androidx.security:security-crypto:1.1.0-alpha06"
@@ -122,7 +124,7 @@ dependencies {
     implementation 'io.reactivex.rxjava3:rxjava:3.1.5'
     implementation 'io.reactivex.rxjava3:rxandroid:3.0.2'
 
-    implementation 'androidx.appcompat:appcompat:1.6.1'
+
 }
 repositories {
     mavenCentral()
