@@ -25,7 +25,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class BackupManager {
     private static final String TAG = "Backup - BackupManager";
 
-    private static final int MAX_IMAGES = 2000;
+    private static final int MAX_IMAGES = 50;
     private static final int MAX_REQUESTS_PER_MINUTE = 1000;
     private static final int REQUEST_INTERVAL_MS = 120; // 60ms 간격 = 1000개/분
 
