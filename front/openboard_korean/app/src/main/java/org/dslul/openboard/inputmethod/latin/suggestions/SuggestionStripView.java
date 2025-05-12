@@ -185,10 +185,6 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         final Drawable iconIncognito = keyboardAttr.getDrawable(R.styleable.Keyboard_iconIncognitoKey);
         final Drawable iconClipboard = keyboardAttr.getDrawable(R.styleable.Keyboard_iconClipboardNormalKey);
         keyboardAttr.recycle();
-        // 🔍, ❌ 아이콘 준비
-        mIconSearch = getResources().getDrawable(R.drawable.ic_search, null);
-        mIconClose  = getResources().getDrawable(R.drawable.ic_close,  null);
-
 
         mVoiceKey.setImageDrawable(iconVoice);
 
@@ -197,10 +193,18 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
             throw new IllegalStateException(
                     "suggestions_strip_search_key not found in current layout variant");
         }
+        // 🔍, ❌ 아이콘 준비
+        mIconSearch = getResources().getDrawable(R.drawable.ic_search, null);
+        mIconClose  = getResources().getDrawable(R.drawable.ic_close,  null);
+
         mSearchKey.setImageDrawable(mIconSearch);   // 기본은 🔍
         mSendKey        = findViewById(R.id.suggestions_strip_send_key);
         mInputContainer = findViewById(R.id.suggestions_strip_input_container);
         mSearchInput    = findViewById(R.id.suggestions_strip_search_input);
+
+        mSearchInput.setFocusableInTouchMode(true);
+        mSearchInput.setCursorVisible(true);
+
 
         mSearchKey.setOnClickListener(this);
         mSendKey.setOnClickListener(this);
@@ -242,7 +246,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         updateVisibility(true /* strip */, false /* isFullscreen */); // 버튼들 복원
     }
 
-    public void dispatchSearchQuery() {
+    private void dispatchSearchQuery() {
         final String query = mSearchInput.getText().toString();
         if (query.isEmpty()) return;
 
@@ -573,11 +577,9 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
     }
 
     /**
-     * 검색 모드일 때 LatinIME 에서
-     * EditText 를 직접 조작할 수 있도록 반환합니다.
+     * 검색 모드 시 타이핑한 문자열을 보여줄 EditText
      */
     public EditText getSearchInput() {
         return mSearchInput;
     }
-
 }
