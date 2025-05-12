@@ -16,6 +16,9 @@
 
 package org.dslul.openboard.inputmethod.latin;
 
+import android.text.Editable;
+import android.widget.EditText;
+
 import android.app.AlertDialog;
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -1397,7 +1400,7 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         // for RTL languages we want to invert pointer movement
         if (mRichImm.getCurrentSubtype().isRtlSubtype())
             steps = -steps;
-            
+
         mInputLogic.finishInput();
         if (steps < 0) {
             int availableCharacters = mInputLogic.mConnection.getTextBeforeCursor(64, 0).length();
@@ -1469,6 +1472,24 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     @Override
     public void onCodeInput(final int codePoint, final int x, final int y,
                             final boolean isKeyRepeat) {
+        // 검색창이 떠 있을 때는 호스트가 아니라 검색창(EditText)으로 입력을 보냅니다.
+        if (mSuggestionStripView != null && mSuggestionStripView.isInSearchMode()) {
+            EditText et = mSuggestionStripView.getSearchInput();
+            Editable text = et.getText();
+            int sel = et.getSelectionStart();
+            if (codePoint == Constants.CODE_DELETE) {
+                if (sel > 0) text.delete(sel - 1, sel);
+            } else if (codePoint == Constants.CODE_ENTER) {
+                // 엔터(검색 실행)
+                mSuggestionStripView.dispatchSearchQuery();
+                mSuggestionStripView.exitSearchMode();
+            } else if (codePoint > 0) {
+                // 일반 문자
+                text.insert(sel, String.valueOf((char) codePoint));
+            }
+            return;  // 호스트 앱으로 보내지 않음
+        }
+
         // TODO: this processing does not belong inside LatinIME, the caller should be doing this.
         final MainKeyboardView mainKeyboardView = mKeyboardSwitcher.getMainKeyboardView();
         // x and y include some padding, but everything down the line (especially native
@@ -1518,6 +1539,15 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     // Called from PointerTracker through the KeyboardActionListener interface
     @Override
     public void onTextInput(final String rawText) {
+        // 검색 모드일 때 순수 문자열 입력 처리
+        if (mSuggestionStripView != null && mSuggestionStripView.isInSearchMode()) {
+            EditText et = mSuggestionStripView.getSearchInput();
+            Editable text = et.getText();
+            int sel = et.getSelectionStart();
+            text.insert(sel, rawText);
+            return;
+        }
+
         // TODO: have the keyboard pass the correct key code when we need it.
         final Event event = Event.createSoftwareTextEvent(rawText, Constants.CODE_OUTPUT_TEXT);
         final InputTransaction completeInputTransaction =
@@ -1792,10 +1822,18 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     // Hooks for hardware keyboard
     @Override
     public boolean onKeyDown(final int keyCode, final KeyEvent keyEvent) {
+        if (keyCode == KeyEvent.KEYCODE_BACK
+                && mSuggestionStripView != null
+                && mSuggestionStripView.isInSearchMode()) {
+            mSuggestionStripView.exitSearchMode();
+            return true;        // 키보드는 유지
+        }
+
         if (mEmojiAltPhysicalKeyDetector == null) {
             mEmojiAltPhysicalKeyDetector = new EmojiAltPhysicalKeyDetector(
                     getApplicationContext().getResources());
         }
+
         mEmojiAltPhysicalKeyDetector.onKeyDown(keyEvent);
         if (!ProductionFlags.IS_HARDWARE_KEYBOARD_SUPPORTED) {
             return super.onKeyDown(keyCode, keyEvent);
