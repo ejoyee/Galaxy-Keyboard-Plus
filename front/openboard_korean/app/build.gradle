@@ -1,0 +1,66 @@
+apply plugin: 'com.android.application'
+apply plugin: 'kotlin-android'
+apply plugin: 'kotlin-android-extensions'
+
+android {
+    compileSdkVersion 33
+
+    defaultConfig {
+        applicationId "org.dslul.openboard.inputmethod.latin"
+        minSdkVersion 21
+        targetSdkVersion 33
+        versionCode 19
+        versionName '1.4.5'
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            debuggable false
+            jniDebuggable false
+            renderscriptDebuggable false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+    }
+
+
+    externalNativeBuild {
+        ndkBuild {
+            path 'src/main/jni/Android.mk'
+        }
+    }
+
+    lintOptions {
+        abortOnError false
+    }
+
+    ndkVersion '26.1.10909125'
+    androidResources {
+        noCompress 'dict'
+    }
+}
+
+dependencies {
+    implementation 'com.google.code.findbugs:jsr305:3.0.2'
+    implementation 'androidx.legacy:legacy-support-v4:1.0.0'
+    implementation 'androidx.recyclerview:recyclerview:1.2.1' // Replaces recyclerview:1.0.0 included by above dependency
+    implementation 'androidx.core:core-ktx:1.7.0'
+    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlin_version"
+    implementation 'androidx.viewpager2:viewpager2:1.0.0'
+
+    // EncryptedSharedPreferences를 위한 보안 라이브러리 추가
+    implementation "androidx.security:security-crypto:1.1.0-alpha06"
+
+    // Retrofit 본체
+    implementation 'com.squareup.retrofit2:retrofit:2.9.0'
+
+    // Gson 변환기 (JSON 파싱용)
+    implementation 'com.squareup.retrofit2:converter-gson:2.9.0'
+
+    // OkHttp (Retrofit 내부적으로 사용됨)
+    implementation 'com.squareup.okhttp3:okhttp:4.9.3'
+    implementation 'com.squareup.okhttp3:logging-interceptor:4.9.3' // 로그 확인용 (선택)
+}
+repositories {
+    mavenCentral()
+}
