@@ -1,20 +1,20 @@
 package org.dslul.openboard.inputmethod.latin.network;
 
+import com.google.gson.annotations.SerializedName;
+
 import java.util.ArrayList;
 import java.util.List;
 
 public class MessageResponse {
-    private String queryType;
 
+    @SerializedName("answer")
     private String answer;
 
+    @SerializedName("photo_results")
     private List<PhotoResult> photoResults = new ArrayList<>();
 
+    @SerializedName("info_results")
     private List<InfoResult> infoResults = new ArrayList<>();
-
-    public String getQueryType() {
-        return queryType;
-    }
 
     public String getAnswer() {
         return answer;

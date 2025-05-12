@@ -1,12 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- res/layout/item_message_bot.xml -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
+    android:orientation="vertical"
     android:padding="4dp"
-    android:gravity="start"
-    android:orientation="horizontal">
+    android:gravity="start">
 
-    <!-- 아이콘이 필요하면 여기에 ImageView 추가 -->
+    <!-- 답변 텍스트 -->
     <TextView
         android:id="@+id/tvBotMessage"
         android:layout_width="wrap_content"
@@ -14,5 +15,15 @@
         android:background="@drawable/bg_bot_bubble"
         android:padding="12dp"
         android:textColor="#000"
-        android:textSize="15sp" />
+        android:textSize="15sp"/>
+
+    <!-- 2-열 썸네일 그리드 -->
+    <GridLayout
+        android:id="@+id/glBotImages"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:columnCount="2"
+        android:rowCount="1"
+        android:visibility="gone"/>
 </LinearLayout>
