@@ -190,4 +190,6 @@
     <string name="user_dict_settings_more_languages" msgid="7131268499685180461">"더보기…"</string>
     <string name="user_dict_settings_delete" msgid="110413335187193859">"삭제"</string>
     <string name="user_dict_fast_scroll_alphabet" msgid="5431919401558285473">" ABCDEFGHIJKLMNOPQRSTUVWXYZ"</string>
+    <string name="settings_screen_search">검색 페이지</string>
+    <string name="settings_search_summary">검색 페이지로 이동합니다</string>
 </resources>

@@ -34,6 +34,7 @@ import android.widget.TextView;
 import android.widget.VideoView;
 
 import org.dslul.openboard.inputmethod.latin.R;
+import org.dslul.openboard.inputmethod.latin.settings.SearchActivity;
 import org.dslul.openboard.inputmethod.latin.settings.SettingsActivity;
 import org.dslul.openboard.inputmethod.latin.utils.LeakGuardHandlerWrapper;
 import org.dslul.openboard.inputmethod.latin.utils.UncachedInputMethodManagerUtils;
@@ -83,7 +84,7 @@ public final class SetupWizardActivity extends Activity implements View.OnClickL
         private final InputMethodManager mImmInHandler;
 
         public SettingsPoolingHandler(@Nonnull final SetupWizardActivity ownerInstance,
-                final InputMethodManager imm) {
+                                      final InputMethodManager imm) {
             super(ownerInstance);
             mImmInHandler = imm;
         }
@@ -95,14 +96,14 @@ public final class SetupWizardActivity extends Activity implements View.OnClickL
                 return;
             }
             switch (msg.what) {
-            case MSG_POLLING_IME_SETTINGS:
-                if (UncachedInputMethodManagerUtils.isThisImeEnabled(setupWizardActivity,
-                        mImmInHandler)) {
-                    setupWizardActivity.invokeSetupWizardOfThisIme();
-                    return;
-                }
-                startPollingImeSettings();
-                break;
+                case MSG_POLLING_IME_SETTINGS:
+                    if (UncachedInputMethodManagerUtils.isThisImeEnabled(setupWizardActivity,
+                            mImmInHandler)) {
+                        setupWizardActivity.invokeSetupWizardOfThisIme();
+                        return;
+                    }
+                    startPollingImeSettings();
+                    break;
             }
         }
 
@@ -221,7 +222,7 @@ public final class SetupWizardActivity extends Activity implements View.OnClickL
         mActionNext.setOnClickListener(this);
         mActionFinish = findViewById(R.id.setup_finish);
         mActionFinish.setCompoundDrawablesRelativeWithIntrinsicBounds(getResources().getDrawable(R.drawable.ic_setup_finish),
-                                                        null, null, null);
+                null, null, null);
         mActionFinish.setOnClickListener(this);
     }
 
@@ -260,11 +261,17 @@ public final class SetupWizardActivity extends Activity implements View.OnClickL
 
     private void invokeSettingsOfThisIme() {
         final Intent intent = new Intent();
-        intent.setClass(this, SettingsActivity.class);
+//        intent.setClass(this, SettingsActivity.class);
+//        intent.setFlags(Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
+//                | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+//        intent.putExtra(SettingsActivity.EXTRA_ENTRY_KEY,
+//                SettingsActivity.EXTRA_ENTRY_VALUE_APP_ICON);
+//        startActivity(intent);
+        intent.setClass(this, SearchActivity.class);
         intent.setFlags(Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
                 | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-        intent.putExtra(SettingsActivity.EXTRA_ENTRY_KEY,
-                SettingsActivity.EXTRA_ENTRY_VALUE_APP_ICON);
+//        intent.putExtra(SettingsActivity.EXTRA_ENTRY_KEY,
+//                SettingsActivity.EXTRA_ENTRY_VALUE_APP_ICON);
         startActivity(intent);
     }
 
@@ -439,8 +446,8 @@ public final class SetupWizardActivity extends Activity implements View.OnClickL
         private Runnable mAction;
 
         public SetupStep(final int stepNo, final String applicationName, final TextView bulletView,
-                final View stepView, final int title, final int instruction,
-                final int finishedInstruction, final int actionIcon, final int actionLabel) {
+                         final View stepView, final int title, final int instruction,
+                         final int finishedInstruction, final int actionIcon, final int actionLabel) {
             mStepNo = stepNo;
             mStepView = stepView;
             mBulletView = bulletView;

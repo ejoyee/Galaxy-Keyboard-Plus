@@ -587,4 +587,7 @@ disposition rather than other common dispositions for Latin languages. [CHAR LIM
     <string name="amoled_mode">Deep black backgrounds</string>
     <!-- Description indicating amoled mode can lower power usage depending on the screen of the device. -->
     <string name="amoled_mode_summary">Can reduce power usage depending on the device’s screen technology</string>
+    <!--  검색 페이지  -->
+    <string name="settings_screen_search">Search Page</string>
+    <string name="settings_search_summary">Navigate to the new search page</string>
 </resources>
