@@ -24,6 +24,7 @@ import android.content.res.TypedArray;
 import android.graphics.Color;
 import android.graphics.drawable.Drawable;
 import android.util.AttributeSet;
+import android.util.Log;
 import android.util.TypedValue;
 import android.view.GestureDetector;
 import android.view.LayoutInflater;
@@ -42,6 +43,7 @@ import android.widget.TextView;
 
 import org.dslul.openboard.inputmethod.accessibility.AccessibilityUtils;
 import org.dslul.openboard.inputmethod.keyboard.Keyboard;
+import org.dslul.openboard.inputmethod.keyboard.KeyboardActionListener;
 import org.dslul.openboard.inputmethod.keyboard.KeyboardSwitcher;
 import org.dslul.openboard.inputmethod.keyboard.MainKeyboardView;
 import org.dslul.openboard.inputmethod.keyboard.MoreKeysPanel;
@@ -52,6 +54,9 @@ import org.dslul.openboard.inputmethod.latin.SuggestedWords;
 import org.dslul.openboard.inputmethod.latin.SuggestedWords.SuggestedWordInfo;
 import org.dslul.openboard.inputmethod.latin.common.Constants;
 import org.dslul.openboard.inputmethod.latin.define.DebugFlags;
+import org.dslul.openboard.inputmethod.latin.network.ApiClient;
+import org.dslul.openboard.inputmethod.latin.network.MessageResponse;
+import org.dslul.openboard.inputmethod.latin.search.SearchResultView;
 import org.dslul.openboard.inputmethod.latin.settings.Settings;
 import org.dslul.openboard.inputmethod.latin.settings.SettingsValues;
 import org.dslul.openboard.inputmethod.latin.suggestions.MoreSuggestionsView.MoreSuggestionsListener;
@@ -59,6 +64,8 @@ import org.dslul.openboard.inputmethod.latin.suggestions.MoreSuggestionsView.Mor
 import java.util.ArrayList;
 
 import androidx.core.view.ViewCompat;
+
+import retrofit2.Call;
 
 public final class SuggestionStripView extends RelativeLayout implements OnClickListener,
         OnLongClickListener {
@@ -80,6 +87,9 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
     private Drawable mIconSearch;   // 돋보기
     private Drawable mIconClose;    // X 아이콘
 
+    private static final String TAG_NET = "SearchAPI";
+    private static final String DEFAULT_USER_ID = "36648ad3-ed4b-4eb0-bcf1-1dc66fa5d258"; // TODO: 실제 계정으로 치환
+    private SearchResultView mSearchPanel;
 
     static final boolean DBG = DebugFlags.DEBUG_ENABLED;
     private static final float DEBUG_INFO_TEXT_SIZE_IN_DIP = 6.0f;
@@ -260,17 +270,75 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         mInputContainer.setVisibility(GONE);
         mSuggestionsStrip.setVisibility(VISIBLE);
         updateVisibility(true /* strip */, false /* isFullscreen */); // 버튼들 복원
+
+        if (mSearchPanel != null && mSearchPanel.isShowingInParent()) {
+            mSearchPanel.dismissMoreKeysPanel();
+        }
+
     }
 
     private void dispatchSearchQuery() {
-        final String query = mSearchInput.getText().toString();
+        final String query = mSearchInput.getText().toString().trim();
         if (query.isEmpty()) return;
 
-        // 검색어를 커밋하고 엔터(SEARCH) 액션 실행
+        Log.d(TAG_NET, "▶ REQUEST\n" +
+                "URL   : http://k12e201.p.ssafy.io:8090/rag/search/\n" +
+                "user_id = " + DEFAULT_USER_ID + "\n" +
+                "query   = " + query);
+
+        // ① Retrofit 호출
+        ApiClient.service()
+                .search(DEFAULT_USER_ID, query)
+                .enqueue(new retrofit2.Callback<MessageResponse>() {
+                    @Override
+                    public void onResponse(Call<MessageResponse> call,
+                                           retrofit2.Response<MessageResponse> res) {
+                        if (!res.isSuccessful()) {
+                            Log.e(TAG_NET, "❌ " + res.code() + " " + res.message());
+                            return;
+                        }
+                        MessageResponse body = res.body();
+                        Log.d(TAG_NET, "✅ 결과 수신");
+
+                        // ------- 키보드 패널 보여주기 -------
+                        post(() -> {                   // SuggestionStripView 는 이미 UI Thread
+                            if (mSearchPanel == null) {
+                                mSearchPanel = new SearchResultView(getContext());
+                            }
+                            mSearchPanel.bind(body);
+
+                            // Controller → MainKeyboardView 로 위임
+                            MoreKeysPanel.Controller c = new MoreKeysPanel.Controller() {
+                                @Override public void onDismissMoreKeysPanel() {
+                                    mMainKeyboardView.onDismissMoreKeysPanel();
+                                }
+                                @Override public void onShowMoreKeysPanel(MoreKeysPanel p) {
+                                    mMainKeyboardView.onShowMoreKeysPanel(p);
+                                }
+                                @Override public void onCancelMoreKeysPanel() {
+                                    mMainKeyboardView.onDismissMoreKeysPanel();
+                                }
+                            };
+
+                            // pointX, pointY는 키보드 상단 중앙에 붙이도록
+                            int x = mMainKeyboardView.getWidth() / 2;
+                            int y = 0;
+                            mSearchPanel.showMoreKeysPanel(mMainKeyboardView, c, x, y,
+                                    (KeyboardActionListener) null); // 두 시그니처 중 아무거나
+                        });
+                    }
+                    @Override
+                    public void onFailure(Call<MessageResponse> call, Throwable t) {
+                        Log.e(TAG_NET, "❌ onFailure", t);
+                    }
+                });
+
+        // ② IME 텍스트 커밋(선택) – 결과를 채팅창 등에 그대로 넣고 싶다면
         mListener.onTextInput(query);
-        mListener.onCodeInput(Constants.CODE_ENTER,          // ↵
-                Constants.SUGGESTION_STRIP_COORDINATE,
-                Constants.SUGGESTION_STRIP_COORDINATE, false);
+
+        // ③ UI 복귀
+        exitSearchMode();
+
     }
 
     public boolean isInSearchMode() { return mInSearchMode; }

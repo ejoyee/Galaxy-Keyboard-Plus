@@ -26,4 +26,9 @@ public class MessageResponse {
     public List<InfoResult> getInfoResults() {
         return infoResults;
     }
+
+    public MessageResponse setAnswer(String answer) {
+        this.answer = answer;
+        return this;
+    }
 }

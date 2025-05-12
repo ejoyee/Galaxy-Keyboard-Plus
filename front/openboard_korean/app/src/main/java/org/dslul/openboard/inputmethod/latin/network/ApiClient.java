@@ -14,7 +14,7 @@ import org.dslul.openboard.inputmethod.latin.BuildConfig;
  */
 public class ApiClient {
     private static final String BASE_URL = BuildConfig.SERVER_BASE_URL;
-    private static final int TIMEOUT = 30; // 초 단위
+    private static final int TIMEOUT = 120; // 초 단위
 
     private static Retrofit sRetrofit;
     private static ApiService sApiService;

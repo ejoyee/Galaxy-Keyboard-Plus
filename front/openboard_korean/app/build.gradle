@@ -88,6 +88,8 @@ dependencies {
     implementation 'com.squareup.okhttp3:okhttp:4.9.3'
     implementation 'com.squareup.okhttp3:logging-interceptor:4.9.3' // 로그 확인용 (선택)
 
+    implementation "com.github.bumptech.glide:glide:4.16.0"
+    annotationProcessor "com.github.bumptech.glide:compiler:4.16.0"
     // 마크다운 파서
     implementation 'io.noties.markwon:core:4.6.2'
 
