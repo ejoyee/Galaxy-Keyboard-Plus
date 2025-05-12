@@ -125,18 +125,28 @@ def generate_combined_answer_with_context(
     user_id: str, query: str, info_results: list[dict], photo_results: list[dict]
 ) -> dict:
     """정보 + 이미지 설명을 바탕으로 종합 답변 생성"""
-    history = search_chat_history(user_id, query, top_k=5)
 
-    history_text = "\n".join([f"{h['role']}: {h['text']}" for h in history])
+    # 대화 기록 가져오기
+    history = search_chat_history(user_id, query, top_k=10)
+
+    # 관련된 대화만 필터링
+    filtered_history = filter_relevant_chat_history(query, history)
+
+    # 프롬프트 구성 시 필터링된 대화만 사용
+    history_text = ""
+    if filtered_history:
+        history_text = "아래는 관련된 이전 대화 기록입니다:\n"
+        history_text += "\n".join(
+            [f"{h['role']}: {h['text']}" for h in filtered_history]
+        )
+        history_text += "\n\n"
+
     info_text = "\n".join([f"- {item['text']}" for item in info_results])
     photo_text = "\n".join(
         [f"- {item['id']}: {item['text']}" for item in photo_results]
     )
 
-    prompt = f"""아래는 이전 대화 기록입니다:
-{history_text}
-
-다음은 참고할 정보들입니다:
+    prompt = f"""{history_text}다음은 참고할 정보들입니다:
 {info_text}
 
 다음은 관련된 사진 설명입니다:
@@ -144,7 +154,8 @@ def generate_combined_answer_with_context(
 
 사용자 질문: "{query}"
 
-위의 모든 내용을 바탕으로 사용자 질문에 정확하게 답변해줘."""
+중요: 위 질문에만 집중해서 답변해주세요. 
+현재 질문과 직접 관련된 내용만 답변에 포함시켜주세요."""
 
     response = openai.chat.completions.create(
         model="gpt-4o-mini",
@@ -219,3 +230,40 @@ def enhance_query_with_personal_context(user_id: str, query: str) -> str:
     if personal_context:
         return f"{query}\n\n(참고: {personal_context})"
     return query
+
+
+def filter_relevant_chat_history(query: str, history: list[dict]) -> list[dict]:
+    """현재 질문과 관련된 대화만 필터링"""
+    if not history:
+        return []
+
+    history_text = "\n".join(
+        [f"{i}: {h['role']}: {h['text']}" for i, h in enumerate(history)]
+    )
+
+    prompt = f"""
+    현재 질문: "{query}"
+    
+    아래 대화 기록들 중 현재 질문과 직접적으로 관련이 있는 것만 골라줘:
+    {history_text}
+    
+    관련된 대화의 인덱스만 반환해줘. (예: [0, 2, 3])
+    연속적인 대화나 이전 맥락이 필요한 경우가 아니라면 빈 리스트 []를 반환해도 돼.
+    """
+
+    response = openai.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": prompt}],
+        max_tokens=100,
+        temperature=0.3,
+    )
+
+    try:
+        relevant_indices = json.loads(response.choices[0].message.content.strip())
+        return [history[i] for i in relevant_indices if i < len(history)]
+    except Exception:
+        # 실패 시 맥락이 필요한 키워드가 있는지만 확인
+        context_keywords = ["이전에", "아까", "방금", "그때", "다시", "그거", "그것"]
+        if any(keyword in query for keyword in context_keywords):
+            return history[:3]  # 최근 3개만
+        return []
