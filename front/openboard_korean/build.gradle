@@ -5,6 +5,10 @@ buildscript {
     repositories {
         jcenter()
         google()
+        // 카카오 SDK 저장소 추가
+        mavenCentral()
+        maven { url 'https://devrepo.kakao.com/nexus/content/groups/public/' }
+        maven { url 'https://maven.google.com' }
     }
     dependencies {
         classpath 'com.android.tools.build:gradle:7.4.2'
@@ -19,6 +23,11 @@ allprojects {
     repositories {
         google()
         jcenter()
+
+        // 카카오 SDK 저장소 추가
+        mavenCentral()
+        maven { url 'https://devrepo.kakao.com/nexus/content/groups/public/' }
+        maven { url 'https://maven.google.com' }
     }
 }
 
