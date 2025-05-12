@@ -43,6 +43,7 @@ import android.widget.TextView;
 
 import org.dslul.openboard.inputmethod.accessibility.AccessibilityUtils;
 import org.dslul.openboard.inputmethod.keyboard.Keyboard;
+import org.dslul.openboard.inputmethod.keyboard.KeyboardActionListener;
 import org.dslul.openboard.inputmethod.keyboard.KeyboardSwitcher;
 import org.dslul.openboard.inputmethod.keyboard.MainKeyboardView;
 import org.dslul.openboard.inputmethod.keyboard.MoreKeysPanel;
@@ -55,6 +56,7 @@ import org.dslul.openboard.inputmethod.latin.common.Constants;
 import org.dslul.openboard.inputmethod.latin.define.DebugFlags;
 import org.dslul.openboard.inputmethod.latin.network.ApiClient;
 import org.dslul.openboard.inputmethod.latin.network.MessageResponse;
+import org.dslul.openboard.inputmethod.latin.search.SearchResultView;
 import org.dslul.openboard.inputmethod.latin.settings.Settings;
 import org.dslul.openboard.inputmethod.latin.settings.SettingsValues;
 import org.dslul.openboard.inputmethod.latin.suggestions.MoreSuggestionsView.MoreSuggestionsListener;
@@ -87,7 +89,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
 
     private static final String TAG_NET = "SearchAPI";
     private static final String DEFAULT_USER_ID = "36648ad3-ed4b-4eb0-bcf1-1dc66fa5d258"; // TODO: 실제 계정으로 치환
-
+    private SearchResultView mSearchPanel;
 
     static final boolean DBG = DebugFlags.DEBUG_ENABLED;
     private static final float DEBUG_INFO_TEXT_SIZE_IN_DIP = 6.0f;
@@ -268,6 +270,11 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         mInputContainer.setVisibility(GONE);
         mSuggestionsStrip.setVisibility(VISIBLE);
         updateVisibility(true /* strip */, false /* isFullscreen */); // 버튼들 복원
+
+        if (mSearchPanel != null && mSearchPanel.isShowingInParent()) {
+            mSearchPanel.dismissMoreKeysPanel();
+        }
+
     }
 
     private void dispatchSearchQuery() {
@@ -286,13 +293,39 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                     @Override
                     public void onResponse(Call<MessageResponse> call,
                                            retrofit2.Response<MessageResponse> res) {
-                        if (res.isSuccessful()) {
-                            Log.d(TAG_NET, "✅ 200 OK\nURL : " + call.request().url()
-                                    + "\nBODY: " + query
-                                    + "\nRESP: " + new com.google.gson.Gson().toJson(res.body()));
-                        } else {
+                        if (!res.isSuccessful()) {
                             Log.e(TAG_NET, "❌ " + res.code() + " " + res.message());
+                            return;
                         }
+                        MessageResponse body = res.body();
+                        Log.d(TAG_NET, "✅ 결과 수신");
+
+                        // ------- 키보드 패널 보여주기 -------
+                        post(() -> {                   // SuggestionStripView 는 이미 UI Thread
+                            if (mSearchPanel == null) {
+                                mSearchPanel = new SearchResultView(getContext());
+                            }
+                            mSearchPanel.bind(body);
+
+                            // Controller → MainKeyboardView 로 위임
+                            MoreKeysPanel.Controller c = new MoreKeysPanel.Controller() {
+                                @Override public void onDismissMoreKeysPanel() {
+                                    mMainKeyboardView.onDismissMoreKeysPanel();
+                                }
+                                @Override public void onShowMoreKeysPanel(MoreKeysPanel p) {
+                                    mMainKeyboardView.onShowMoreKeysPanel(p);
+                                }
+                                @Override public void onCancelMoreKeysPanel() {
+                                    mMainKeyboardView.onDismissMoreKeysPanel();
+                                }
+                            };
+
+                            // pointX, pointY는 키보드 상단 중앙에 붙이도록
+                            int x = mMainKeyboardView.getWidth() / 2;
+                            int y = 0;
+                            mSearchPanel.showMoreKeysPanel(mMainKeyboardView, c, x, y,
+                                    (KeyboardActionListener) null); // 두 시그니처 중 아무거나
+                        });
                     }
                     @Override
                     public void onFailure(Call<MessageResponse> call, Throwable t) {
