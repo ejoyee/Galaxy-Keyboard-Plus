@@ -1,7 +1,6 @@
 package org.dslul.openboard.inputmethod.backup;
 
 import android.content.Context;
-import android.net.Uri;
 import android.util.Log;
 
 import org.dslul.openboard.inputmethod.backup.model.GalleryImage;
@@ -24,6 +23,7 @@ import retrofit2.Response;
 /**
  * 서버로 이미지 업로드를 수행하는 유틸 클래스
  */
+
 public class ImageUploader {
     private static final String TAG = "Backup - ImageUploader";
 
@@ -42,10 +42,13 @@ public class ImageUploader {
             String userId,
             String accessToken,
             SuccessCallback onSuccess,
-            FailureCallback onFailure
+            FailureCallback onFailure,
+            CompletionCallback onComplete
     ) {
         // HTTP 요청을 처리할 Retrofit 인스턴스를 생성
         ImageUploadApi api = RetrofitInstance.getApi();
+        int total = images.size();
+        final int[] completedCount = {0};
 
         // 넘겨받은 이미지 리스트를 순회하며 하나씩 업로드
         for (GalleryImage image : images) {
@@ -101,14 +104,19 @@ public class ImageUploader {
                             // 실패 시 상태 코드 로그 출력
                             Log.w(TAG, "⚠️ Upload failed: " + response.code() + " - " + image.getFilename());
                         }
+                        if (++completedCount[0] == total && onComplete != null) {
+                            onComplete.onComplete();
+                        }
                     }
 
                     @Override
                     public void onFailure(Call<Void> call, Throwable t) {
-                        // 네트워크 에러 등 실패 시 로그 및 콜백 호출
                         Log.e(TAG, "Upload failed: " + image.getFilename(), t);
                         if (onFailure != null) {
                             onFailure.onFailure(image.getFilename(), t);
+                        }
+                        if (++completedCount[0] == total && onComplete != null) {
+                            onComplete.onComplete();
                         }
                     }
                 });
@@ -142,4 +150,10 @@ public class ImageUploader {
     public interface FailureCallback {
         void onFailure(String filename, Throwable throwable);
     }
+
+    // Completion 콜백
+    public interface CompletionCallback {
+        void onComplete();
+    }
+
 }
