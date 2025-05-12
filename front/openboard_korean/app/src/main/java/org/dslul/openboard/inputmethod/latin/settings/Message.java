@@ -14,29 +14,25 @@ public class Message {
     private final String text;
     private final Date timestamp;
 
-    // 봇 응답용 추가 필드
-    private final String queryType;
     private final String answer;
     private final List<PhotoResult> photoResults;
     private final List<InfoResult> infoResults;
 
     // 사용자 메시지용 생성자 (기존용)
     public Message(Sender sender, String text, Date timestamp) {
-        this(sender, text, timestamp, null, null, null, null);
+        this(sender, text, timestamp,  null, null, null);
     }
 
     // 봇 메시지용 생성자 (확장)
     public Message(Sender sender,
                    String text,
                    Date timestamp,
-                   String queryType,
                    String answer,
                    List<PhotoResult> photoResults,
                    List<InfoResult> infoResults) {
         this.sender       = sender;
         this.text         = text;
         this.timestamp    = timestamp;
-        this.queryType    = queryType;
         this.answer       = answer;
         this.photoResults = photoResults;
         this.infoResults  = infoResults;
@@ -45,7 +41,7 @@ public class Message {
     public Sender getSender()          { return sender; }
     public String getText()            { return text; }
     public Date getTimestamp()         { return timestamp; }
-    public String getQueryType()       { return queryType; }
+
     public String getAnswer()          { return answer; }
     public List<PhotoResult> getPhotoResults() { return photoResults; }
     public List<InfoResult> getInfoResults()   { return infoResults; }
