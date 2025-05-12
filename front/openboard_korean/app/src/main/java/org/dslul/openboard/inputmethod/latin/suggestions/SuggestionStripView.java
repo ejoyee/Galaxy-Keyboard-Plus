@@ -46,6 +46,7 @@ import org.dslul.openboard.inputmethod.keyboard.KeyboardSwitcher;
 import org.dslul.openboard.inputmethod.keyboard.MainKeyboardView;
 import org.dslul.openboard.inputmethod.keyboard.MoreKeysPanel;
 import org.dslul.openboard.inputmethod.latin.AudioAndHapticFeedbackManager;
+import org.dslul.openboard.inputmethod.latin.LatinIME;
 import org.dslul.openboard.inputmethod.latin.R;
 import org.dslul.openboard.inputmethod.latin.SuggestedWords;
 import org.dslul.openboard.inputmethod.latin.SuggestedWords.SuggestedWordInfo;
@@ -221,6 +222,11 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
     private void enterSearchMode() {
         if (mInSearchMode) return;
         mInSearchMode = true;
+
+        // ── 여기에만 한 번! ──
+        if (mListener instanceof LatinIME) {
+            ((LatinIME) mListener).resetSearchCombiner();
+        }
 
         // 아이콘 ❌로 교체
         mSearchKey.setImageDrawable(mIconClose);

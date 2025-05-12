@@ -57,6 +57,7 @@ import org.dslul.openboard.inputmethod.compat.ViewOutlineProviderCompatUtils;
 import org.dslul.openboard.inputmethod.compat.ViewOutlineProviderCompatUtils.InsetsUpdater;
 import org.dslul.openboard.inputmethod.dictionarypack.DictionaryPackConstants;
 import org.dslul.openboard.inputmethod.event.Event;
+import org.dslul.openboard.inputmethod.event.HangulCombiner;
 import org.dslul.openboard.inputmethod.event.HangulEventDecoder;
 import org.dslul.openboard.inputmethod.event.HardwareEventDecoder;
 import org.dslul.openboard.inputmethod.event.HardwareKeyboardEventDecoder;
@@ -122,6 +123,7 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     static final long DELAY_WAIT_FOR_DICTIONARY_LOAD_MILLIS = TimeUnit.SECONDS.toMillis(2);
     static final long DELAY_DEALLOCATE_MEMORY_MILLIS = TimeUnit.SECONDS.toMillis(10);
 
+    private final HangulCombiner mSearchCombiner = new HangulCombiner();
     /**
      * A broadcast intent action to hide the software keyboard.
      */
@@ -1473,19 +1475,39 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     @Override
     public void onCodeInput(final int codePoint, final int x, final int y,
                             final boolean isKeyRepeat) {
-        // ── 검색 모드에서는 애플리케이션으로 보내지 않고 EditText에 직접 넣어준다 ──
+        // ── 검색 모드에서는 HangulCombiner로 자모를 조합하여 EditText에 표시 ──
         if (mSuggestionStripView != null && mSuggestionStripView.isInSearchMode()) {
-            EditText et = mSuggestionStripView.getSearchInput();
-            Editable text = et.getText();
+            Log.d("LatinIME", "SEARCH MODE onCodeInput codePoint=" + codePoint);
+            // 1) 키 좌표 변환
+            final MainKeyboardView mainKeyboardView = mKeyboardSwitcher.getMainKeyboardView();
+            final int keyX = mainKeyboardView.getKeyX(x);
+            final int keyY = mainKeyboardView.getKeyY(y);
+
+            Event ev;
+            // 2) 백스페이스
             if (codePoint == Constants.CODE_DELETE) {
-                // 백스페이스
-                if (text.length() > 0) {
-                    text.delete(text.length() - 1, text.length());
-                }
-            } else if (codePoint > 0) {
-                // 일반 문자
-                text.append((char) codePoint);
+                ev = createSoftwareKeypressEvent(codePoint, keyX, keyY, isKeyRepeat);
+                mSearchCombiner.processEvent(null, ev);
             }
+            // 3) 일반 자모 입력
+            else if (codePoint > 0) {
+                ev = createSoftwareKeypressEvent(codePoint, keyX, keyY, isKeyRepeat);
+                mSearchCombiner.processEvent(null, ev);
+            }
+            // 4) 그 외(이모티콘 전환·한/영 전환·Shift…)은 원래 로직으로
+            else {
+                Log.d("LatinIME", "NORMAL MODE onCodeInput codePoint=" + codePoint);
+                ev = createSoftwareKeypressEvent(
+                        getCodePointForKeyboard(codePoint), keyX, keyY, isKeyRepeat);
+                onEvent(ev);
+                return;
+            }
+
+            // 5) 지금까지 조합된 문자열을 EditText에 갱신
+            String composed = mSearchCombiner.getCombiningStateFeedback().toString();
+            EditText et = mSuggestionStripView.getSearchInput();
+            et.setText(composed);
+            et.setSelection(composed.length());
             return;
         }
 
@@ -1539,7 +1561,15 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     @Override
     public void onTextInput(final String rawText) {
         if (mSuggestionStripView != null && mSuggestionStripView.isInSearchMode()) {
-            mSuggestionStripView.getSearchInput().append(rawText);
+            // rawText는 여러 글자일 수 있으니, 한 글자씩 combiner에 넘겨 줌
+            for (char c : rawText.toCharArray()) {
+                Event ev = Event.createSoftwareKeypressEvent(c, c, 0, 0, false);
+                mSearchCombiner.processEvent(null, ev);
+            }
+            String composed = mSearchCombiner.getCombiningStateFeedback().toString();
+            EditText et = mSuggestionStripView.getSearchInput();
+            et.setText(composed);
+            et.setSelection(composed.length());
             return;
         }
 
@@ -2046,4 +2076,15 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
                     visible ? Color.BLACK : Color.TRANSPARENT);
         }
     }
+
+    public HangulCombiner getSearchCombiner() {
+        return mSearchCombiner;
+    }
+
+    /** 검색 모드 조합기 초기화 용도로만 쓰입니다 */
+    public void resetSearchCombiner() {
+        mSearchCombiner.reset();
+    }
+
+
 }
