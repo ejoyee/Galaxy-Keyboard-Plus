@@ -5,6 +5,8 @@ import android.content.ContentUris;
 import android.graphics.Bitmap;
 import android.net.Uri;
 import android.provider.MediaStore;
+import android.text.method.LinkMovementMethod;
+import android.text.util.Linkify;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -23,6 +25,8 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+
+import io.noties.markwon.Markwon;
 
 public class MessageAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
     private static final int VIEW_TYPE_USER = 0;
@@ -80,25 +84,38 @@ public class MessageAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder
     }
 
     static class BotViewHolder extends RecyclerView.ViewHolder {
-        final TextView tvMessage;
-        final Button btnToggle;
-        final GridLayout glImages;
+        private final TextView tvMessage;
+        private final Button btnToggle;
+        private final GridLayout glImages;
+        private final Markwon markwon;
 
         BotViewHolder(View v) {
             super(v);
             tvMessage   = v.findViewById(R.id.tvBotMessage);
             btnToggle   = v.findViewById(R.id.btnToggleImages);
             glImages    = v.findViewById(R.id.glBotImages);
+
+            markwon = Markwon.create(v.getContext());
+
+            // 링크 자동 인식·클릭 활성화
+            tvMessage.setAutoLinkMask(Linkify.WEB_URLS);
+            tvMessage.setMovementMethod(LinkMovementMethod.getInstance());
         }
 
         void bind(Message m) {
-            // 1) 메시지 텍스트 + 타임스탬프 세팅
+            // 1) 본문과 타임스탬프 준비
+            String body = m.getAnswer() != null ? m.getAnswer() : m.getText();
             String time = new SimpleDateFormat("HH:mm", Locale.getDefault())
                     .format(m.getTimestamp());
-            String body = m.getAnswer() != null ? m.getAnswer() : m.getText();
-            tvMessage.setText(body + "\n" + time);
 
-            // 2) 버튼 텍스트 & 그리드 가시성 초기화
+            // 2) 마크다운 + 타임스탬프 결합
+            //    빈 줄 하나를 두고 Plain Text 형태로 타임스탬프를 붙입니다.
+            String markdown = body + "\n\n" + time;
+
+            // 3) Markwon 으로 렌더링
+            markwon.setMarkdown(tvMessage, markdown);
+
+            // 4) 버튼 텍스트 & 그리드 가시성 초기화
             if (m.isImagesVisible()) {
                 btnToggle.setText("사진 숨기기");
                 glImages.setVisibility(View.VISIBLE);
@@ -107,7 +124,7 @@ public class MessageAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder
                 glImages.setVisibility(View.GONE);
             }
 
-            // 3) 그리드에 썸네일이 한 번만 채워지도록
+            // 5) 그리드에 썸네일이 한 번만 채워지도록
             if (glImages.getChildCount() == 0) {
                 List<Uri> uris = new ArrayList<>();
                 addUrisFromPhotos(m.getPhotoResults(), uris);
@@ -135,7 +152,7 @@ public class MessageAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder
                 }
             }
 
-            // 4) 토글 버튼 클릭 시 보여주기/숨기기
+            // 6) 토글 버튼 클릭 시 보여주기/숨기기
             btnToggle.setOnClickListener(v -> {
                 boolean now = !m.isImagesVisible();
                 m.setImagesVisible(now);

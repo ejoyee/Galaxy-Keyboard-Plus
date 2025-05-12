@@ -67,6 +67,9 @@ dependencies {
     // OkHttp (Retrofit 내부적으로 사용됨)
     implementation 'com.squareup.okhttp3:okhttp:4.9.3'
     implementation 'com.squareup.okhttp3:logging-interceptor:4.9.3' // 로그 확인용 (선택)
+
+    // 마크다운 파서
+    implementation 'io.noties.markwon:core:4.6.2'
 }
 repositories {
     mavenCentral()
