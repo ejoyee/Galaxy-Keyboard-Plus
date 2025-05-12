@@ -54,6 +54,9 @@ public class BackupManager {
         List<GalleryImage> allImages = MediaStoreImageFetcher.getAllImages(context);
         Log.d(TAG, "📸 전체 불러온 이미지 수: " + allImages.size());
 
+        // ✅ 필터링 시간 측정 시작
+        long filteringStart = System.currentTimeMillis();
+
         // 4. 마지막 업로드 시간 이후의 이미지만 필터링
 //        List<GalleryImage> newImages = new ArrayList<>();
 //        for (GalleryImage image : allImages) {
@@ -90,14 +93,19 @@ public class BackupManager {
 
         Log.i(TAG, "새 이미지 " + newImages.size() + "개 업로드 시작");
 
+        // 필터링 시간 측정 종료
+        long filteringEnd = System.currentTimeMillis();
+        long filteringDuration = filteringEnd - filteringStart;
+        Log.i(TAG, "⏱✅ 필터링 완료 (" + newImages.size() + "개), 소요 시간: " + filteringDuration + "ms");
+
+
+        // ✅ 시간 측정 시작 (필터링 완료 직후)
+        final long startTimeMillis = System.currentTimeMillis();
 
         // 5. 이미지 업로드
         Set<String> uploadedIds = new HashSet<>();
-
         Handler handler = new Handler(Looper.getMainLooper());
         int uploadCount = Math.min(newImages.size(), MAX_REQUESTS_PER_MINUTE);
-
-
         AtomicInteger completedCount = new AtomicInteger(0);
 
         for (int i = 0; i < uploadCount; i++) {
@@ -110,15 +118,18 @@ public class BackupManager {
                         Collections.singletonList(image),
                         "36648ad3-ed4b-4eb0-bcf1-1dc66fa5d258", // userId
                         "", // accessToken
-                        contentId -> {
-                            uploadedIds.add(contentId);
-                        },
+                        contentId -> uploadedIds.add(contentId),
                         (filename, throwable) -> {
                             // 실패 로그
                         },
                         () -> {
                             if (completedCount.incrementAndGet() == uploadCount) {
                                 UploadStateTracker.addBackedUpContentIds(context, uploadedIds);
+
+                                // ✅ 전체 백업 완료 시점
+                                long endTimeMillis = System.currentTimeMillis();
+                                long durationMillis = endTimeMillis - startTimeMillis;
+                                Log.i(TAG, "✅ 전체 백업 완료 - 걸린 시간: " + durationMillis + "ms");
                             }
                         }
                 );
@@ -138,7 +149,7 @@ public class BackupManager {
 
     private static boolean hasReadPermission(Context context) {
         String permission = Build.VERSION.SDK_INT >= 33
-                ? Manifest.permission.READ_MEDIA_IMAGES // ✅ 정확한 권한 이름
+                ? Manifest.permission.READ_MEDIA_IMAGES // 정확한 권한 이름
                 : Manifest.permission.READ_EXTERNAL_STORAGE;
 
         return PermissionChecker.checkSelfPermission(context, permission)
