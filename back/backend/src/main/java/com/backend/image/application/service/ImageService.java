@@ -36,6 +36,7 @@ public class ImageService {
     private final ImageRepository imageRepository;
     private final ModelMapper modelMapper;
 
+    @Transactional
     public SaveImageOutDto saveImage(SaveImageInDto inDto) {
 
         User user = userRepository.findById(inDto.getUserId())
@@ -53,6 +54,8 @@ public class ImageService {
                 .type(inDto.getType())
                 .content(inDto.getContent())
                 .build();
+
+        user.updateInfoCount(user.getInfoCount()+1);
 
         return modelMapper.map(imageRepository.save(image), SaveImageOutDto.class);
     }

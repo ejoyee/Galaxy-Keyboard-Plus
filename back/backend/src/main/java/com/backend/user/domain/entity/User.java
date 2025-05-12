@@ -35,7 +35,7 @@ public class User {
     @OneToOne(mappedBy = "user", cascade = CascadeType.ALL)
     private FcmToken fcmToken;
 
-    public void updateInfoCount(Integer infoCount) {
+    public void updateInfoCount(int infoCount) {
         this.infoCount = infoCount;
     }
 }
