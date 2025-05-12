@@ -17,6 +17,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
         package="org.dslul.openboard.inputmethod.latin">
 
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.READ_USER_DICTIONARY" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.VIBRATE" />
@@ -38,6 +42,7 @@
          </pre> -->
     <permission android:name="org.dslul.openboard.inputmethod.latin.HIDE_SOFT_INPUT"
                 android:protectionLevel="signature" />
+
 
     <application android:label="@string/english_ime_name"
             android:icon="@mipmap/ic_launcher"
