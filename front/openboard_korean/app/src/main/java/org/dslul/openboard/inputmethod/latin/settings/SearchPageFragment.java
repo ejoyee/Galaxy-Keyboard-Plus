@@ -1,35 +1,27 @@
 package org.dslul.openboard.inputmethod.latin.settings;
 
 import android.app.Fragment;
-import android.content.ContentUris;
-import android.content.Context;
 import android.content.Intent;
-import android.net.Uri;
 import android.os.Bundle;
-import android.provider.MediaStore;
-import android.util.TypedValue;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.EditText;
 import android.widget.ImageButton;
-import android.widget.ImageView;
-import android.widget.LinearLayout;
-import android.widget.ScrollView;
 import android.widget.TextView;
 import android.util.Log;
+
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import org.dslul.openboard.inputmethod.latin.R;
 import org.dslul.openboard.inputmethod.latin.network.ChatApiService;
-import org.dslul.openboard.inputmethod.latin.network.InfoResult;
 import org.dslul.openboard.inputmethod.latin.network.MessageRequest;
 import org.dslul.openboard.inputmethod.latin.network.MessageResponse;
-import org.dslul.openboard.inputmethod.latin.network.PhotoResult;
 
-import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -48,18 +40,16 @@ public class SearchPageFragment extends Fragment {
     private TextView tvStatus;
     private EditText etMessage;
     private ImageButton btnSend;
-
     private MessageAdapter adapter;
     private List<Message> messages = new ArrayList<>();
 
     // Retrofit 서비스
     private ChatApiService chatApiService;
 
-    private ScrollView scrollResults;
-    private LinearLayout llResultsContainer;
-
-    /* TAG 정의 */
+    /* 로그 확인용 TAG 정의 */
     private static final String TAG = "SearchPageFragment";
+    private static final String API_TAG = "API-DBG";
+    private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
     @Override
     public View onCreateView(LayoutInflater inflater, ViewGroup container,
@@ -86,18 +76,14 @@ public class SearchPageFragment extends Fragment {
         rvMessages.setLayoutManager(new LinearLayoutManager(getContext()));
         rvMessages.setAdapter(adapter);
 
-        // 결과 컨테이너 바인딩
-        scrollResults        = view.findViewById(R.id.scrollResults);
-        llResultsContainer   = view.findViewById(R.id.llResultsContainer);
-
         // Retrofit + OkHttp 로깅 설정
         HttpLoggingInterceptor logging = new HttpLoggingInterceptor();
         logging.setLevel(HttpLoggingInterceptor.Level.BODY);
         OkHttpClient client = new OkHttpClient.Builder()
                 .addInterceptor(logging)
-                .connectTimeout(60, TimeUnit.SECONDS)   // 연결 타임아웃
-                .readTimeout(60, TimeUnit.SECONDS)      // 읽기(응답 대기) 타임아웃
-                .writeTimeout(60, TimeUnit.SECONDS)     // 쓰기(요청 바디 전송) 타임아웃
+                .connectTimeout(120, TimeUnit.SECONDS)   // 연결 타임아웃
+                .readTimeout(120, TimeUnit.SECONDS)      // 읽기(응답 대기) 타임아웃
+                .writeTimeout(120, TimeUnit.SECONDS)     // 쓰기(요청 바디 전송) 타임아웃
                 .build();
 
         Retrofit retrofit = new Retrofit.Builder()
@@ -129,8 +115,14 @@ public class SearchPageFragment extends Fragment {
         etMessage.setText("");
         showStatus("응답을 기다리는 중...", true);
 
+        Log.d(TAG, "▶ sendMessage: \"" + text + "\"");
+
         String userId = "36648ad3-ed4b-4eb0-bcf1-1dc66fa5d258";
         MessageRequest req = new MessageRequest(userId, text);
+
+        /* API 호출 로그 */
+        Log.d(API_TAG, "POST /search  userId=" + req.getUserId()
+                + "  query=\"" + req.getQuery() + "\"");
 
         // 2) 네트워크 호출
         chatApiService.search(req.getUserId(), req.getQuery())
@@ -138,18 +130,30 @@ public class SearchPageFragment extends Fragment {
                     @Override
                     public void onResponse(Call<MessageResponse> call, Response<MessageResponse> resp) {
                         showStatus("", false);
+
+                        Log.d(API_TAG, "HTTP " + resp.code()
+                                + " isSuccessful=" + resp.isSuccessful());
+
                         if (!resp.isSuccessful() || resp.body() == null) {
+                            Log.w(API_TAG, "⚠ body null or error");
                             showStatus("서버 응답 오류", true);
                             return;
                         }
                         MessageResponse body = resp.body();
+
+                        /* 응답 원본 JSON을 보고 싶다면 ↓ */
+                        Log.d(API_TAG, "body=" + GSON.toJson(body));
+
+                        Log.d(API_TAG, "answer=\"" + body.getAnswer() + "\""
+                                + "  photos=" + (body.getPhotoResults()==null?0:body.getPhotoResults().size())
+                                + "  infos="  + (body.getInfoResults()==null?0:body.getInfoResults().size()));
+
                         // getReply() 대신 getAnswer()
                         String botText = body.getAnswer() != null ? body.getAnswer() : "정보를 찾았습니다.";
                         Message botMsg = new Message(
                                 Message.Sender.BOT,
                                 botText,
                                 new Date(),
-                                body.getQueryType(),
                                 body.getAnswer(),
                                 body.getPhotoResults(),
                                 body.getInfoResults()
@@ -158,126 +162,15 @@ public class SearchPageFragment extends Fragment {
                         adapter.notifyItemInserted(messages.size() - 1);
                         rvMessages.scrollToPosition(messages.size() - 1);
 
-                        displayFullResponse(body);
+//                        displayFullResponse(body);
                     }
 
                     @Override
                     public void onFailure(Call<MessageResponse> call, Throwable t) {
+                        Log.e(API_TAG, "❌ onFailure: " + t.getMessage(), t);
                         showStatus("네트워크 오류: " + t.getMessage(), true);
                     }
                 });
-    }
-
-    private void displayFullResponse(MessageResponse body) {
-        // 1) 결과 컨테이너 보이기
-        scrollResults.setVisibility(View.VISIBLE);
-        llResultsContainer.removeAllViews();
-
-        Context ctx = getContext();
-
-        // 2) 답변 텍스트 추가
-        TextView tvAnswer = new TextView(ctx);
-        tvAnswer.setText(body.getAnswer());
-        tvAnswer.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
-        tvAnswer.setPadding(0, 0, 0, dpToPx(12));
-        llResultsContainer.addView(tvAnswer);
-
-        // 3) photo_results: MediaStore 에서 Uri 만들고 ImageView 추가
-        List<PhotoResult> photos = body.getPhotoResults();
-        if (photos != null && !photos.isEmpty()) {
-            for (PhotoResult pr : photos) {
-                Log.d(TAG, "photo_results id(raw): " + pr.getId());
-
-                long mediaId;
-                try {
-                    mediaId = Long.parseLong(pr.getId());
-                } catch (NumberFormatException e) {
-                    Log.w(TAG, "photo_results id parse fail: " + pr.getId());
-                    continue; // id 파싱 실패 시 건너뜀
-                }
-                Uri imgUri = ContentUris.withAppendedId(
-                        MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                        mediaId
-                );
-
-                // 실제 스트림이 열리는지 테스트 (★ 중요)
-                try (InputStream is = getContext()
-                        .getContentResolver().openInputStream(imgUri)) {
-                    if (is == null) {
-                        Log.w(TAG, "image stream null for " + imgUri);
-                    } else {
-                        Log.d(TAG, "image stream OK, bytes=" + is.available());
-                    }
-                } catch (Exception ex) {
-                    Log.e(TAG, "openInputStream error: " + imgUri, ex);
-                }
-
-                Log.d(TAG, "photo_results uri: " + imgUri);
-
-                ImageView iv = new ImageView(ctx);
-                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        dpToPx(200)
-                );
-                lp.setMargins(0, 0, 0, dpToPx(12));
-                iv.setLayoutParams(lp);
-                iv.setScaleType(ImageView.ScaleType.CENTER_CROP);
-                iv.setImageURI(imgUri);  // MediaStore 에서 불러오기
-                llResultsContainer.addView(iv);
-            }
-        }
-
-        // 4) info_results
-        List<InfoResult> infos = body.getInfoResults();
-        if (infos != null && !infos.isEmpty()) {
-            for (InfoResult ir : infos) {
-                Log.d(TAG, "info_results id(raw): " + ir.getId());
-
-                long mediaId;
-                try {
-                    mediaId = Long.parseLong(ir.getId());
-                } catch (NumberFormatException e) {
-                    Log.w(TAG, "info_results id parse fail: " + ir.getId());
-                    continue;
-                }
-                Uri imgUri = ContentUris.withAppendedId(
-                        MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                        mediaId
-                );
-
-                try (InputStream is = getContext()
-                        .getContentResolver().openInputStream(imgUri)) {
-                    if (is == null) {
-                        Log.w(TAG, "info image stream null for " + imgUri);
-                    } else {
-                        Log.d(TAG, "info image stream OK, bytes=" + is.available());
-                    }
-                } catch (Exception ex) {
-                    Log.e(TAG, "openInputStream error: " + imgUri, ex);
-                }
-
-                Log.d(TAG, "info_results uri: " + imgUri);
-
-                ImageView ivInfo = new ImageView(ctx);
-                LinearLayout.LayoutParams lpInfo = new LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        dpToPx(200)
-                );
-                lpInfo.setMargins(0, 0, 0, dpToPx(12));
-                ivInfo.setLayoutParams(lpInfo);
-                ivInfo.setScaleType(ImageView.ScaleType.CENTER_CROP);
-                ivInfo.setImageURI(imgUri);
-                llResultsContainer.addView(ivInfo);
-            }
-        }
-
-        // 스크롤 최하단으로 이동
-        scrollResults.post(() -> scrollResults.fullScroll(ScrollView.FOCUS_DOWN));
-    }
-
-    // dp → px 변환 헬퍼
-    private int dpToPx(int dp) {
-        return Math.round(dp * getResources().getDisplayMetrics().density);
     }
 
     private void showStatus(String msg, boolean visible) {
