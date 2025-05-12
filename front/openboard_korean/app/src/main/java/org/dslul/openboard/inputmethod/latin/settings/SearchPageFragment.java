@@ -17,6 +17,7 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import android.util.Log;
 
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
@@ -28,6 +29,7 @@ import org.dslul.openboard.inputmethod.latin.network.MessageRequest;
 import org.dslul.openboard.inputmethod.latin.network.MessageResponse;
 import org.dslul.openboard.inputmethod.latin.network.PhotoResult;
 
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -55,6 +57,9 @@ public class SearchPageFragment extends Fragment {
 
     private ScrollView scrollResults;
     private LinearLayout llResultsContainer;
+
+    /* TAG 정의 */
+    private static final String TAG = "SearchPageFragment";
 
     @Override
     public View onCreateView(LayoutInflater inflater, ViewGroup container,
@@ -181,16 +186,33 @@ public class SearchPageFragment extends Fragment {
         List<PhotoResult> photos = body.getPhotoResults();
         if (photos != null && !photos.isEmpty()) {
             for (PhotoResult pr : photos) {
+                Log.d(TAG, "photo_results id(raw): " + pr.getId());
+
                 long mediaId;
                 try {
                     mediaId = Long.parseLong(pr.getId());
                 } catch (NumberFormatException e) {
+                    Log.w(TAG, "photo_results id parse fail: " + pr.getId());
                     continue; // id 파싱 실패 시 건너뜀
                 }
                 Uri imgUri = ContentUris.withAppendedId(
                         MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
                         mediaId
                 );
+
+                // 실제 스트림이 열리는지 테스트 (★ 중요)
+                try (InputStream is = getContext()
+                        .getContentResolver().openInputStream(imgUri)) {
+                    if (is == null) {
+                        Log.w(TAG, "image stream null for " + imgUri);
+                    } else {
+                        Log.d(TAG, "image stream OK, bytes=" + is.available());
+                    }
+                } catch (Exception ex) {
+                    Log.e(TAG, "openInputStream error: " + imgUri, ex);
+                }
+
+                Log.d(TAG, "photo_results uri: " + imgUri);
 
                 ImageView iv = new ImageView(ctx);
                 LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
@@ -209,16 +231,32 @@ public class SearchPageFragment extends Fragment {
         List<InfoResult> infos = body.getInfoResults();
         if (infos != null && !infos.isEmpty()) {
             for (InfoResult ir : infos) {
+                Log.d(TAG, "info_results id(raw): " + ir.getId());
+
                 long mediaId;
                 try {
                     mediaId = Long.parseLong(ir.getId());
                 } catch (NumberFormatException e) {
+                    Log.w(TAG, "info_results id parse fail: " + ir.getId());
                     continue;
                 }
                 Uri imgUri = ContentUris.withAppendedId(
                         MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
                         mediaId
                 );
+
+                try (InputStream is = getContext()
+                        .getContentResolver().openInputStream(imgUri)) {
+                    if (is == null) {
+                        Log.w(TAG, "info image stream null for " + imgUri);
+                    } else {
+                        Log.d(TAG, "info image stream OK, bytes=" + is.available());
+                    }
+                } catch (Exception ex) {
+                    Log.e(TAG, "openInputStream error: " + imgUri, ex);
+                }
+
+                Log.d(TAG, "info_results uri: " + imgUri);
 
                 ImageView ivInfo = new ImageView(ctx);
                 LinearLayout.LayoutParams lpInfo = new LinearLayout.LayoutParams(
