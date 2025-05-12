@@ -4,6 +4,8 @@ import android.app.Activity;
 import android.os.Bundle;
 import android.widget.Toolbar;
 
+import com.kakao.sdk.common.KakaoSdk;
+
 import org.dslul.openboard.inputmethod.latin.R;
 
 public class SearchActivity extends Activity {
@@ -24,5 +26,7 @@ public class SearchActivity extends Activity {
                     .replace(R.id.fragment_container, new SearchPageFragment())
                     .commit();
         }
+
+        KakaoSdk.init(getApplicationContext(), "c82463a00457035bcc958acd89ea97ba");
     }
 }
