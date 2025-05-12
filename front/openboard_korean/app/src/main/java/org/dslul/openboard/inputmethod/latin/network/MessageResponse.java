@@ -6,7 +6,6 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class MessageResponse {
-
     @SerializedName("answer")
     private String answer;
 
