@@ -4,7 +4,10 @@ import android.app.Activity;
 import android.os.Bundle;
 import android.widget.Toolbar;
 
+import com.kakao.sdk.common.KakaoSdk;
+
 import org.dslul.openboard.inputmethod.latin.R;
+import org.dslul.openboard.inputmethod.latin.BuildConfig;
 
 public class SearchActivity extends Activity {
     @Override
@@ -24,5 +27,7 @@ public class SearchActivity extends Activity {
                     .replace(R.id.fragment_container, new SearchPageFragment())
                     .commit();
         }
+
+        KakaoSdk.init(getApplicationContext(), BuildConfig.KAKAO_NATIVE_APP_KEY);
     }
 }
