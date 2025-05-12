@@ -1,50 +1,52 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
-    xmlns:tools="http://schemas.android.com/tools"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    tools:context=".login.KakaoLoginActivity">
+    android:orientation="vertical"
+    android:padding="20dp"
+    android:gravity="center">
 
     <TextView
-        android:id="@+id/title_text"
-        android:layout_width="wrap_content"
+        android:id="@+id/tv_login_status"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="카카오 로그인 테스트"
-        android:textSize="24sp"
+        android:text="로그인 상태: 로그아웃됨"
+        android:textSize="18sp"
         android:textStyle="bold"
-        app:layout_constraintBottom_toTopOf="@+id/btn_kakao_login"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintVertical_chainStyle="packed"
-        app:layout_constraintVertical_bias="0.4" />
+        android:layout_marginBottom="16dp"/>
+
+    <TextView
+        android:id="@+id/tv_token_info"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text=""
+        android:textSize="14sp"
+        android:visibility="gone"
+        android:layout_marginBottom="24dp"/>
 
     <Button
         android:id="@+id/btn_kakao_login"
-        android:layout_width="0dp"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginStart="32dp"
-        android:layout_marginTop="16dp"
-        android:layout_marginEnd="32dp"
-        android:backgroundTint="#FEE500"
-        android:text="카카오로 로그인"
-        android:textColor="#191919"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/title_text"
-        app:layout_constraintWidth_max="300dp" />
+        android:text="카카오 로그인"
+        android:padding="12dp"
+        android:layout_marginBottom="16dp"
+        android:background="@android:color/holo_orange_light"
+        android:textColor="@android:color/black"/>
+
+    <Button
+        android:id="@+id/btn_logout"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="로그아웃"
+        android:padding="12dp"
+        android:visibility="gone"
+        android:layout_marginBottom="16dp"/>
 
     <ProgressBar
         android:id="@+id/progress_bar"
-        style="?android:attr/progressBarStyle"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:visibility="gone"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/btn_kakao_login"
-        app:layout_constraintVertical_bias="0.1" />
+        android:visibility="gone"/>
 
-</androidx.constraintlayout.widget.ConstraintLayout>
+</LinearLayout>

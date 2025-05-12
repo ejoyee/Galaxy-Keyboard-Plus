@@ -1,3 +1,12 @@
+def localProperties = new Properties()
+def localPropertiesFile = rootProject.file('local.properties')
+if (localPropertiesFile.exists()) {
+    localPropertiesFile.withReader('UTF-8') { reader ->
+        localProperties.load(reader)
+    }
+}
+
+
 apply plugin: 'com.android.application'
 apply plugin: 'kotlin-android'
 apply plugin: 'kotlin-android-extensions'
@@ -11,6 +20,17 @@ android {
         targetSdkVersion 33
         versionCode 19
         versionName '1.4.5'
+
+
+        // local.properties에서 값을 읽어와 BuildConfig 필드로 설정
+        buildConfigField "String", "KAKAO_NATIVE_APP_KEY", "\"${localProperties.getProperty('kakao.native.app.key', '')}\""
+        buildConfigField "String", "SERVER_BASE_URL", "\"${localProperties.getProperty('server.base.url', '')}\""
+
+        // 매니페스트에 메타데이터로 추가하려면 이 코드 사용
+        manifestPlaceholders = [
+                kakaoNativeAppKey: localProperties.getProperty('kakao.native.app.key', '')
+        ]
+
     }
 
     buildTypes {

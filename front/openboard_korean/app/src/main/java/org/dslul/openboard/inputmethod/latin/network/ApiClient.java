@@ -8,12 +8,12 @@ import okhttp3.OkHttpClient;
 import okhttp3.logging.HttpLoggingInterceptor;
 import retrofit2.Retrofit;
 import retrofit2.converter.gson.GsonConverterFactory;
-
+import org.dslul.openboard.inputmethod.latin.BuildConfig;
 /**
  * API 클라이언트 클래스
  */
 public class ApiClient {
-    private static final String BASE_URL = "https://k12e201.p.ssafy.io"; // 실제 서버 URL로 변경 필요
+    private static final String BASE_URL = BuildConfig.SERVER_BASE_URL; // 실제 서버 URL로 변경 필요
     private static final int TIMEOUT = 30; // 초 단위
 
     private static Retrofit sRetrofit;

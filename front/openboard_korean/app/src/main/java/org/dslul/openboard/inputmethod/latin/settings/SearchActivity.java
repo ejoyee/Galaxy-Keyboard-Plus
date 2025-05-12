@@ -7,6 +7,7 @@ import android.widget.Toolbar;
 import com.kakao.sdk.common.KakaoSdk;
 
 import org.dslul.openboard.inputmethod.latin.R;
+import org.dslul.openboard.inputmethod.latin.BuildConfig;
 
 public class SearchActivity extends Activity {
     @Override
@@ -27,6 +28,6 @@ public class SearchActivity extends Activity {
                     .commit();
         }
 
-        KakaoSdk.init(getApplicationContext(), "c82463a00457035bcc958acd89ea97ba");
+        KakaoSdk.init(getApplicationContext(), BuildConfig.KAKAO_NATIVE_APP_KEY);
     }
 }
