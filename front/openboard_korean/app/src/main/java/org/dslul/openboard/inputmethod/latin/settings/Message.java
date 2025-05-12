@@ -18,6 +18,8 @@ public class Message {
     private final List<PhotoResult> photoResults;
     private final List<InfoResult> infoResults;
 
+    private boolean imagesVisible = false;
+
     // 사용자 메시지용 생성자 (기존용)
     public Message(Sender sender, String text, Date timestamp) {
         this(sender, text, timestamp,  null, null, null);
@@ -41,8 +43,10 @@ public class Message {
     public Sender getSender()          { return sender; }
     public String getText()            { return text; }
     public Date getTimestamp()         { return timestamp; }
+    public boolean isImagesVisible() { return imagesVisible; }
 
     public String getAnswer()          { return answer; }
     public List<PhotoResult> getPhotoResults() { return photoResults; }
     public List<InfoResult> getInfoResults()   { return infoResults; }
+    public void setImagesVisible(boolean v) { imagesVisible = v; }
 }
