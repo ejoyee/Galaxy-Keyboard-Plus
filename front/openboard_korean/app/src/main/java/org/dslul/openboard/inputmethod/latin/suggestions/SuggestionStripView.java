@@ -34,7 +34,9 @@ import android.view.View.OnLongClickListener;
 import android.view.ViewGroup;
 import android.view.ViewParent;
 import android.view.accessibility.AccessibilityEvent;
+import android.widget.EditText;
 import android.widget.ImageButton;
+import android.widget.LinearLayout;
 import android.widget.RelativeLayout;
 import android.widget.TextView;
 
@@ -44,6 +46,7 @@ import org.dslul.openboard.inputmethod.keyboard.KeyboardSwitcher;
 import org.dslul.openboard.inputmethod.keyboard.MainKeyboardView;
 import org.dslul.openboard.inputmethod.keyboard.MoreKeysPanel;
 import org.dslul.openboard.inputmethod.latin.AudioAndHapticFeedbackManager;
+import org.dslul.openboard.inputmethod.latin.LatinIME;
 import org.dslul.openboard.inputmethod.latin.R;
 import org.dslul.openboard.inputmethod.latin.SuggestedWords;
 import org.dslul.openboard.inputmethod.latin.SuggestedWords.SuggestedWordInfo;
@@ -66,11 +69,22 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         CharSequence getSelection();
     }
 
+    /* ▼ 새로 추가할 필드들 --------------------------------------------------- */
+    private ImageButton mSearchKey;      // 돋보기(검색 모드 진입)
+    private ImageButton mSendKey;        // 전송
+    private ImageButton mVoiceKey;       // 마이크(= 클립보드 키 자리에 있던 버튼)
+    private LinearLayout mInputContainer;// EditText+Send 래퍼
+    private EditText mSearchInput;       // 검색어 입력창
+    private boolean mInSearchMode = false;
+    // 기존 필드 바로 아래
+    private Drawable mIconSearch;   // 돋보기
+    private Drawable mIconClose;    // X 아이콘
+
+
     static final boolean DBG = DebugFlags.DEBUG_ENABLED;
     private static final float DEBUG_INFO_TEXT_SIZE_IN_DIP = 6.0f;
 
     private final ViewGroup mSuggestionsStrip;
-    private final ImageButton mVoiceKey;
     private final ImageButton mClipboardKey;
     private final ImageButton mOtherKey;
     MainKeyboardView mMainKeyboardView;
@@ -136,6 +150,8 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         mOtherKey = findViewById(R.id.suggestions_strip_other_key);
         mStripVisibilityGroup = new StripVisibilityGroup(this, mSuggestionsStrip);
 
+
+
         for (int pos = 0; pos < SuggestedWords.MAX_SUGGESTIONS; pos++) {
             final TextView word = new TextView(context, null, R.attr.suggestionWordStyle);
             word.setContentDescription(getResources().getString(R.string.spoken_empty_suggestion));
@@ -170,7 +186,30 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         final Drawable iconIncognito = keyboardAttr.getDrawable(R.styleable.Keyboard_iconIncognitoKey);
         final Drawable iconClipboard = keyboardAttr.getDrawable(R.styleable.Keyboard_iconClipboardNormalKey);
         keyboardAttr.recycle();
+
         mVoiceKey.setImageDrawable(iconVoice);
+
+        mSearchKey      = findViewById(R.id.suggestions_strip_search_key);
+        if (mSearchKey == null) {
+            throw new IllegalStateException(
+                    "suggestions_strip_search_key not found in current layout variant");
+        }
+        // 🔍, ❌ 아이콘 준비
+        mIconSearch = getResources().getDrawable(R.drawable.ic_search, null);
+        mIconClose  = getResources().getDrawable(R.drawable.ic_close,  null);
+
+        mSearchKey.setImageDrawable(mIconSearch);   // 기본은 🔍
+        mSendKey        = findViewById(R.id.suggestions_strip_send_key);
+        mInputContainer = findViewById(R.id.suggestions_strip_input_container);
+        mSearchInput    = findViewById(R.id.suggestions_strip_search_input);
+
+        mSearchInput.setFocusableInTouchMode(true);
+        mSearchInput.setCursorVisible(true);
+
+
+        mSearchKey.setOnClickListener(this);
+        mSendKey.setOnClickListener(this);
+
         mVoiceKey.setOnClickListener(this);
         mClipboardKey.setImageDrawable(iconClipboard);
         mClipboardKey.setOnClickListener(this);
@@ -178,6 +217,67 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
 
         mOtherKey.setImageDrawable(iconIncognito);
     }
+
+    // ========== Search Mode helpers ======================================
+    private void enterSearchMode() {
+        if (mInSearchMode) return;
+        mInSearchMode = true;
+
+        // ── 여기에만 한 번! ──
+        if (mListener instanceof LatinIME) {
+            ((LatinIME) mListener).resetSearchCombiner();
+        }
+
+        // ▼ 추가 : Listener(=LatinIME) 에 버퍼 초기화 요청
+        if (mListener instanceof LatinIME) {
+            ((LatinIME) mListener).resetSearchBuffers();
+        }
+
+        // 아이콘 ❌로 교체
+        mSearchKey.setImageDrawable(mIconClose);
+
+        // UI 전환
+        mSuggestionsStrip.setVisibility(GONE);
+        mVoiceKey.setVisibility(GONE);
+        mClipboardKey.setVisibility(GONE);
+        mOtherKey.setVisibility(GONE);
+        mInputContainer.setVisibility(VISIBLE);
+
+        mSearchInput.setText("");
+        mSearchInput.requestFocus();
+    }
+
+    public void exitSearchMode() {
+        if (!mInSearchMode) return;
+        mInSearchMode = false;
+
+        // ▼ 추가 : Listener(=LatinIME) 에 버퍼 초기화 요청
+        if (mListener instanceof LatinIME) {
+            ((LatinIME) mListener).resetSearchBuffers();
+        }
+
+        mSearchKey.setImageDrawable(mIconSearch);      // 🔍 복원
+        mInputContainer.setVisibility(GONE);
+        mSuggestionsStrip.setVisibility(VISIBLE);
+        updateVisibility(true /* strip */, false /* isFullscreen */); // 버튼들 복원
+    }
+
+    private void dispatchSearchQuery() {
+        final String query = mSearchInput.getText().toString();
+        if (query.isEmpty()) return;
+
+        // 검색어를 커밋하고 엔터(SEARCH) 액션 실행
+        mListener.onTextInput(query);
+        mListener.onCodeInput(Constants.CODE_ENTER,          // ↵
+                Constants.SUGGESTION_STRIP_COORDINATE,
+                Constants.SUGGESTION_STRIP_COORDINATE, false);
+    }
+
+    public boolean isInSearchMode() { return mInSearchMode; }
+
+
+// =====================================================================
+
 
     /**
      * A connection back to the input method.
@@ -195,6 +295,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         mVoiceKey.setVisibility(currentSettingsValues.mShowsVoiceInputKey ? VISIBLE : GONE);
         mClipboardKey.setVisibility(currentSettingsValues.mShowsClipboardKey ? VISIBLE : (mVoiceKey.getVisibility() == GONE ? INVISIBLE : GONE));
         mOtherKey.setVisibility(currentSettingsValues.mIncognitoModeEnabled ? VISIBLE : INVISIBLE);
+        mSearchKey.setVisibility(VISIBLE);   // 항상 노출
     }
 
     public void setSuggestions(final SuggestedWords suggestedWords, final boolean isRtlLanguage) {
@@ -449,6 +550,22 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
             return;
         }
 
+        if (view == mSearchKey) {          // 🔍 또는 ❌
+            if (mInSearchMode) {
+                exitSearchMode();          // ❌ 눌림
+            } else {
+                enterSearchMode();         // 🔍 눌림
+            }
+            return;
+        }
+        if (view == mSendKey) {            // 전송 버튼
+            dispatchSearchQuery();
+            exitSearchMode();
+            return;
+        }
+
+
+
         final Object tag = view.getTag();
         // {@link Integer} tag is set at
         // {@link SuggestionStripLayoutHelper#setupWordViewsTextAndColor(SuggestedWords,int)} and
@@ -473,5 +590,12 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
     protected void onSizeChanged(final int w, final int h, final int oldw, final int oldh) {
         // Called by the framework when the size is known. Show the important notice if applicable.
         // This may be overriden by showing suggestions later, if applicable.
+    }
+
+    /**
+     * 검색 모드 시 타이핑한 문자열을 보여줄 EditText
+     */
+    public EditText getSearchInput() {
+        return mSearchInput;
     }
 }
