@@ -1475,41 +1475,83 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     @Override
     public void onCodeInput(final int codePoint, final int x, final int y,
                             final boolean isKeyRepeat) {
-        // ── 검색 모드에서는 HangulCombiner로 자모를 조합하여 EditText에 표시 ──
+        // ── 검색 모드에서는 HangulCombiner 로 자모를 조합하여 EditText 에 표시 ──
         if (mSuggestionStripView != null && mSuggestionStripView.isInSearchMode()) {
-            Log.d("LatinIME", "SEARCH MODE onCodeInput codePoint=" + codePoint);
-            // 1) 키 좌표 변환
-            final MainKeyboardView mainKeyboardView = mKeyboardSwitcher.getMainKeyboardView();
-            final int keyX = mainKeyboardView.getKeyX(x);
-            final int keyY = mainKeyboardView.getKeyY(y);
+            final MainKeyboardView kv   = mKeyboardSwitcher.getMainKeyboardView();
+            final int             keyX = kv.getKeyX(x);
+            final int             keyY = kv.getKeyY(y);
+            final EditText        et   = mSuggestionStripView.getSearchInput();
 
-            Event ev;
-            // 2) 백스페이스
-            if (codePoint == Constants.CODE_DELETE) {
-                ev = createSoftwareKeypressEvent(codePoint, keyX, keyY, isKeyRepeat);
-                mSearchCombiner.processEvent(null, ev);
-            }
-            // 3) 일반 자모 입력
-            else if (codePoint > 0) {
-                ev = createSoftwareKeypressEvent(codePoint, keyX, keyY, isKeyRepeat);
-                mSearchCombiner.processEvent(null, ev);
-            }
-            // 4) 그 외(이모티콘 전환·한/영 전환·Shift…)은 원래 로직으로
-            else {
-                Log.d("LatinIME", "NORMAL MODE onCodeInput codePoint=" + codePoint);
-                ev = createSoftwareKeypressEvent(
-                        getCodePointForKeyboard(codePoint), keyX, keyY, isKeyRepeat);
-                onEvent(ev);
+            /* ------------------------------------------------------------------ *
+             * 1)  공백(SPACE) :  지금까지 조합한 글자를 ‘확정+공백’ 으로 커밋하고
+             *     Combiner 상태를 깨끗이 초기화한다.
+             * ------------------------------------------------------------------ */
+            if (codePoint == Constants.CODE_SPACE) {
+                // 1-a. 현재까지 조합된 문자열 확보
+                final String composed = mSearchCombiner.getCombiningStateFeedback().toString();
+                // 1-b. Combiner 내부 상태 초기화
+                mSearchCombiner.reset();
+                // 1-c. EditText 에 확정 + 공백 추가
+                et.append(" ");
+                et.setSelection(et.length());
                 return;
             }
 
-            // 5) 지금까지 조합된 문자열을 EditText에 갱신
-            String composed = mSearchCombiner.getCombiningStateFeedback().toString();
-            EditText et = mSuggestionStripView.getSearchInput();
-            et.setText(composed);
-            et.setSelection(composed.length());
+            /* ------------------------------------------------------------------ *
+             * 2)  백스페이스
+             * ------------------------------------------------------------------ */
+            if (codePoint == Constants.CODE_DELETE) {
+                // 2-a. Combiner 에 아직 조합중인 글자가 있으면 Combiner 내부만 지운다
+                if (mSearchCombiner.getCombiningStateFeedback().length() > 0) {
+                    Event ev = createSoftwareKeypressEvent(codePoint, keyX, keyY, isKeyRepeat);
+                    mSearchCombiner.processEvent(null, ev);
+
+                    // 2-b. 조합되지 않은 ‘확정 텍스트’(마지막 공백 뒤) + 새 composing 을 재구성
+                    final String prefix   = et.getText().toString();
+                    final int    lastSp   = prefix.lastIndexOf(' ') + 1;   // 공백 없으면 0
+                    final String stable   = prefix.substring(0, lastSp);
+                    final String composed = mSearchCombiner.getCombiningStateFeedback().toString();
+
+                    et.setText(stable + composed);
+                    et.setSelection(et.length());
+                    return;
+                }
+
+                // 2-c. Combiner 가 비어 있으면 EditText 에서 직전 글자 삭제
+                final Editable txt = et.getText();
+                if (txt.length() > 0) {
+                    txt.delete(txt.length() - 1, txt.length());
+                }
+                return;
+            }
+
+            /* ------------------------------------------------------------------ *
+             * 3)  일반 한글 자모 및 기타 인쇄 가능 문자
+             * ------------------------------------------------------------------ */
+            if (codePoint > 0) {
+                Event ev = createSoftwareKeypressEvent(codePoint, keyX, keyY, isKeyRepeat);
+                mSearchCombiner.processEvent(null, ev);
+
+                // 3-a. ‘확정 텍스트’(마지막 공백 뒤) + 새 composing 으로 갱신
+                final String prefix   = et.getText().toString();
+                final int    lastSp   = prefix.lastIndexOf(' ') + 1;
+                final String stable   = prefix.substring(0, lastSp);
+                final String composed = mSearchCombiner.getCombiningStateFeedback().toString();
+
+                et.setText(stable + composed);
+                et.setSelection(et.length());
+                return;
+            }
+
+            /* ------------------------------------------------------------------ *
+             * 4)  나머지 (한/영 전환, 이모티콘 키, Shift 등) → 기존 IME 로직으로 전달
+             * ------------------------------------------------------------------ */
+            Event ev = createSoftwareKeypressEvent(
+                    getCodePointForKeyboard(codePoint), keyX, keyY, isKeyRepeat);
+            onEvent(ev);
             return;
         }
+
 
         // TODO: this processing does not belong inside LatinIME, the caller should be doing this.
         final MainKeyboardView mainKeyboardView = mKeyboardSwitcher.getMainKeyboardView();
