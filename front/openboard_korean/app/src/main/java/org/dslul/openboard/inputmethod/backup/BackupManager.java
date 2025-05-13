@@ -58,12 +58,6 @@ public class BackupManager {
         // 2. 사용자 인증 정보 가져오기
         String userId = "36648ad3-ed4b-4eb0-bcf1-1dc66fa5d258";
         String accessToken = "";
-//        String userId = TokenStore.getUserId(context);
-//        String accessToken = TokenStore.getAccessToken(context);
-//        if (userId.isEmpty() || accessToken.isEmpty()) {
-//            Log.w(TAG, "⛔ 사용자 인증 정보 없음. 백업 중단");
-//            return;
-//        }
 
         // 3. 이미지 불러오기
         List<GalleryImage> allImages = MediaStoreImageFetcher.getAllImages(context);

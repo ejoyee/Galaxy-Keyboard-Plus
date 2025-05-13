@@ -121,23 +121,6 @@ public class AuthManager {
             return;
         }
 
-        // 계정 로그인에서도 현재 액티비티 사용
-//        Context loginContext = (currentActivity != null) ? currentActivity : context;
-
-//        UserApiClient.getInstance().loginWithKakaoAccount(loginContext, new Function2<OAuthToken, Throwable, Unit>() {
-//            @Override
-//            public Unit invoke(OAuthToken token, Throwable error) {
-//                if (error != null) {
-//                    Log.e(TAG, "카카오 계정 로그인 실패", error);
-//                    callback.onLoginFailure("카카오 계정 로그인 실패: " + error.getMessage());
-//                } else if (token != null) {
-//                    Log.i(TAG, "카카오 계정 로그인 성공: " + token.getAccessToken());
-//                    // 서버에 토큰 전달 및 인증
-//                    authenticateWithServer(token.getAccessToken(), callback);
-//                }
-//                return Unit.INSTANCE;
-//            }
-//        });
         UserApiClient.getInstance().loginWithKakaoAccount(
                 /* 반드시 Activity */ currentActivity,
                 (OAuthToken token, Throwable error) -> {
