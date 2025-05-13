@@ -488,7 +488,7 @@ def generate_answer_by_intent(
         # 정보 요청 - 상세한 답변
         if info_results or photo_results:
             info_text = "\n".join(
-                [f"- {item['text'][:100]}" for item in info_results[:3]]
+                [f"- {item['text'][:300]}" for item in info_results[:3]]
             )
             photo_text = ""
             if photo_results:
