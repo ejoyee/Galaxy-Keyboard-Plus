@@ -503,7 +503,7 @@ def generate_answer_by_intent(
 {info_text}
 {photo_text}
 
-위 정보를 바탕으로 질문에 답변해주세요. 간결하고 명확하게.
+위 정보를 바탕으로 질문에 정확하게 답변해주세요.
 """
 
             response = openai.chat.completions.create(
