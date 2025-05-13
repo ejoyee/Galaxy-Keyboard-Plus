@@ -473,9 +473,24 @@ def enhance_query_with_personal_context_v2(user_id: str, query: str) -> str:
 
 
 def generate_answer_by_intent(
-    query: str, info_results: list[dict], photo_results: list[dict], query_intent: str
+    user_id: str,
+    query: str,
+    info_results: list[dict],
+    photo_results: list[dict],
+    query_intent: str,
 ) -> dict:
     """질문 의도에 따라 LLM을 통해 자연스러운 응답 생성"""
+
+    # 1. 맥락 필요 여부 판단
+    history_text = ""
+    if needs_context(query):
+        history = search_chat_history(user_id, query, top_k=5)
+        if history:
+            history_text = (
+                "이전 대화 기록:\n"
+                + "\n".join([f"{h['role']}: {h['text']}" for h in history])
+                + "\n\n"
+            )
 
     # 결과 통합
     combined_results = (photo_results or []) + (info_results or [])
@@ -498,6 +513,7 @@ def generate_answer_by_intent(
         prompt = f"""
 당신은 사용자 질문에 대해 친절하고 정확하게 답변하는 어시스턴트입니다.
 
+{history_text}
 사용자 질문:
 "{query}"
 

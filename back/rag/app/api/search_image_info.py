@@ -94,6 +94,7 @@ async def search(
         result = await loop.run_in_executor(
             executor,
             generate_answer_by_intent,
+            user_id,
             query,
             info_results,
             photo_results,
