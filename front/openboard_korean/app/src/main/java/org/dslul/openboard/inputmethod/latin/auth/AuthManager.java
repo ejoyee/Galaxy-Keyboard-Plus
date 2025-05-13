@@ -42,7 +42,7 @@ public class AuthManager {
     private AuthManager(Context context) {
         this.context = context.getApplicationContext();
         // ApiClient 사용하여 ApiService 초기화
-        this.apiService = ApiClient.getApiService(context);
+        this.apiService = ApiClient.getApiService();
         this.secureStorage = SecureStorage.getInstance(context);
     }
 

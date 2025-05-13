@@ -18,6 +18,7 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import org.dslul.openboard.inputmethod.latin.R;
+import org.dslul.openboard.inputmethod.latin.network.ApiClient;
 import org.dslul.openboard.inputmethod.latin.network.ChatApiService;
 import org.dslul.openboard.inputmethod.latin.network.MessageRequest;
 import org.dslul.openboard.inputmethod.latin.network.MessageResponse;
@@ -76,23 +77,24 @@ public class SearchPageFragment extends Fragment {
         rvMessages.setLayoutManager(new LinearLayoutManager(getContext()));
         rvMessages.setAdapter(adapter);
 
-        // Retrofit + OkHttp 로깅 설정
-        HttpLoggingInterceptor logging = new HttpLoggingInterceptor();
-        logging.setLevel(HttpLoggingInterceptor.Level.BODY);
-        OkHttpClient client = new OkHttpClient.Builder()
-                .addInterceptor(logging)
-                .connectTimeout(120, TimeUnit.SECONDS)   // 연결 타임아웃
-                .readTimeout(120, TimeUnit.SECONDS)      // 읽기(응답 대기) 타임아웃
-                .writeTimeout(120, TimeUnit.SECONDS)     // 쓰기(요청 바디 전송) 타임아웃
-                .build();
+//        // Retrofit + OkHttp 로깅 설정
+//        HttpLoggingInterceptor logging = new HttpLoggingInterceptor();
+//        logging.setLevel(HttpLoggingInterceptor.Level.BODY);
+//        OkHttpClient client = new OkHttpClient.Builder()
+//                .addInterceptor(logging)
+//                .connectTimeout(120, TimeUnit.SECONDS)   // 연결 타임아웃
+//                .readTimeout(120, TimeUnit.SECONDS)      // 읽기(응답 대기) 타임아웃
+//                .writeTimeout(120, TimeUnit.SECONDS)     // 쓰기(요청 바디 전송) 타임아웃
+//                .build();
+//
+//        Retrofit retrofit = new Retrofit.Builder()
+//                .baseUrl("http://k12e201.p.ssafy.io:8090/") // 실제 베이스 URL 로 변경
+//                .client(client)
+//                .addConverterFactory(GsonConverterFactory.create())
+//                .build();
 
-        Retrofit retrofit = new Retrofit.Builder()
-                .baseUrl("http://k12e201.p.ssafy.io:8090/") // 실제 베이스 URL 로 변경
-                .client(client)
-                .addConverterFactory(GsonConverterFactory.create())
-                .build();
-
-        chatApiService = retrofit.create(ChatApiService.class);
+//        chatApiService = retrofit.create(ChatApiService.class);
+        chatApiService = ApiClient.getChatApiService();
 
         btnSend.setOnClickListener(v -> {
             String text = etMessage.getText().toString().trim();
