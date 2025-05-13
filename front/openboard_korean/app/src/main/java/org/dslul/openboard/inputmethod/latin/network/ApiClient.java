@@ -5,7 +5,7 @@ import android.content.Context;
 import android.util.Log;
 
 import org.dslul.openboard.inputmethod.latin.BuildConfig;
-import org.dslul.openboard.inputmethod.latin.data.SecureStorage;
+import org.dslul.openboard.inputmethod.latin.auth.AuthManager;
 import java.util.concurrent.TimeUnit;
 
 import okhttp3.Interceptor;
@@ -39,12 +39,13 @@ public final class ApiClient {
 
         // ── ① 공통 Interceptor : 토큰 헤더 삽입 ─────────────
         Interceptor authInterceptor = chain -> {
-            SecureStorage storage = SecureStorage.getInstance(ctx);
-            String access = storage.getAccessToken();    // 없으면 ""
+            String access = AuthManager.getInstance(ctx).getAccessToken();
             Log.d("ApiClient", "  ↳ Intercept: Authorization="
-                    + (access == null ? "null" : access.substring(0, Math.min(10, access.length())) + "..."));
-            Request req  = chain.request().newBuilder()
-                    .header("Authorization", access == null ? "" : "Bearer " + access)
+                    + (access == null ? "null" : access));
+
+            Request req = chain.request().newBuilder()
+                    .header("Authorization",
+                            access == null ? "" : "Bearer " + access)
                     .build();
             return chain.proceed(req);
         };
