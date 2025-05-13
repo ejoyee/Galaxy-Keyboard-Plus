@@ -287,7 +287,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                 "query   = " + query);
 
         // ① Retrofit 호출
-        ApiClient.service()
+        ApiClient.getChatApiService()
                 .search(DEFAULT_USER_ID, query)
                 .enqueue(new retrofit2.Callback<MessageResponse>() {
                     @Override

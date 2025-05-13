@@ -55,4 +55,30 @@ public class ApiClient {
         }
         return sApiService;
     }
+
+    public static ChatApiService getChatApiService() {
+        if (sRetrofit == null) {
+            // 전체 패킷을 logcat에 찍어 주는 interceptor
+            HttpLoggingInterceptor log = new HttpLoggingInterceptor();
+            log.setLevel(HttpLoggingInterceptor.Level.BODY);
+
+            OkHttpClient client = new OkHttpClient.Builder()
+                    .addInterceptor(log)
+                    // ▼ 타임아웃 설정 -------------------------------------------------
+                    .connectTimeout(TIMEOUT, TimeUnit.SECONDS)   // 연결
+                    .readTimeout   (TIMEOUT, TimeUnit.SECONDS)   // 서버 응답(Body) 대기
+                    .writeTimeout  (TIMEOUT, TimeUnit.SECONDS)   // 요청 Body 전송
+                    // ---------------------------------------------------------------
+                    .build();
+
+
+            sRetrofit = new Retrofit.Builder()
+                    .baseUrl(BASE_URL)
+                    .client(client)
+                    .addConverterFactory(GsonConverterFactory.create())
+                    .build();
+        }
+        return sRetrofit.create(ChatApiService.class);
+    }
+
 }
