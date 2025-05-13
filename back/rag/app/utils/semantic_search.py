@@ -475,47 +475,48 @@ def enhance_query_with_personal_context_v2(user_id: str, query: str) -> str:
 def generate_answer_by_intent(
     query: str, info_results: list[dict], photo_results: list[dict], query_intent: str
 ) -> dict:
-    """질문 의도에 따른 답변 생성"""
+    """질문 의도에 따라 LLM을 통해 자연스러운 응답 생성"""
 
-    if query_intent == "photo_search":
-        # 사진 찾기 요청 - 간단한 응답
-        if photo_results:
-            photo_list = ", ".join([f"{p['id']}" for p in photo_results[:5]])
-            answer = f"요청하신 '{query}'에 대한 사진입니다: {photo_list}"
-        else:
-            answer = f"'{query}'에 해당하는 사진을 찾지 못했습니다."
+    # 결과 통합
+    combined_results = (photo_results or []) + (info_results or [])
+    combined_text = []
+
+    for item in combined_results:
+        text = item.get("text", "").strip()
+        if text:
+            combined_text.append(f"- {text[:300]}")  # 너무 길면 자름
+
+    if not combined_text:
+        answer = f"'{query}'에 대한 관련 정보를 찾을 수 없었습니다."
     else:
-        # 정보 요청 - 상세한 답변
-        if info_results or photo_results:
-            info_text = "\n".join(
-                [f"- {item['text'][:300]}" for item in info_results[:3]]
-            )
-            photo_text = ""
-            if photo_results:
-                photo_text = (
-                    f"\n\n관련 사진: {', '.join([p['id'] for p in photo_results[:3]])}"
-                )
+        prompt_intro = (
+            "다음은 질문과 관련된 사진 또는 정보 설명입니다:\n"
+            if photo_results
+            else "다음은 질문과 관련된 정보 설명입니다:\n"
+        )
 
-            prompt = f"""
-질문: {query}
+        prompt = f"""
+당신은 사용자 질문에 대해 친절하고 정확하게 답변하는 어시스턴트입니다.
 
-정보:
-{info_text}
-{photo_text}
+사용자 질문:
+"{query}"
 
-위 정보를 바탕으로 질문에 정확하게 답변해주세요.
-"""
+{prompt_intro}
+{chr(10).join(combined_text[:7])}
 
-            response = openai.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=200,
-                temperature=0.5,
-            )
+이 내용을 바탕으로 질문에 대해 자연스럽고 정확하게 답변해 주세요.
+사진이 있는 경우, 어떤 장면이 담겨 있는지 설명해 주세요.
+중복되거나 불필요한 내용은 생략하고, 핵심만 요약해 주세요.
+        """.strip()
 
-            answer = response.choices[0].message.content.strip()
-        else:
-            answer = f"'{query}'에 대한 정보를 찾지 못했습니다."
+        response = openai.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=300,
+            temperature=0.5,
+        )
+
+        answer = response.choices[0].message.content.strip()
 
     return {
         "answer": answer,
