@@ -1,5 +1,7 @@
 package org.dslul.openboard.inputmethod.latin.search;
 
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.ContentUris;
 import android.content.Context;
 import android.graphics.Bitmap;
@@ -16,6 +18,7 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import com.bumptech.glide.Glide;
 
@@ -99,6 +102,21 @@ public class SearchResultView extends LinearLayout implements MoreKeysPanel {
                 iv.setLayoutParams(lp);
                 iv.setScaleType(ImageView.ScaleType.CENTER_CROP);
                 iv.setImageBitmap(thumb);
+
+                iv.setOnClickListener(v -> {
+                    // 클립보드에 이미지 URI 복사
+                    ClipboardManager cm = (ClipboardManager)
+                            getContext().getSystemService(Context.CLIPBOARD_SERVICE);
+                    ClipData clip = ClipData.newUri(
+                            getContext().getContentResolver(),
+                            "Image",
+                            u);
+                    cm.setPrimaryClip(clip);
+                    Toast.makeText(getContext(),
+                            "이미지가 클립보드에 복사되었습니다",
+                            Toast.LENGTH_SHORT).show();
+                });
+
                 mPhotoStrip.addView(iv);
             }
         } else {
