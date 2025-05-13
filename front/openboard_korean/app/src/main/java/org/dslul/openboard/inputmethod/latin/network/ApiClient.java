@@ -2,6 +2,7 @@
 package org.dslul.openboard.inputmethod.latin.network;
 
 import android.content.Context;
+import android.util.Log;
 
 import org.dslul.openboard.inputmethod.latin.BuildConfig;
 import org.dslul.openboard.inputmethod.latin.data.SecureStorage;
@@ -10,7 +11,6 @@ import java.util.concurrent.TimeUnit;
 import okhttp3.Interceptor;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
-import okhttp3.Response;
 import okhttp3.logging.HttpLoggingInterceptor;
 import retrofit2.Retrofit;
 import retrofit2.converter.gson.GsonConverterFactory;
@@ -31,12 +31,18 @@ public final class ApiClient {
 
     /** 최초 한 번 앱 전체를 초기화 */
     public static void init(Context ctx) {
-        if (retrofit != null) return;                    // 이미 초기화O
+        if (retrofit != null) {
+            Log.d("ApiClient", "→ 이미 초기화 완료, skip");
+            return;                    // 이미 초기화O
+        }
+        Log.d("ApiClient", "★ Retrofit 초기화 시작 (ctx=" + ctx + ")");
 
         // ── ① 공통 Interceptor : 토큰 헤더 삽입 ─────────────
         Interceptor authInterceptor = chain -> {
             SecureStorage storage = SecureStorage.getInstance(ctx);
             String access = storage.getAccessToken();    // 없으면 ""
+            Log.d("ApiClient", "  ↳ Intercept: Authorization="
+                    + (access == null ? "null" : access.substring(0, Math.min(10, access.length())) + "..."));
             Request req  = chain.request().newBuilder()
                     .header("Authorization", access == null ? "" : "Bearer " + access)
                     .build();
@@ -66,6 +72,8 @@ public final class ApiClient {
         // ── ⑤ 서비스 캐싱 ────────────────────────────────
         chatApiService = retrofit.create(ChatApiService.class);
         apiService     = retrofit.create(ApiService.class);
+
+        Log.d("ApiClient", "★ Retrofit 초기화 완료");
     }
 
     /** 어디서든 호출 가능한 getter */
