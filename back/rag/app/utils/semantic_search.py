@@ -524,3 +524,18 @@ def generate_answer_by_intent(
         "info_results": info_results[:5],
         "query_intent": query_intent,
     }
+
+
+def needs_context(query: str) -> bool:
+    response = openai.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {
+                "role": "system",
+                "content": "이 질문이 과거 대화 내용이 없으면 이해하기 어려운지 판단해줘. 'yes' 또는 'no'로만 답해.",
+            },
+            {"role": "user", "content": query},
+        ],
+        max_tokens=1,
+    )
+    return "yes" in response.choices[0].message.content.lower()
