@@ -263,5 +263,9 @@ public class SearchResultView extends LinearLayout implements MoreKeysPanel {
         mScroll.setVisibility(VISIBLE);     // 본문 표시
     }
 
+    public String getAnswerText() {
+        return mAnswer.getText().toString();
+    }
+
 
 }
