@@ -27,14 +27,24 @@ async def get_server_status(request: Request) -> Dict[str, Any]:
         is_running = server is not None and server.returncode is None
         client_connected = name in mcp_manager.clients
         
+        # 서버가 stdio 모드로 실행 중인 경우 확인 (로그 기반)
+        is_stdio_mode = False
+        # 여기서 로그를 분석하거나 다른 방법으로 stdio 모드 확인 가능
+        
+        status = "running"
+        if not is_running:
+            status = "stopped"
+        elif is_stdio_mode:
+            status = "running (stdio mode)"  # 추가 정보 제공
+        
         server_status[name] = {
             "name": name,
-            "status": "running" if is_running else "stopped",
+            "status": status,
             "port": mcp_manager.web_search_port if name == "web_search" else None,
             "client_connected": client_connected
         }
         
-        logger.info(f"Server {name} status: {'running' if is_running else 'stopped'}, client connected: {client_connected}")
+        logger.info(f"Server {name} status: {status}, client connected: {client_connected}")
     
     # 현재 서버 목록이 비어있다면 web_search 서버를 강제로 등록
     if len(server_status) == 0:
