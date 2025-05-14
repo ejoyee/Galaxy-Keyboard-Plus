@@ -16,6 +16,9 @@ import logging
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
+# ThreadPoolExecutor 워커 수 증가
+executor = ThreadPoolExecutor(max_workers=20)  # 기존 5에서 20으로 증가
+
 
 @router.post("/search/")
 async def search(
@@ -25,27 +28,22 @@ async def search(
     top_k_info: Optional[int] = Form(7),
 ):
     timestamp = int(time.time())
-
     loop = asyncio.get_event_loop()
-    executor = ThreadPoolExecutor(max_workers=5)
 
     try:
-        # 1. 사용자 쿼리 저장 (비차단)
+        # 기존 코드 그대로 유지
         save_task = loop.run_in_executor(
             executor, save_chat_vector_to_pinecone, user_id, "user", query, timestamp
         )
 
-        # 2. 쿼리 확장 및 맥락 추가 → List[str] 리턴
         expanded_queries = await loop.run_in_executor(
             executor, enhance_query_with_personal_context_v2, user_id, query
         )
 
         logger.info(f"🔍 의미 기반 확장 쿼리 (Top 3): {expanded_queries[:3]}")
 
-        # 3. 질문 의도 파악
         query_intent = determine_query_intent(query)
 
-        # 4. 벡터 검색 (확장된 쿼리 사용)
         info_search_task = loop.run_in_executor(
             executor,
             search_similar_items_enhanced,
@@ -68,12 +66,11 @@ async def search(
             info_search_task, photo_search_task
         )
 
-        # 5. LLM 필터링 (원본 질문 사용)
         info_filter_task = loop.run_in_executor(
             executor,
             filter_relevant_items_with_context,
             query,
-            "",  # enhanced_query 대신 생략 또는 빈 문자열
+            "",
             raw_info_results,
             "정보",
         )
@@ -82,7 +79,7 @@ async def search(
             executor,
             filter_relevant_items_with_context,
             query,
-            "",  # enhanced_query 대신 생략 또는 빈 문자열
+            "",
             raw_photo_results,
             "사진",
         )
@@ -91,7 +88,6 @@ async def search(
             info_filter_task, photo_filter_task
         )
 
-        # 6. 의도에 따른 답변 생성
         result = await loop.run_in_executor(
             executor,
             generate_answer_by_intent,
@@ -102,7 +98,6 @@ async def search(
             query_intent,
         )
 
-        # 7. 결과 저장 (비차단)
         serialized_result = json.dumps(result, ensure_ascii=False)
         await loop.run_in_executor(
             executor,
@@ -116,4 +111,11 @@ async def search(
         return result
 
     finally:
-        executor.shutdown(wait=False)
+        # executor.shutdown(wait=False) 제거 - 재사용해야 함
+        pass
+
+
+# 애플리케이션 종료 시에만 정리
+@router.on_event("shutdown")
+async def shutdown_event():
+    executor.shutdown(wait=True)
