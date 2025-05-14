@@ -1,4 +1,3 @@
-// ES 모듈 가져오기
 import express from "express";
 import { spawn } from "child_process";
 import bodyParser from "body-parser";
@@ -14,6 +13,13 @@ const childProcess = spawn("node", ["build/index.js"]);
 // 로그 처리
 childProcess.stdout.on("data", (data) => {
   console.log(`MCP Output: ${data}`);
+  // MCP 서버가 작업 시작할 때나 완료할 때 로그 추가
+  if (data.toString().includes("Task started")) {
+    console.log("MCP 작업 시작됨");
+  }
+  if (data.toString().includes("Task completed")) {
+    console.log("MCP 작업 완료됨");
+  }
 });
 
 childProcess.stderr.on("data", (data) => {
@@ -42,7 +48,6 @@ app.post("/", async (req, res) => {
 
     // 메서드 이름 변환 로직 추가
     if (request.method === "call_tool") {
-      // SDK 내부에서 사용하는 메서드 이름으로 변환
       mcpRequest = {
         jsonrpc: "2.0",
         id: request.id,
@@ -50,7 +55,6 @@ app.post("/", async (req, res) => {
         params: request.params, // arguments 객체를 직접 전달
       };
     } else if (request.method === "listTools") {
-      // listTools를 ListToolsRequestSchema로 변환
       mcpRequest = {
         jsonrpc: "2.0",
         id: request.id,
@@ -58,7 +62,6 @@ app.post("/", async (req, res) => {
         params: request.params || {},
       };
     } else if (request.method === "search") {
-      // 'search' 메서드를 SDK 내부 형식으로 변환
       mcpRequest = {
         jsonrpc: "2.0",
         id: request.id || Math.random().toString(36).substring(2, 9),
@@ -66,7 +69,6 @@ app.post("/", async (req, res) => {
         params: request.params,
       };
     } else {
-      // 다른 메서드는 그대로 전달
       mcpRequest = request;
     }
 
@@ -78,6 +80,7 @@ app.post("/", async (req, res) => {
     // 응답 대기
     const responsePromise = new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
+        console.error("MCP 요청 시간 초과");
         reject(new Error("Request timed out"));
       }, 30000);
 
@@ -96,7 +99,6 @@ app.post("/", async (req, res) => {
             mcpResponse.result.content[0].text
           ) {
             try {
-              // 텍스트에서 JSON 결과 추출
               const results = JSON.parse(mcpResponse.result.content[0].text);
               apiResponse = {
                 jsonrpc: "2.0",
@@ -104,7 +106,6 @@ app.post("/", async (req, res) => {
                 result: results,
               };
             } catch (e) {
-              // JSON 파싱 실패 시 원래 응답 유지
               console.warn("Failed to parse content as JSON:", e);
             }
           }
@@ -140,11 +141,10 @@ app.get("/health", (req, res) => {
 // 도구 목록 확인용 엔드포인트
 app.get("/tools", async (req, res) => {
   try {
-    // 도구 목록 요청 생성 - 메서드 이름 변환
     const listToolsRequest = {
       jsonrpc: "2.0",
       id: "tools-request",
-      method: "ListToolsRequestSchema", // 올바른 내부 메서드 이름으로 변경
+      method: "ListToolsRequestSchema", // 내부 메서드 이름 변경
       params: {},
     };
 
