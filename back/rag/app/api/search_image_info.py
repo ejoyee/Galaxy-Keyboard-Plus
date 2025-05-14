@@ -21,6 +21,26 @@ logger = logging.getLogger(__name__)
 executor = ThreadPoolExecutor(max_workers=20)  # 기존 5에서 20으로 증가
 
 
+# 비동기 저장 함수들
+async def _save_query_async(user_id: str, role: str, content: str, timestamp: int):
+    """Async wrapper for saving query"""
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(
+        executor, save_chat_vector_to_pinecone, user_id, role, content, timestamp
+    )
+
+async def _save_result_async(user_id: str, role: str, content: str, timestamp: int):
+    """Async wrapper for saving result"""
+    try:
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(
+            executor, save_chat_vector_to_pinecone, user_id, role, content, timestamp
+        )
+        logger.info(f"✅ 결과 저장 완료: {user_id}")
+    except Exception as e:
+        logger.error(f"❌ 결과 저장 실패: {user_id} - {str(e)}")
+
+
 @router.post("/search/")
 async def search(
     user_id: str = Form(...),
@@ -37,12 +57,10 @@ async def search(
     timings = {}
 
     try:
-        # 1. 사용자 쿼리 저장
-        save_start = time.time()
-        save_task = loop.run_in_executor(
-            executor, save_chat_vector_to_pinecone, user_id, "user", query, timestamp
+        # 1. 사용자 쿼리 저장 (완전 비동기)
+        asyncio.create_task(
+            _save_query_async(user_id, "user", query, timestamp)
         )
-        # 비동기 작업이므로 나중에 시간 측정
 
         # 2. 쿼리 확장
         expand_start = time.time()
@@ -125,22 +143,17 @@ async def search(
         timings["answer_generation"] = time.time() - answer_start
         logger.info(f"⏱️ 답변 생성: {timings['answer_generation']:.3f}초")
 
-        # 7. 결과 저장
-        save_result_start = time.time()
-        serialized_result = json.dumps(result, ensure_ascii=False)
-        await loop.run_in_executor(
-            executor,
-            save_chat_vector_to_pinecone,
-            user_id,
-            "assistant",
-            serialized_result,
-            int(time.time()),
-        )
-        timings["result_save"] = time.time() - save_result_start
-        logger.info(f"⏱️ 결과 저장: {timings['result_save']:.3f}초")
-
-        # 전체 시간
+        # 전체 시간 (사용자 응답 시점)
         timings["total"] = time.time() - total_start
+        
+        # 결과에 타이밍 정보 포함 (디버깅용)
+        result["_timings"] = timings
+        
+        # 7. 결과 저장 (응답 후 비동기로 처리)
+        serialized_result = json.dumps(result, ensure_ascii=False)
+        asyncio.create_task(
+            _save_result_async(user_id, "assistant", serialized_result, int(time.time()))
+        )
 
         # 요약 로그
         logger.info(
@@ -151,14 +164,11 @@ async def search(
 - 벡터 검색: {timings['vector_search']:.3f}초
 - 결과 필터링: {timings['filtering']:.3f}초
 - 답변 생성: {timings['answer_generation']:.3f}초
-- 결과 저장: {timings['result_save']:.3f}초
-- 전체 시간: {timings['total']:.3f}초
+- 전체 시간: {timings['total']:.3f}초 (응답 시점)
         """
         )
 
-        # 결과에 타이밍 정보 포함 (디버깅용)
-        result["_timings"] = timings
-
+        # 응답 즉시 반환
         return result
 
     except Exception as e:
