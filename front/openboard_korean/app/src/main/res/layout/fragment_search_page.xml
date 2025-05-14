@@ -31,8 +31,10 @@
         app:lottie_fileName="loadingSpinner.json"
         app:lottie_autoPlay="false"
         app:lottie_loop="true"
+        app:lottie_speed="2.0"
 
-        android:scaleType="fitXY"
+        android:adjustViewBounds="true"
+        android:scaleType="fitCenter"
         />
 
     <!-- 3. 로딩/에러 텍스트: 라이트 테마의 Secondary 텍스트 색 -->
