@@ -16,7 +16,7 @@ logging.basicConfig(
 logging.info("✅ FastAPI 애플리케이션 시작 전 로깅 설정 완료")
 
 # API 라우터 등록
-app.include_router(search_image_info_router, prefix="/rag")
+app.include_router(search_image_info_router, prefix="/search")
 
 
 if __name__ == "__main__":

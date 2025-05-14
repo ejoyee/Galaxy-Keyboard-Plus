@@ -42,7 +42,7 @@ async def _save_result_async(user_id: str, role: str, content: str, timestamp: i
         logger.error(f"❌ 결과 저장 실패: {user_id} - {str(e)}")
 
 
-@router.post("/search/")
+@router.post("/answer/")
 async def search(
     user_id: str = Form(...),
     query: str = Form(...),
