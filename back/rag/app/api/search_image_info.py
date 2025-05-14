@@ -79,15 +79,37 @@ async def search(
             top_k_photo,
         )
 
-        info_results, photo_results = await asyncio.gather(
+        raw_info_results, raw_photo_results = await asyncio.gather(
             info_search_task, photo_search_task
         )
         timings["vector_search"] = time.time() - vector_search_start
         logger.info(f"⏱️ 벡터 검색 (병렬): {timings['vector_search']:.3f}초")
 
         # 5. 결과 필터링 (병렬)
-        # info_results = info_results[:3]
-        # photo_results = photo_results[:3]
+        filter_start = time.time()
+        info_filter_task = loop.run_in_executor(
+            executor,
+            filter_relevant_items_with_context,
+            query,
+            "",
+            raw_info_results,
+            "정보",
+        )
+
+        photo_filter_task = loop.run_in_executor(
+            executor,
+            filter_relevant_items_with_context,
+            query,
+            "",
+            raw_photo_results,
+            "사진",
+        )
+
+        info_results, photo_results = await asyncio.gather(
+            info_filter_task, photo_filter_task
+        )
+        timings["filtering"] = time.time() - filter_start
+        logger.info(f"⏱️ 결과 필터링 (병렬): {timings['filtering']:.3f}초")
 
         # 6. 답변 생성
         answer_start = time.time()
@@ -127,6 +149,7 @@ async def search(
 - 쿼리 확장: {timings['query_expansion']:.3f}초
 - 의도 파악: {timings['intent_detection']:.3f}초
 - 벡터 검색: {timings['vector_search']:.3f}초
+- 결과 필터링: {timings['filtering']:.3f}초
 - 답변 생성: {timings['answer_generation']:.3f}초
 - 결과 저장: {timings['result_save']:.3f}초
 - 전체 시간: {timings['total']:.3f}초
