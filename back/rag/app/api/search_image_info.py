@@ -4,6 +4,7 @@ from app.utils.semantic_search import (
     enhance_query_with_personal_context_v2,
     determine_query_intent,
     search_similar_items_enhanced,
+    search_similar_items_enhanced_optimized,
     filter_relevant_items_with_context,
     generate_answer_by_intent,
 )
@@ -62,7 +63,7 @@ async def search(
         vector_search_start = time.time()
         info_search_task = loop.run_in_executor(
             executor,
-            search_similar_items_enhanced,
+            search_similar_items_enhanced_optimized,
             user_id,
             expanded_queries,
             "info",
@@ -71,7 +72,7 @@ async def search(
 
         photo_search_task = loop.run_in_executor(
             executor,
-            search_similar_items_enhanced,
+            search_similar_items_enhanced_optimized,
             user_id,
             expanded_queries,
             "photo",
