@@ -46,7 +46,7 @@ app.post("/", async (req, res) => {
       mcpRequest = {
         jsonrpc: "2.0",
         id: request.id,
-        method: "call_tool", // 도구 이름을 직접 메서드로 사용
+        method: "tools/call", // 도구 이름을 직접 메서드로 사용
         params: request.params, // arguments 객체를 직접 전달
       };
     } else if (request.method === "listTools") {
