@@ -35,6 +35,7 @@ pipeline {
           file(  credentialsId: 'moca-457801-bfa12690864b.json', variable: 'GCP_KEY_FILE'),
           string(credentialsId: 'CLAUDE_API_KEY',           variable: 'CLAUDE_API_KEY'),
           string(credentialsId: 'OPENAI_API_KEY',           variable: 'OPENAI'),
+          string(credentialsId: 'OPENAI_API_KEY_2',           variable: 'OPENAI2'),
           string(credentialsId: 'FIREBASE_CREDENTIALS_JSON_BASE64', variable: 'FIREBASE_CREDENTIALS_JSON_BASE64'),
           string(credentialsId: 'JWT_SECRET_KEY',           variable: 'JWT_SECRET_KEY'),
           string(credentialsId: 'KAKAO_CLIENT_ID',          variable: 'KAKAO_CLIENT_ID'),
@@ -46,6 +47,8 @@ pipeline {
             chmod 644 gcp-key.json
             mkdir -p back/rag
             cp gcp-key.json back/rag/
+            mkdir -p back/search
+            cp gcp-key.json back/search/
           '''
           writeFile file: '.env.prod', text: """
 POSTGRES_AUTH_USER=${AUTH_USER}
@@ -57,6 +60,7 @@ POSTGRES_SCHED_PASSWORD=${SCHED_PW}
 POSTGRES_SCHED_DB_NAME=${SCHED_DB}
 
 OPENAI_API_KEY=${OPENAI}
+OPENAI_API_KEY_2=${OPENAI2}
 PINECONE_API_KEY=${PINECONE_API_KEY}
 PINECONE_INDEX_NAME=${PINECONE_INDEX_NAME}
 CLAUDE_API_KEY=${CLAUDE_API_KEY}
@@ -119,7 +123,7 @@ ENV=prod
 
   post {
     always {
-      sh 'rm -f .env.prod gcp-key.json back/rag/gcp-key.json'
+      sh 'rm -f .env.prod gcp-key.json back/rag/gcp-key.json back/search/gcp-key.json'
     }
     success {
       echo '빌드 및 배포 성공 🎉'

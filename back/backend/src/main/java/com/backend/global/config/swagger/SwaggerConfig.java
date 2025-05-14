@@ -1,3 +1,4 @@
+
 package com.backend.global.config.swagger;
 
 import io.swagger.v3.oas.models.OpenAPI;
@@ -49,6 +50,15 @@ public class SwaggerConfig {
         return GroupedOpenApi.builder()
                 .group("Alarm")
                 .pathsToMatch("/api/v1/alarms/**")
+                .build();
+    }
+
+    //채팅 관련 API 그룹
+    @Bean
+    public GroupedOpenApi chatGroup() {
+        return GroupedOpenApi.builder()
+                .group("Chat") // swagger-ui에서 탭 이름
+                .pathsToMatch("/api/v1/chats/**")
                 .build();
     }
 }

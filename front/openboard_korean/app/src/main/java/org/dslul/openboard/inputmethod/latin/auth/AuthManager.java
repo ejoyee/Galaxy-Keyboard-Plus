@@ -15,7 +15,6 @@ import org.dslul.openboard.inputmethod.latin.network.KakaoLoginRequest;
 
 import kotlin.Unit;
 import kotlin.jvm.functions.Function1;
-import kotlin.jvm.functions.Function2;
 import retrofit2.Call;
 import retrofit2.Callback;
 import retrofit2.Response;
@@ -34,16 +33,32 @@ public class AuthManager {
     private final ApiService apiService;
     private final SecureStorage secureStorage;
 
+    // **메모리 캐시용**
+    private String accessToken;
+    private String refreshToken;
+    private String userId;
+
     private Activity currentActivity; // 현재 액티비티 저장
 
     /**
      * 생성자 - 의존성 초기화
      */
     private AuthManager(Context context) {
+        if (context instanceof Activity) Log.d(TAG, "생성자 ctx=Activity");
+
         this.context = context.getApplicationContext();
+        this.secureStorage = SecureStorage.getInstance(this.context);
+
+        // 초기값을 storage에서 한 번만 로드
+        this.accessToken  = secureStorage.getAccessToken();
+        this.refreshToken = secureStorage.getRefreshToken();
+        this.userId       = secureStorage.getUserId();
+
+        ApiClient.init(this.context);
+
         // ApiClient 사용하여 ApiService 초기화
-        this.apiService = ApiClient.getApiService(context);
-        this.secureStorage = SecureStorage.getInstance(context);
+        this.apiService = ApiClient.getApiService();
+        Log.d(TAG, "AuthManager 준비 완료");
     }
 
     /**
@@ -51,7 +66,7 @@ public class AuthManager {
      */
     public static synchronized AuthManager getInstance(Context context) {
         if (instance == null) {
-            instance = new AuthManager(context.getApplicationContext());
+            instance = new AuthManager(context);
         }
 
         // 만약 context가 Activity라면 현재 액티비티 업데이트
@@ -71,38 +86,35 @@ public class AuthManager {
      * 카카오 로그인 처리
      */
     public void loginWithKakao(final AuthCallback callback) {
+        Log.d(TAG, "loginWithKakao() 호출 (activity=" + currentActivity + ")");
 
-        // 컨텍스트 확인 및 처리
-        Context loginContext = (currentActivity != null) ? currentActivity : context;
+        if (currentActivity == null) {                 // Activity 필수
+            callback.onLoginFailure("Activity context가 없어 카카오톡 로그인을 실행할 수 없습니다.");
+            return;
+        }
 
-        // 카카오톡 설치 여부 확인
-        if (UserApiClient.getInstance().isKakaoTalkLoginAvailable(loginContext)) {
-            // 카카오톡으로 로그인 - Activity 컨텍스트 사용
-            if (currentActivity != null) {
-                // 카카오톡으로 로그인
-                UserApiClient.getInstance().loginWithKakaoTalk(currentActivity, new Function2<OAuthToken, Throwable, Unit>() {
-                    @Override
-                    public Unit invoke(OAuthToken token, Throwable error) {
+        boolean talkAvail = UserApiClient.getInstance()
+                .isKakaoTalkLoginAvailable(currentActivity);
+        Log.d(TAG, "isKakaoTalkLoginAvailable=" + talkAvail);
+
+        if (talkAvail) {
+            Log.d(TAG, "→ loginWithKakaoTalk 진입");
+            UserApiClient.getInstance().loginWithKakaoTalk(
+                    currentActivity,
+                    (OAuthToken token, Throwable error) -> {
                         if (error != null) {
                             Log.e(TAG, "카카오톡 로그인 실패", error);
-                            // 카카오톡 로그인 실패 시 카카오 계정으로 로그인 시도
-                            loginWithKakaoAccount(callback);
-                        } else if (token != null) {
-                            Log.i(TAG, "카카오톡 로그인 성공: " + token.getAccessToken());
-                            // 서버에 토큰 전달 및 인증
+                            loginWithKakaoAccount(callback);     // 오류 → 계정 로그인 폴백
+                        } else {
+                            Log.d(TAG, "Talk 로그인 성공, accessToken="
+                                    + token.getAccessToken().substring(0,10) + "…");
                             authenticateWithServer(token.getAccessToken(), callback);
                         }
                         return Unit.INSTANCE;
-                    }
-                });
-            } else {
-                // 액티비티 컨텍스트가 없는 경우 - 계정 로그인으로 대체
-                Log.w(TAG, "액티비티 컨텍스트가 없어 카카오 계정 로그인으로 전환합니다.");
-                loginWithKakaoAccount(callback);
-            }
+                    });
         } else {
-            // 카카오톡 미설치 시 카카오 계정으로 로그인
-            loginWithKakaoAccount(callback);
+            Log.d(TAG, "→ Talk 불가, 계정 로그인으로 폴백");
+            loginWithKakaoAccount(callback);                    // Talk 미설치 → 계정 로그인
         }
     }
 
@@ -110,24 +122,27 @@ public class AuthManager {
      * 카카오 계정으로 로그인
      */
     private void loginWithKakaoAccount(final AuthCallback callback) {
+        Log.d(TAG, "loginWithKakaoAccount() 시작 (activity=" + currentActivity + ")");
 
-        // 계정 로그인에서도 현재 액티비티 사용
-        Context loginContext = (currentActivity != null) ? currentActivity : context;
+        // ① Activity 보장
+        if (currentActivity == null) {
+            callback.onLoginFailure("Activity context가 없어 카카오 로그인을 실행할 수 없습니다.");
+            return;
+        }
 
-        UserApiClient.getInstance().loginWithKakaoAccount(loginContext, new Function2<OAuthToken, Throwable, Unit>() {
-            @Override
-            public Unit invoke(OAuthToken token, Throwable error) {
-                if (error != null) {
-                    Log.e(TAG, "카카오 계정 로그인 실패", error);
-                    callback.onLoginFailure("카카오 계정 로그인 실패: " + error.getMessage());
-                } else if (token != null) {
-                    Log.i(TAG, "카카오 계정 로그인 성공: " + token.getAccessToken());
-                    // 서버에 토큰 전달 및 인증
-                    authenticateWithServer(token.getAccessToken(), callback);
+        UserApiClient.getInstance().loginWithKakaoAccount(
+                /* 반드시 Activity */ currentActivity,
+                (OAuthToken token, Throwable error) -> {
+                    if (error != null) {
+                        Log.e(TAG, "카카오 계정 로그인 실패", error);
+                        callback.onLoginFailure("카카오 계정 로그인 실패: " + error.getMessage());
+                    } else if (token != null) {
+                        Log.i(TAG, "카카오 계정 로그인 성공: " + token.getAccessToken());
+                        authenticateWithServer(token.getAccessToken(), callback);
+                    }
+                    return Unit.INSTANCE;
                 }
-                return Unit.INSTANCE;
-            }
-        });
+        );
     }
 
     /**
@@ -136,9 +151,14 @@ public class AuthManager {
     private void authenticateWithServer(String kakaoAccessToken, final AuthCallback callback) {
         KakaoLoginRequest request = new KakaoLoginRequest(kakaoAccessToken);
 
+        Log.d(TAG, "POST /auth/kakao/login");
         apiService.kakaoLogin(request).enqueue(new Callback<AuthResponse>() {
             @Override
             public void onResponse(Call<AuthResponse> call, Response<AuthResponse> response) {
+
+                Log.d(TAG, "← 서버 응답 code=" + response.code()
+                        + " bodyNull=" + (response.body()==null));
+
                 if (response.isSuccessful() && response.body() != null) {
                     AuthResponse authResponse = response.body();
 
@@ -148,6 +168,11 @@ public class AuthManager {
                             authResponse.getRefreshToken(),
                             authResponse.getUserId()
                     );
+
+                    // 메모리 캐시 갱신
+                    accessToken  = authResponse.getAccessToken();
+                    refreshToken = authResponse.getRefreshToken();
+                    userId       = authResponse.getUserId();
 
                     Log.i(TAG, "서버 인증 성공: " + authResponse.getUserId());
                     callback.onLoginSuccess(authResponse.getUserId());
@@ -168,10 +193,22 @@ public class AuthManager {
             @Override
             public void onFailure(Call<AuthResponse> call, Throwable t) {
                 String errorMsg = "서버 통신 오류: " + t.getMessage();
-                Log.e(TAG, errorMsg, t);
+                Log.e(TAG, "HTTP 실패", t);
                 callback.onLoginFailure(errorMsg);
             }
         });
+    }
+
+    // ============== 토큰 자동 재발급(Interceptor Authenticator) ==============
+    // (ApiClient 안의 Authenticator가 ReissueRequest로 동기 호출한 뒤
+    //  아래 메서드를 호출
+    public synchronized void updateTokens(String newAccess, String newRefresh) {
+        // storage
+        secureStorage.saveTokens(newAccess, newRefresh, this.userId);
+        // 메모리
+        this.accessToken  = newAccess;
+        this.refreshToken = newRefresh;
+        Log.d(TAG, "Tokens updated, user=" + this.userId);
     }
 
     /**
@@ -183,6 +220,11 @@ public class AuthManager {
             public Unit invoke(Throwable error) {
                 // 카카오 로그아웃 결과와 상관없이 로컬 토큰 삭제
                 secureStorage.clearTokens();
+
+                // 메모리도 제거
+                accessToken  = null;
+                refreshToken = null;
+                userId       = null;
 
                 if (error != null) {
                     Log.w(TAG, "카카오 로그아웃 에러 (무시됨)", error);
@@ -200,27 +242,27 @@ public class AuthManager {
      * 로그인 상태 확인
      */
     public boolean isLoggedIn() {
-        return secureStorage.hasTokens();
+        return accessToken != null && !accessToken.isEmpty();
     }
 
     /**
      * 저장된 사용자 ID 조회
      */
     public String getUserId() {
-        return secureStorage.getUserId();
+        return userId;
     }
 
     /**
      * 액세스 토큰 조회
      */
     public String getAccessToken() {
-        return secureStorage.getAccessToken();
+        return accessToken;
     }
 
     /**
      * 리프레시 토큰 조회
      */
     public String getRefreshToken() {
-        return secureStorage.getRefreshToken();
+        return refreshToken;
     }
 }
