@@ -21,8 +21,9 @@ class MCPClient:
     
     async def close(self):
         """세션 종료"""
-        if self.session:
+        if getattr(self, "session", None):
             await self.session.close()
+            self.session = None
     
     async def cache_tools(self):
         """툴 목록을 캐시해둠"""

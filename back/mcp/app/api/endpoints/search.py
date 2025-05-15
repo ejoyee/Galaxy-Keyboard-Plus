@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from app.models.schemas import SearchRequest, SearchResponse
 from app.utils.llm import call_llm, summarize_with_llm
 import logging
@@ -13,7 +13,7 @@ router = APIRouter()
     description="사용자 질문에 대해 검색을 수행합니다.",
     response_description="검색 결과"
 )
-async def search_endpoint(request: SearchRequest):
+async def search_endpoint(request: Request, body: SearchRequest):
     # 사용자의 질문
     query = request.query
 
