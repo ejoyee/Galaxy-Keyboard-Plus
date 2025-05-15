@@ -28,10 +28,12 @@ pipeline {
         withCredentials([
           string(credentialsId: 'OPENAI_API_KEY',           variable: 'OPENAI'),
           string(credentialsId: 'OPENAI_API_KEY_2',           variable: 'OPENAI2'),
+          string(credentialsId: 'BRAVE_API_KEY',           variable: 'BRAVE_API_KEY'),
         ]) {
           writeFile file: '.env.prod', text: """
 OPENAI_API_KEY=${OPENAI}
 OPENAI_API_KEY_2=${OPENAI2}
+BRAVE_API_KEY=${BRAVE_API_KEY}
 
 ENV=prod
 """.trim()
