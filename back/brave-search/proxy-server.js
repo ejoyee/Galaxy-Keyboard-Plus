@@ -80,7 +80,7 @@ app.post("/", async (req, res) => {
       mcpRequest = {
         jsonrpc: "2.0",
         id: request.id,
-        method: "listTools",
+        method: "tools/list",
         params: request.params || {},
       };
     } else {
