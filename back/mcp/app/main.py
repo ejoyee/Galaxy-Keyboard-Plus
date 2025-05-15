@@ -2,10 +2,10 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes import api_router
-from app.config import settings
 from app.core.mcp_client import MCPClient
 from app.core.mcp_manager import MCPManager
 from fastapi.responses import JSONResponse
+import os
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO)
@@ -39,7 +39,7 @@ async def startup_event():
     logger.info("애플리케이션 시작")
     # candidates에 사용할 MCP 서버 추가
     candidates = [
-        {"name": "brave", "url": settings.BRAVE_SEARCH_URL},
+        {"name": "brave", "url": os.getenv("WEB_SEARCH_URL")},
         # ... 필요한 만큼 추가
     ]
 
