@@ -155,7 +155,7 @@ public final class SetupWizardActivity extends Activity implements View.OnClickL
 
     static final String TAG = SetupWizardActivity.class.getSimpleName();
 
-    // For debugging purpose.
+    // 디버깅용
     private static final boolean FORCE_TO_SHOW_WELCOME_SCREEN = false;
     private static final boolean ENABLE_WELCOME_VIDEO = true;
 
@@ -307,8 +307,8 @@ public final class SetupWizardActivity extends Activity implements View.OnClickL
         welcomeVideoView.setOnPreparedListener(new MediaPlayer.OnPreparedListener() {
             @Override
             public void onPrepared(final MediaPlayer mp) {
-                // Now VideoView has been laid-out and ready to play, remove background of it to
-                // reveal the video.
+                // 이제 VideoView의 레이아웃이 완료되어 재생할 준비가 되었으므로,
+                // 배경을 제거하여 동영상이 보이도록 한다.
                 welcomeVideoView.setBackgroundResource(0);
                 mp.setLooping(true);
             }
@@ -454,9 +454,9 @@ public final class SetupWizardActivity extends Activity implements View.OnClickL
     @Override
     protected void onRestart() {
         super.onRestart();
-        // Probably the setup wizard has been invoked from "Recent" menu. The setup step number
-        // needs to be adjusted to system state, because the state (IME is enabled and/or current)
-        // may have been changed.
+        // 아마도 설정 마법사가 "최근 항목" 메뉴에서 실행되었을 가능성이 있다.
+        // IME(입력기)가 활성화되었거나 현재 입력기로 설정되었는지에 따라 시스템 상태가 바뀌었을 수 있으므로,
+        // 설정 단계 번호를 시스템 상태에 맞게 조정해야 한다.
         if (isInSetupSteps(mStepNumber)) {
             mStepNumber = determineSetupStepNumber();
         }
@@ -466,7 +466,7 @@ public final class SetupWizardActivity extends Activity implements View.OnClickL
     protected void onResume() {
         super.onResume();
         if (mStepNumber == STEP_LAUNCHING_IME_SETTINGS) {
-            // Prevent white screen flashing while launching settings activity.
+            // Setting Activity를 실행할 때 흰색 화면이 깜빡이는 현상을 방지한다.
             mSetupWizard.setVisibility(View.INVISIBLE);
             invokeSettingsOfThisIme();
             mStepNumber = STEP_BACK_FROM_IME_SETTINGS;
