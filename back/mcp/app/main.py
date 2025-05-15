@@ -52,6 +52,7 @@ async def startup_event():
             logger.info(f"{conf['name']} MCP 연결 성공")
         else:
             logger.warning(f"{conf['name']} MCP 연결 실패")
+            await client.close() 
 
     # 정상 클라이언트만 매니저에 등록해서 싱글턴처럼 보관
     app.state.mcp_manager = MCPManager(valid_clients)

@@ -2,10 +2,13 @@ import express from "express";
 import { spawn } from "child_process";
 import bodyParser from "body-parser";
 
+import dotenv from "dotenv";
+
 // 서버 설정
 const app = express();
 app.use(bodyParser.json());
 const port = 8100;
+dotenv.config({ path: ".env.prod" });
 
 // Brave Search MCP 서버 프로세스 시작 및 관리
 let childProcess;
