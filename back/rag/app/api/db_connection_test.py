@@ -18,9 +18,9 @@ def test_db_connection():
     connection_params = {
         "host": "3.38.95.110",
         "port": "5434",
-        "database": os.getenv("POSTGRES_RAG_DB_NAME", "moca_rag_db"),
-        "user": os.getenv("POSTGRES_RAG_USER", "postgres"),
-        "password": os.getenv("POSTGRES_RAG_PASSWORD", "ssafy"),
+        "database": os.getenv("POSTGRES_RAG_DB_NAME"),
+        "user": os.getenv("POSTGRES_RAG_USER"),
+        "password": os.getenv("POSTGRES_RAG_PASSWORD"),
     }
 
     try:
