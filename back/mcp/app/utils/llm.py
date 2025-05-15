@@ -1,14 +1,14 @@
 import os
 import json
 import logging
-from openai import openai
+from openai import OpenAI
 from dotenv import load_dotenv
 
 # 로그 초기화
 logger = logging.getLogger(__name__)
 
 load_dotenv()
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 def format_tools_for_openai(tools_info):
     tool_list = []
@@ -30,9 +30,6 @@ def format_tools_for_openai(tools_info):
     # ]
 
 async def call_llm(query: str, tools_info: dict, settings=None) -> dict:
-    
-    if not OPENAI_API_KEY:
-        return {"type": "text", "content": "OPENAI_API_KEY is not set."}
 
     # tools_info: {"brave": [tool, tool, ...], ...}
     tools = format_tools_for_openai(tools_info)
@@ -52,7 +49,6 @@ async def call_llm(query: str, tools_info: dict, settings=None) -> dict:
         • When calling a tool, respond with strictly the function call object—no explanatory text.
         • Any human-readable explanation should only appear in plain-text responses when no tool is invoked.
     """
-    client = openai.AsyncOpenAI(api_key=OPENAI_API_KEY)
     response = await client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
@@ -132,8 +128,6 @@ async def summarize_with_llm(rpc_result: dict, prompt: str = "", settings=None) 
     - rpc_result: MCP 서버에서 받은 raw 결과 (dict)
     - prompt: 원래 사용자의 질문 (optional, 있으면 더 자연스럽게 요약 가능)
     """
-    if not OPENAI_API_KEY:
-        return {"type": "text", "content": "OPENAI_API_KEY is not set."}
 
     # 1. rawResult 추출
     #   - rpc_result["content"]가 list면 type=text 인 것만 골라 text를 이어붙임
@@ -164,8 +158,6 @@ async def summarize_with_llm(rpc_result: dict, prompt: str = "", settings=None) 
     messages.append({"role": "assistant", "content": f"Tool output:\n{rawResult}"})
 
     # 3. OpenAI 요약 호출
-    from openai import openai
-    client = openai.AsyncOpenAI(api_key=OPENAI_API_KEY)
     response = await client.chat.completions.create(
         model="gpt-4o-mini",
         messages=messages,
