@@ -89,7 +89,6 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
 
     /* ▼ 새로 추가할 필드들 --------------------------------------------------- */
     private ImageButton mSearchKey;      // 돋보기(검색 모드 진입)
-    private ImageButton mSendKey;        // 전송
     private ImageButton mVoiceKey;       // 마이크(= 클립보드 키 자리에 있던 버튼)
     private LinearLayout mInputContainer;// EditText+Send 래퍼
     private EditText mSearchInput;       // 검색어 입력창
