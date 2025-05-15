@@ -4,6 +4,7 @@ from fastapi.responses import JSONResponse
 from app.api.search_image_info import router as search_image_info_router
 from app.api.search_endpoints import router as search_endpoints_router
 from app.api.db_connection_test import router as db_connection_test_router
+from app.api.get_image import router as get_image_router
 import logging
 
 app = FastAPI()
@@ -20,6 +21,7 @@ logging.info("✅ FastAPI 애플리케이션 시작 전 로깅 설정 완료")
 # API 라우터 등록
 app.include_router(search_image_info_router, prefix="/search")
 app.include_router(db_connection_test_router, prefix="/search")
+app.include_router(get_image_router, prefix="/search")
 app.include_router(search_endpoints_router)
 
 
