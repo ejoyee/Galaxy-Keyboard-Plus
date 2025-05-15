@@ -32,7 +32,7 @@ DB_PARAMS = {
 }
 
 # OpenAI 클라이언트
-openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY_2"))
 
 # 캐시 설정
 cache: Dict[str, Dict] = {}
@@ -292,6 +292,7 @@ async def search_photos_by_keywords(user_id: str, keywords: List[str]) -> List[D
 
 async def expand_info_query(query: str) -> List[str]:
     """정보 검색을 위한 쿼리 확장"""
+
     def sync_expand_query():
         prompt = f"""
 다음 질문과 관련된 다양한 검색 쿼리를 생성하세요.
@@ -323,11 +324,11 @@ JSON 배열로 5-7개의 변형 쿼리를 반환하세요.
         )
 
         queries_raw = response.choices[0].message.content
-        
+
         # 코드블록 제거
         if "```" in queries_raw:
             queries_raw = queries_raw.replace("```json", "").replace("```", "").strip()
-        
+
         try:
             expanded = json.loads(queries_raw)
             expanded.append(query)  # 원본 쿼리 포함
@@ -483,23 +484,25 @@ async def process_image_query(user_id: str = Form(...), query: str = Form(...)):
 
         else:  # get_info
             # 정보 찾기 로직
-            
+
             # 3-2. 쿼리 확장
             query_expand_start = time.time()
             expanded_queries = await expand_info_query(query)
             timings["query_expansion"] = time.time() - query_expand_start
             logger.info(f"🔍 확장된 쿼리: {expanded_queries}")
-            
+
             # 3-3. 벡터 검색으로 관련 정보 찾기
             vector_search_start = time.time()
-            
+
             # namespace를 user_id_information으로 설정
             namespace = f"{user_id}_information"
-            
+
             loop = asyncio.get_event_loop()
-            
-            logger.info(f"🔍 벡터 검색 시작 - namespace: {namespace}, queries: {expanded_queries}")
-            
+
+            logger.info(
+                f"🔍 벡터 검색 시작 - namespace: {namespace}, queries: {expanded_queries}"
+            )
+
             # 먼저 원본 쿼리로 검색
             context_info = []
             try:
@@ -510,11 +513,11 @@ async def process_image_query(user_id: str = Form(...), query: str = Form(...)):
                     user_id,
                     expanded_queries,
                     "info",
-                    20
+                    20,
                 )
                 context_info.extend(result1)
                 logger.info(f"✅ 확장된 쿼리 결과: {len(result1)}개")
-                
+
                 # 2. 원본 쿼리로도 검색
                 if len(context_info) < 5:
                     result2 = await loop.run_in_executor(
@@ -523,11 +526,11 @@ async def process_image_query(user_id: str = Form(...), query: str = Form(...)):
                         user_id,
                         [query],
                         "info",
-                        10
+                        10,
                     )
                     context_info.extend(result2)
                     logger.info(f"✅ 원본 쿼리 결과: {len(result2)}개")
-                    
+
                 # 중복 제거
                 seen_texts = set()
                 unique_results = []
@@ -536,9 +539,9 @@ async def process_image_query(user_id: str = Form(...), query: str = Form(...)):
                     if text and text not in seen_texts:
                         seen_texts.add(text)
                         unique_results.append(item)
-                        
+
                 context_info = unique_results[:20]
-                
+
                 # 검색 결과 디버깅
                 if context_info:
                     logger.info(f"🔍 검색 결과 샘플:")
@@ -546,11 +549,11 @@ async def process_image_query(user_id: str = Form(...), query: str = Form(...)):
                         logger.info(f"  {i+1}. {info.get('text', '')[:100]}...")
                 else:
                     logger.warning(f"⚠️ 검색 결과 없음 - namespace: {namespace}")
-                    
+
             except Exception as e:
                 logger.error(f"❌ 벡터 검색 실패: {str(e)}", exc_info=True)
                 context_info = []
-                
+
             timings["vector_search"] = time.time() - vector_search_start
             logger.info(
                 f"📚 검색된 정보: {len(context_info)}개 ({timings['vector_search']:.3f}초)"
@@ -573,8 +576,10 @@ async def process_image_query(user_id: str = Form(...), query: str = Form(...)):
                 "_debug": {
                     "expanded_queries": expanded_queries,
                     "namespace": namespace,
-                    "context_sample": context_info[0].get("text", "")[:200] if context_info else None
-                }
+                    "context_sample": (
+                        context_info[0].get("text", "")[:200] if context_info else None
+                    ),
+                },
             }
 
         # 전체 시간
@@ -652,25 +657,27 @@ async def clear_cache():
 async def debug_search(
     user_id: str = Form(...),
     query: str = Form(...),
-    namespace: Optional[str] = Form(None)
+    namespace: Optional[str] = Form(None),
 ):
     """검색 디버깅을 위한 엔드포인트"""
     try:
         # namespace가 제공되지 않으면 기본값 사용
         if namespace is None:
             namespace = f"{user_id}_information"
-            
-        logger.info(f"🔍 디버그 검색 - user: {user_id}, query: {query}, namespace: {namespace}")
-        
+
+        logger.info(
+            f"🔍 디버그 검색 - user: {user_id}, query: {query}, namespace: {namespace}"
+        )
+
         # 쿼리 확장
         expanded_queries = await expand_info_query(query)
         logger.info(f"🔍 확장된 쿼리: {expanded_queries}")
-        
+
         loop = asyncio.get_event_loop()
-        
+
         # 여러 방법으로 검색 시도
         all_results = []
-        
+
         # 1. 확장된 쿼리로 검색
         logger.info(f"🎯 확장된 쿼리로 검색 시도...")
         result1 = await loop.run_in_executor(
@@ -679,11 +686,11 @@ async def debug_search(
             user_id,
             expanded_queries,
             "info",
-            20
+            20,
         )
         all_results.extend(result1)
         logger.info(f"✅ 확장 쿼리 결과: {len(result1)}개")
-        
+
         # 2. 원본 쿼리로만 검색
         logger.info(f"🎯 원본 쿼리로 검색 시도...")
         result2 = await loop.run_in_executor(
@@ -692,11 +699,11 @@ async def debug_search(
             user_id,
             [query],
             "info",
-            20
+            20,
         )
         all_results.extend(result2)
         logger.info(f"✅ 원본 쿼리 결과: {len(result2)}개")
-        
+
         # 3. 단순 키워드로 검색
         keywords = query.split()
         logger.info(f"🎯 키워드로 검색 시도: {keywords}")
@@ -706,11 +713,11 @@ async def debug_search(
             user_id,
             keywords,
             "info",
-            20
+            20,
         )
         all_results.extend(result3)
         logger.info(f"✅ 키워드 결과: {len(result3)}개")
-        
+
         # 중복 제거
         unique_results = []
         seen_texts = set()
@@ -719,7 +726,7 @@ async def debug_search(
             if text and text not in seen_texts:
                 seen_texts.add(text)
                 unique_results.append(result)
-        
+
         return {
             "query": query,
             "expanded_queries": expanded_queries,
@@ -728,21 +735,21 @@ async def debug_search(
             "results_breakdown": {
                 "expanded_queries_count": len(result1),
                 "original_query_count": len(result2),
-                "keywords_count": len(result3)
+                "keywords_count": len(result3),
             },
             "results": [
                 {
                     "text": result.get("text", "")[:200] + "...",
                     "score": result.get("score", 0),
-                    "metadata": result.get("metadata", {})
+                    "metadata": result.get("metadata", {}),
                 }
                 for result in unique_results[:5]
             ],
             "debug_info": {
                 "user_id": user_id,
                 "namespace_used": namespace,
-                "keywords_tried": keywords
-            }
+                "keywords_tried": keywords,
+            },
         }
     except Exception as e:
         logger.error(f"❌ 디버그 검색 오류: {str(e)}", exc_info=True)
@@ -750,5 +757,5 @@ async def debug_search(
             "error": str(e),
             "query": query,
             "namespace": namespace,
-            "traceback": traceback.format_exc()
+            "traceback": traceback.format_exc(),
         }
