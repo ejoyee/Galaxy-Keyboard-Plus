@@ -2,6 +2,8 @@ from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 from app.utils.image_captioner import generate_image_caption
 from app.utils.image_text_extractor import extract_text_from_image
 from app.utils.vector_store import save_text_to_pinecone
+from app.utils.google_geocoding import reverse_geocode
+from app.utils.context_keywords import parse_time_keywords, parse_address_keywords
 import json
 import os
 import psycopg2
@@ -60,6 +62,9 @@ async def async_save_text_to_pinecone(user_id, combined_text, namespace):
 async def upload_image_keyword(
     user_id: str = Form(...),
     access_id: str = Form(...),
+    image_time: str = Form(...),  # 사진 시각 (예: "2025:05:15 12:30:00")
+    latitude: str = Form(...),
+    longitude: str = Form(...),
     file: UploadFile = File(...),
 ):
     total_start_time = time.time()
@@ -136,6 +141,14 @@ async def upload_image_keyword(
             f"✅ 벡터 스토어 저장 및 키워드 추출 완료: {time.time() - parallel_tasks_start:.3f}초"
         )
 
+        # 주소 및 시각 키워드 파싱
+        address = await reverse_geocode(latitude, longitude)
+        time_keywords = parse_time_keywords(image_time)
+        address_keywords = parse_address_keywords(address)
+
+        # 최종 키워드 병합 (중복 제거)
+        full_keywords = list(set(keywords + time_keywords + address_keywords))
+
         # 3. DB 저장
         db_save_start = time.time()
         now = datetime.utcnow()
@@ -155,7 +168,7 @@ async def upload_image_keyword(
         INSERT INTO image_keywords (image_id, keyword, created_at)
         VALUES (%s, %s, %s);
         """
-        for keyword in keywords:
+        for keyword in full_keywords:
             cursor.execute(insert_keyword_query, (image_id, keyword, now))
 
         connection.commit()
