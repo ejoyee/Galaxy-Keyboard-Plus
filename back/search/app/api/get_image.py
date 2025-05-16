@@ -226,7 +226,7 @@ async def search_photos_by_keywords(user_id: str, keywords: List[str]) -> List[D
                         ELSE 0.5
                     END as match_score
                 FROM images i
-                JOIN image_keywords ik ON i.id = ik.image_id
+                JOIN image_keywords ik ON i.access_id = ik.image_id
                 WHERE i.user_id = %s 
                 AND (
                     ik.keyword = ANY(%s)
