@@ -2,13 +2,14 @@ import os
 import json
 import logging
 from openai import OpenAI
+from openai import AsyncOpenAI
 from dotenv import load_dotenv
 
 # 로그 초기화
 logger = logging.getLogger(__name__)
 
 load_dotenv()
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 def format_tools_for_openai(tools_info):
     tool_list = []
@@ -20,7 +21,7 @@ def format_tools_for_openai(tools_info):
                     # 반드시 MCP 서버명_툴명으로 이름 생성!
                     "name": f"{srv}_{tool['name']}",
                     "description": tool.get("description", ""),
-                    "parameters": tool.get("parameters", {}),
+                    "parameters": tool.get("inputSchema", {}),
                 }
             })
     return tool_list

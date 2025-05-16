@@ -2,6 +2,9 @@ from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 from app.utils.image_captioner import generate_image_caption
 from app.utils.image_text_extractor import extract_text_from_image
 from app.utils.vector_store import save_text_to_pinecone
+from app.utils.google_geocoding import reverse_geocode
+from app.utils.context_keywords import parse_time_keywords, parse_address_keywords
+from app.utils.clipboard_info_extractor import extract_clipboard_items
 import json
 import os
 import psycopg2
@@ -60,6 +63,9 @@ async def async_save_text_to_pinecone(user_id, combined_text, namespace):
 async def upload_image_keyword(
     user_id: str = Form(...),
     access_id: str = Form(...),
+    image_time: str = Form(...),  # 사진 시각 (예: "2025:05:15 12:30:00")
+    latitude: str = Form(...),
+    longitude: str = Form(...),
     file: UploadFile = File(...),
 ):
     total_start_time = time.time()
@@ -78,8 +84,9 @@ async def upload_image_keyword(
 
         # access_id 중복 체크
         duplicate_check_start = time.time()
-        check_query = "SELECT id FROM images WHERE access_id = %s;"
-        cursor.execute(check_query, (access_id,))
+        check_query = "SELECT id FROM images WHERE user_id = %s AND access_id = %s;"
+        cursor.execute(check_query, (user_id, access_id))
+
         existing = cursor.fetchone()
         logger.info(f"✅ 중복 체크 완료: {time.time() - duplicate_check_start:.3f}초")
 
@@ -136,6 +143,16 @@ async def upload_image_keyword(
             f"✅ 벡터 스토어 저장 및 키워드 추출 완료: {time.time() - parallel_tasks_start:.3f}초"
         )
 
+        # 주소 및 시각 키워드 파싱
+        address = await reverse_geocode(latitude, longitude)
+        logger.info(f"🗺️ 주소 추출 결과: {address}")
+        time_keywords = parse_time_keywords(image_time)
+        logger.info(f"⏰ 시간 키워드: {time_keywords}")
+        address_keywords = parse_address_keywords(address)
+
+        # 최종 키워드 병합 (중복 제거)
+        full_keywords = list(set(keywords + time_keywords + address_keywords))
+
         # 3. DB 저장
         db_save_start = time.time()
         now = datetime.utcnow()
@@ -144,19 +161,35 @@ async def upload_image_keyword(
         insert_image_query = """
         INSERT INTO images (user_id, access_id, caption, image_time)
         VALUES (%s, %s, %s, %s)
-        ON CONFLICT (access_id) DO UPDATE SET caption = EXCLUDED.caption
+        ON CONFLICT (user_id, access_id) DO UPDATE SET caption = EXCLUDED.caption
         RETURNING id;
         """
+
         cursor.execute(insert_image_query, (user_id, access_id, caption, now))
-        image_id = cursor.fetchone()[0]
+        image_id = access_id
+
+        # 클립보드 정보 추출
+        clipboard_items = extract_clipboard_items(ocr_text)
+        logger.info(f"📋 클립보드 항목 수: {len(clipboard_items)}")
+
+        # 클립보드 INSERT
+        insert_clipboard_query = """
+        INSERT INTO clipboard_items (user_id, image_id, type, value, created_at)
+        VALUES (%s, %s, %s, %s, %s);
+        """
+        for item in clipboard_items:
+            cursor.execute(
+                insert_clipboard_query,
+                (user_id, image_id, item["type"], item["value"], now),
+            )
 
         # 키워드 INSERT
         insert_keyword_query = """
-        INSERT INTO image_keywords (image_id, keyword, created_at)
-        VALUES (%s, %s, %s);
+        INSERT INTO image_keywords (user_id, image_id, keyword, created_at)
+        VALUES (%s, %s, %s, %s);
         """
-        for keyword in keywords:
-            cursor.execute(insert_keyword_query, (image_id, keyword, now))
+        for keyword in full_keywords:
+            cursor.execute(insert_keyword_query, (user_id, image_id, keyword, now))
 
         connection.commit()
         cursor.close()
