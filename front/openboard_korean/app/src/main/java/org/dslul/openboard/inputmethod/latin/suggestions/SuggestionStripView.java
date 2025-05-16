@@ -18,11 +18,15 @@ package org.dslul.openboard.inputmethod.latin.suggestions;
 
 import android.content.ClipData;
 import android.content.ClipboardManager;
+import android.content.ContentUris;
 import android.content.Context;
 import android.content.res.Resources;
 import android.content.res.TypedArray;
+import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.graphics.drawable.Drawable;
+import android.net.Uri;
+import android.provider.MediaStore;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.util.TypedValue;
@@ -35,23 +39,26 @@ import android.view.View.OnLongClickListener;
 import android.view.ViewGroup;
 import android.view.ViewParent;
 import android.view.accessibility.AccessibilityEvent;
-import android.view.animation.Animation;
-import android.view.animation.AnimationUtils;
 import android.view.inputmethod.ExtractedText;
 import android.view.inputmethod.ExtractedTextRequest;
 import android.view.inputmethod.InputConnection;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ImageButton;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.RelativeLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.core.view.ViewCompat;
+
+import com.airbnb.lottie.LottieAnimationView;
+import com.airbnb.lottie.LottieDrawable;
+
 import org.dslul.openboard.inputmethod.accessibility.AccessibilityUtils;
 import org.dslul.openboard.inputmethod.keyboard.Keyboard;
 import org.dslul.openboard.inputmethod.keyboard.KeyboardActionListener;
-import org.dslul.openboard.inputmethod.keyboard.KeyboardSwitcher;
 import org.dslul.openboard.inputmethod.keyboard.MainKeyboardView;
 import org.dslul.openboard.inputmethod.keyboard.MoreKeysPanel;
 import org.dslul.openboard.inputmethod.latin.AudioAndHapticFeedbackManager;
@@ -69,12 +76,7 @@ import org.dslul.openboard.inputmethod.latin.settings.SettingsValues;
 import org.dslul.openboard.inputmethod.latin.suggestions.MoreSuggestionsView.MoreSuggestionsListener;
 
 import java.util.ArrayList;
-
-import androidx.appcompat.content.res.AppCompatResources;
-import androidx.core.view.ViewCompat;
-
-import com.airbnb.lottie.LottieAnimationView;
-import com.airbnb.lottie.LottieDrawable;
+import java.util.List;
 
 import retrofit2.Call;
 
@@ -91,6 +93,10 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
     }
 
     /* ▼ 새로 추가할 필드들 --------------------------------------------------- */
+    private View mPhotoSuggestionsStrip;
+    private LinearLayout mPhotoThumbnailContainer;
+    private ImageButton mBtnClosePhotos;
+
     private LottieAnimationView mSearchKey;
     private ImageButton mVoiceKey;       // 마이크(= 클립보드 키 자리에 있던 버튼)
     private LinearLayout mInputContainer;// EditText+Send 래퍼
@@ -116,7 +122,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
     MainKeyboardView mMainKeyboardView;
 
     // ── ① LONG_TEXT 상황 구분용
-    private enum ResponseType {LONG_TEXT, PHOTO_ONLY, SHORT_TEXT }
+    private enum ResponseType {LONG_TEXT, PHOTO_ONLY, SHORT_TEXT}
 
     private ResponseType mResponseType;
     private MessageResponse mLastResponse;       // ◀ 수정
@@ -178,6 +184,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
 
         final LayoutInflater inflater = LayoutInflater.from(context);
         inflater.inflate(R.layout.suggestions_strip, this);
+        mPhotoSuggestionsStrip = inflater.inflate(R.layout.suggestions_strip_photos, null);
 
         mSuggestionsStrip = findViewById(R.id.suggestions_strip);
         mVoiceKey = findViewById(R.id.suggestions_strip_voice_key);
@@ -253,7 +260,13 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         mClipboardKey.setOnClickListener(this);
         mClipboardKey.setOnLongClickListener(this);
 
-//        mOtherKey.setImageDrawable(iconIncognito);
+        mPhotoThumbnailContainer = mPhotoSuggestionsStrip.findViewById(R.id.photo_thumbnail_container);
+        mBtnClosePhotos = mPhotoSuggestionsStrip.findViewById(R.id.btn_close_photos);
+
+        mPhotoSuggestionsStrip.setVisibility(View.GONE);
+
+        addView(mPhotoSuggestionsStrip, new LayoutParams(
+                LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
     }
 
     // ========== Search Mode helpers ======================================
@@ -437,9 +450,10 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                                 case PHOTO_ONLY:
                                     // ── 사진 전용: 바로 사진만 표시 ──
                                     mSearchPanel.clearLoadingBubble();
-                                    showSearchPanel();
-                                    mSearchPanel.bindPhotosOnly(body);
-                                    updateVisibility(false, false);  // 제안줄 감추기
+                                    showPhotoSuggestions(body.getPhotoIds());  // 여기 추가
+//                                    showSearchPanel();
+//                                    mSearchPanel.bindPhotosOnly(body);
+//                                    updateVisibility(false, false);  // 제안줄 감추기
                                     break;
                             }
                             // 버튼 강조
@@ -875,5 +889,59 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         mSearchPanel.showMoreKeysPanel(mMainKeyboardView, c, x, y, (KeyboardActionListener) null);
     }
 
+    // 사진만 있을 경우 UI 전환
+    public void showPhotoSuggestions(List<String> photoIds) {
+        // 기존 버튼들 숨김
+        mSuggestionsStrip.setVisibility(View.GONE);
+        mPhotoSuggestionsStrip.setVisibility(View.VISIBLE);
+
+        mPhotoThumbnailContainer.removeAllViews();
+
+        // 썸네일 추가
+        for (String idStr : photoIds) {
+            try {
+                long id = Long.parseLong(idStr);
+                Bitmap thumb = MediaStore.Images.Thumbnails.getThumbnail(
+                        getContext().getContentResolver(),
+                        id,
+                        MediaStore.Images.Thumbnails.MINI_KIND,
+                        null);
+
+                ImageView iv = new ImageView(getContext());
+                LinearLayout.LayoutParams ivLp = new LinearLayout.LayoutParams(dpToPx(64), dpToPx(64));
+                ivLp.setMargins(dpToPx(4), dpToPx(4), dpToPx(4), dpToPx(4));
+                iv.setLayoutParams(ivLp);
+                iv.setScaleType(ImageView.ScaleType.CENTER_CROP);
+                iv.setImageBitmap(thumb);
+
+                Uri uri = ContentUris.withAppendedId(
+                        MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id);
+
+                iv.setOnClickListener(v -> {
+                    ClipboardManager cm = (ClipboardManager)
+                            getContext().getSystemService(Context.CLIPBOARD_SERVICE);
+                    cm.setPrimaryClip(ClipData.newUri(
+                            getContext().getContentResolver(), "Image", uri));
+                    Toast.makeText(getContext(), "이미지가 클립보드에 복사되었습니다", Toast.LENGTH_SHORT).show();
+                });
+
+                mPhotoThumbnailContainer.addView(iv);
+
+            } catch (NumberFormatException ignored) { }
+        }
+
+        // X 버튼 처리
+        mBtnClosePhotos.setOnClickListener(v -> hidePhotoSuggestions());
+    }
+
+    // 사진 제안 숨기고 원래 UI로 복귀
+    public void hidePhotoSuggestions() {
+        mPhotoSuggestionsStrip.setVisibility(View.GONE);
+        mSuggestionsStrip.setVisibility(View.VISIBLE);
+    }
+
+    private int dpToPx(int dp) {
+        return Math.round(dp * getResources().getDisplayMetrics().density);
+    }
 
 }
