@@ -14,22 +14,29 @@ def parse_address_keywords(address: str) -> list[str]:
 
 def parse_time_keywords(image_time_str: str) -> list[str]:
     """
-    EXIF 시각 문자열 기반 키워드 생성
-    예: "2025:05:15 14:20:00" → ["2025년", "05월", "15일", "오후"]
+    날짜 문자열을 기반으로 다양한 시간 키워드를 생성
+    예: ['2025년', '05월', '15일', '2025년 05월', '2025년 05월 15일', '오후']
     """
     try:
         dt = datetime.strptime(image_time_str, "%Y:%m:%d %H:%M:%S")
     except ValueError:
         return []
 
-    keywords = [dt.strftime("%Y년"), dt.strftime("%m월"), dt.strftime("%d일")]
+    year = dt.strftime("%Y년")
+    month = dt.strftime("%m월")
+    day = dt.strftime("%d일")
 
+    # 복합 표현
+    year_month = f"{year} {month}"
+    year_month_day = f"{year} {month} {day}"
+
+    # 시간대 키워드
     hour = dt.hour
     if 5 <= hour < 12:
-        keywords.append("오전")
+        time_of_day = "오전"
     elif 12 <= hour < 18:
-        keywords.append("오후")
+        time_of_day = "오후"
     else:
-        keywords.append("야간")
+        time_of_day = "저녁"
 
-    return keywords
+    return [year, month, day, year_month, year_month_day, time_of_day]

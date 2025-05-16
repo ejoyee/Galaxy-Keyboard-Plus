@@ -143,7 +143,9 @@ async def upload_image_keyword(
 
         # 주소 및 시각 키워드 파싱
         address = await reverse_geocode(latitude, longitude)
+        logger.info(f"🗺️ 주소 추출 결과: {address}")
         time_keywords = parse_time_keywords(image_time)
+        logger.info(f"⏰ 시간 키워드: {time_keywords}")
         address_keywords = parse_address_keywords(address)
 
         # 최종 키워드 병합 (중복 제거)
