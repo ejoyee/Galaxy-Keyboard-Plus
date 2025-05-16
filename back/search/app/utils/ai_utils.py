@@ -318,3 +318,42 @@ async def generate_info_answer(
 
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(executor, sync_generate_answer)
+
+
+async def generate_conversation_response(user_id: str, query: str) -> str:
+    """대화형 질문에 대한 응답 생성"""
+
+    def sync_generate_conversation():
+        prompt = f"""
+사용자의 일상적인 대화나 개인적인 정보 공유에 적절하게 응답하세요.
+사용자가 선호도, 감정, 경험을 공유할 때 공감하고 자연스럽게 대화를 이어나가세요.
+
+[사용자 메시지]
+{query}
+
+응답 작성 규칙:
+1. 사용자의 말에 공감하고 이해한다는 느낌을 표현
+2. 자연스러운 대화체 사용
+3. 간결하게 1-2문장으로 응답
+4. 가능하면 마지막에 개방형 질문이나 다른 요청이 있는지 물어보기
+5. 한국어로 친근하게 대응
+
+응답:
+"""
+
+        response = openai_client.chat.completions.create(
+            model=ANSWER_GENERATION_MODEL,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "너는 사용자의 개인 비서야. 자연스럽고 친근한 대화를 해줘.",
+                },
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.7,
+        )
+
+        return response.choices[0].message.content
+
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(executor, sync_generate_conversation)
