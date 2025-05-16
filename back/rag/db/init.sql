@@ -8,7 +8,7 @@ CREATE TABLE images (
 
 CREATE TABLE image_keywords (
     id SERIAL PRIMARY KEY,
-    image_id INT REFERENCES images(id) ON DELETE CASCADE,
+    image_id TEXT REFERENCES images(access_id) ON DELETE CASCADE,
     keyword TEXT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
