@@ -13,9 +13,12 @@ router = APIRouter()
     description="사용자 질문에 대해 검색을 수행합니다.",
     response_description="검색 결과"
 )
-async def search_endpoint(request: Request, body: SearchRequest):
+async def search_endpoint(
+    request: Request,          # FastAPI Request 객체 (app, state, 등 접근)
+    body: SearchRequest        # 실제 요청 body는 body에!
+    ):
     # 사용자의 질문
-    query = request.query
+    query = body.query
 
     # mcp 서버의 툴 목록
     mcp_manager = request.app.state.mcp_manager
