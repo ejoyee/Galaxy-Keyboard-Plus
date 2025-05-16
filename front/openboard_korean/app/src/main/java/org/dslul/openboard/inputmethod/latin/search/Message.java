@@ -86,6 +86,10 @@ public class Message {
         imagesVisible = v;
     }
 
+    public void setAnimate(boolean animate) {
+        this.animate = animate;
+    }
+
     public boolean shouldAnimate() {
         return animate;
     }

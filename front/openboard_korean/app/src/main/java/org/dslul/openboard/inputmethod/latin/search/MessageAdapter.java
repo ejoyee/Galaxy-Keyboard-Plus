@@ -167,6 +167,7 @@ public class MessageAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder
                     glImages.setVisibility(View.VISIBLE);
                     animateImages(uris);
                 }
+                m.setAnimate(false);
             } else {
                 // 애니메이션 꺼짐 또는 히스토리 로드
                 renderStatic(body, uris, m);
@@ -184,6 +185,11 @@ public class MessageAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder
         private void renderStatic(String body, List<Uri> uris, Message m) {
             // 마크다운 + 토글 처리
             markwon.setMarkdown(tvMessage, body);
+
+            // 2) 다시 선택 가능·롱클릭 가능 보장
+            tvMessage.setTextIsSelectable(true);
+            tvMessage.setLongClickable(true);
+
             btnToggle.setVisibility(uris.isEmpty() ? View.GONE : View.VISIBLE);
             if (m.isImagesVisible()) {
                 btnToggle.setText("사진 숨기기");
@@ -214,11 +220,21 @@ public class MessageAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder
         // 1) 타자기 효과
         private void animateText(final String text) {
             Handler h = new Handler(Looper.getMainLooper());
-            tvMessage.setText("");
+            tvMessage.setText("", TextView.BufferType.SPANNABLE);
+            // 2) 선택 옵션 다시 켜기
+            tvMessage.setTextIsSelectable(true);
+
             for (int i = 0; i < text.length(); i++) {
                 final int idx = i;
-                h.postDelayed(() -> tvMessage.append(String.valueOf(text.charAt(idx))),
-                        idx * 5L  // 5ms 간격
+                h.postDelayed(() -> {
+                            tvMessage.append(String.valueOf(text.charAt(idx)));
+                            // 마지막 글자가 올라왔으면 선택 가능 다시 켜기
+                            if (idx == text.length() - 1) {
+                                tvMessage.setTextIsSelectable(true);
+                                tvMessage.setLongClickable(true);
+                            }
+                        },
+                        idx * 10L  // 10ms 간격
                 );
             }
         }
@@ -255,7 +271,38 @@ public class MessageAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder
                 iv.setLayoutParams(lp);
                 iv.setScaleType(ImageView.ScaleType.CENTER_CROP);
                 iv.setImageBitmap(thumb);
-                // 기존 클릭·롱클릭 리스너 설정 그대로…
+
+                // 클릭 → 갤러리 열기
+                iv.setOnClickListener(v -> {
+                    Context ctx = v.getContext();
+                    Intent intent = new Intent(Intent.ACTION_VIEW);
+                    intent.setDataAndType(u, "image/*");
+                    intent.setFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                    try {
+                        ctx.startActivity(intent);
+                    } catch (ActivityNotFoundException e) {
+                        Toast.makeText(ctx, "이미지 뷰어를 열 수 없습니다", Toast.LENGTH_SHORT).show();
+                    }
+                });
+
+                // 롱클릭 → 클립보드 복사 + 진동
+                iv.setOnLongClickListener(v -> {
+                    Context ctx = v.getContext();
+                    ClipboardManager cm = (ClipboardManager)
+                            ctx.getSystemService(Context.CLIPBOARD_SERVICE);
+                    cm.setPrimaryClip(ClipData.newUri(
+                            ctx.getContentResolver(), "image", u));
+                    Vibrator vib = (Vibrator) ctx.getSystemService(Context.VIBRATOR_SERVICE);
+                    if (vib != null) {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            vib.vibrate(VibrationEffect.createOneShot(50, VibrationEffect.DEFAULT_AMPLITUDE));
+                        } else {
+                            vib.vibrate(50);
+                        }
+                    }
+                    return true;
+                });
+
                 glImages.addView(iv);
             } else {
                 TextView tv = new TextView(glImages.getContext());
