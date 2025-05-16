@@ -23,27 +23,33 @@ executor = ThreadPoolExecutor(max_workers=10)
 
 
 async def determine_image_query_intent(query: str) -> str:
-    """이미지 관련 질문의 의도를 파악"""
+    """질문의 의도를 파악 - 사진 찾기, 정보 요청, 일반 대화 구분"""
 
     def sync_determine_intent():
         prompt = f"""
 사용자의 질문이 다음 중 어느 의도에 해당하는지 분석하세요:
 - "find_photo": 사용자가 사진을 찾고자 함
 - "get_info": 사용자가 텍스트 정보나 설명을 원함
+- "conversation": 사용자가 일반적인 대화나 개인적인 경험/선호도를 공유하는 경우
 
 판단 기준:
 - 질문에 "사진", "이미지", "찍은", "보여줘" 등의 단어가 포함되어 있으면 find_photo
 - 질문이 단어 하나뿐인 경우에도 그 단어가 장소, 인물, 사물 등 일반적으로 사진에 등장할 수 있는 키워드이면 find_photo
-- 그렇지 않으면 get_info
+- 사용자가 자신의 선호도, 경험, 감정, 의견을 표현하는 문장은 conversation
+- 명확한 질문이나 정보 요청이 아닌 일상적인 대화는 conversation
+- 그 외에 정보를 얻고자 하는 질문은 get_info
 
 예시:
 - "헬로키티" → find_photo
 - "헬로키티 사진" → find_photo
 - "헬로키티는 누구야?" → get_info
+- "나는 순두부찌개 싫어해" → conversation
+- "오늘 기분이 좋아" → conversation
+- "요즘 날씨가 어때?" → get_info
 
 질문: {query}
 
-응답은 반드시 "find_photo" 또는 "get_info" 중 하나만 주세요.
+응답은 반드시 "find_photo", "get_info", "conversation" 중 하나만 주세요.
 """
 
         response = openai_client.chat.completions.create(
