@@ -4,12 +4,23 @@ from datetime import datetime
 def parse_address_keywords(address: str) -> list[str]:
     """
     주소 문자열을 기반으로 주요 지역 단어 키워드 추출
-    예: "대한민국 서울특별시 강남구 역삼동" → ["대한민국", "서울", "강남구", "역삼동"]
+    숫자(번지/건물번호 등)는 제외
+    예: "대한민국 부산광역시 강서구 송정동 1624" → ["대한민국", "부산광역시", "강서구", "송정동"]
     """
     if not address:
         return []
 
-    return [word.strip() for word in address.split() if word.strip()]
+    keywords = []
+    for word in address.split():
+        word = word.strip()
+        if not word:
+            continue
+        # 숫자로만 되어 있으면 제외
+        if word.isdigit():
+            continue
+        keywords.append(word)
+
+    return keywords
 
 
 def parse_time_keywords(image_time_str: str) -> list[str]:
