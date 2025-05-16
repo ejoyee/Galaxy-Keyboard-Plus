@@ -447,6 +447,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
 //                            mSearchKey.clearAnimation();
 //                            mSearchKey.setAlpha(1f);
 //                            mKeyHighlighted = true;
+                            Toast.makeText(getContext(), "검색 완료", Toast.LENGTH_SHORT).show();
                         });
                         Log.d(TAG_NET, "✅ 결과 수신");
 

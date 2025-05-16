@@ -46,7 +46,6 @@
             style="@style/Widget.AppCompat.Button.Borderless"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="검색중"
             android:visibility="gone" />
 
         <LinearLayout
@@ -61,15 +60,11 @@
 
             <EditText
                 android:id="@+id/suggestions_strip_search_input"
-                android:layout_width="0dp"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
-
                 android:cursorVisible="true"
-
-                android:focusable="true"
-                android:focusableInTouchMode="true"
-                android:hint="@string/search_hint"
+                android:layout_marginHorizontal="8dp"
+                android:minWidth="120dp"
                 android:imeOptions="actionSearch|flagNoExtractUi"
                 android:inputType="text"
                 android:maxLines="1" />
