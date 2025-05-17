@@ -5,6 +5,7 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.content.Context;
 import android.content.pm.PackageManager;
+import android.net.Uri;
 import android.os.Build;
 import android.provider.MediaStore;
 import android.util.Log;
@@ -51,6 +52,12 @@ public class BackupWorker extends Worker {
     public Result doWork() {
         Context ctx = getApplicationContext();
 
+        // (1) 트리거된 URI 찍어 보기
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            List<Uri> uris = getTriggeredContentUris();
+            Log.d(TAG, ">>>> 트리거된 URI 목록: " + uris);
+        }
+
         // ──────────────── ① 워커 시작과 동시에 "다음 워크" 재등록 ────────────────
         scheduleNextBackup(ctx);
 
@@ -95,11 +102,6 @@ public class BackupWorker extends Worker {
                                 .setOngoing(false)
                                 .setAutoCancel(true)
                                 .setSmallIcon(R.drawable.ic_upload_done);
-                        // ② ForegroundService 알림으로 다시 설정
-                        setForegroundAsync(new ForegroundInfo(
-                                NOTIF_ID,
-                                builder[0].build()
-                        ));
                     }
                     latch.countDown();
                 }
@@ -113,6 +115,25 @@ public class BackupWorker extends Worker {
             Thread.currentThread().interrupt();
             return Result.failure();
         }
+
+        // ──────────────── ③ 일반 알림으로 최종 메시지 남기기 ────────────────
+        try {
+            // API 33 이상에서는 명시적으로 권한 체크
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS)
+                        == PackageManager.PERMISSION_GRANTED) {
+                    NotificationManagerCompat.from(ctx).notify(NOTIF_ID + 1, builder[0].build());
+                } else {
+                    Log.w(TAG, "알림 권한이 없습니다. 알림을 건너뜁니다.");
+                }
+            } else {
+                // Android 12 이하에서는 권한 없이도 동작
+                NotificationManagerCompat.from(ctx).notify(NOTIF_ID + 1, builder[0].build());
+            }
+        } catch (SecurityException e) {
+            Log.e(TAG, "알림 권한 오류", e);
+        }
+
         return Result.success();
     }
 
