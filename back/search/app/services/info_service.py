@@ -215,8 +215,8 @@ async def generate_enhanced_info_answer(
             payload = {"query": final_query}
 
             response = requests.post(
-                # "http://mcp-api:8050/api/search/",
-                "http://k12e201.p.ssafy.io:8050/api/search",
+                "http://mcp-api:8050/api/search/",
+                # "http://k12e201.p.ssafy.io:8050/api/search",
                 headers=headers,
                 json=payload,
                 timeout=30,  # 타임아웃 설정
