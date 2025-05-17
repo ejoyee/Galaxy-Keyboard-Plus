@@ -6,13 +6,18 @@ import android.app.NotificationManager;
 import android.content.Context;
 import android.content.pm.PackageManager;
 import android.os.Build;
+import android.provider.MediaStore;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
 import androidx.core.content.ContextCompat;
+import androidx.work.Constraints;
+import androidx.work.ExistingWorkPolicy;
 import androidx.work.ForegroundInfo;
+import androidx.work.OneTimeWorkRequest;
+import androidx.work.WorkManager;
 import androidx.work.Worker;
 import androidx.work.WorkerParameters;
 
@@ -32,7 +37,7 @@ public class BackupWorker extends Worker {
          */
         void onProgress(long done);
     }
-
+    private static final String UNIQUE_WORK_NAME = "image_backup_on_new";
     private static final String TAG = "BackupWorker";
     private static final String CHANNEL_ID = "backup_upload_channel";
     private static final int NOTIF_ID = 1001;
@@ -45,6 +50,10 @@ public class BackupWorker extends Worker {
     @Override
     public Result doWork() {
         Context ctx = getApplicationContext();
+
+        // ──────────────── ① 워커 시작과 동시에 "다음 워크" 재등록 ────────────────
+        scheduleNextBackup(ctx);
+
         // 0) 채널 생성
         createChannel(ctx);
 
@@ -86,7 +95,11 @@ public class BackupWorker extends Worker {
                                 .setOngoing(false)
                                 .setAutoCancel(true)
                                 .setSmallIcon(R.drawable.ic_upload_done);
-                        safeNotify(builder[0]);
+                        // ② ForegroundService 알림으로 다시 설정
+                        setForegroundAsync(new ForegroundInfo(
+                                NOTIF_ID,
+                                builder[0].build()
+                        ));
                     }
                     latch.countDown();
                 }
@@ -126,6 +139,28 @@ public class BackupWorker extends Worker {
             return;
         }
         nm.notify(NOTIF_ID, b.build());
+    }
+
+    // ──────────────── ① doWork 맨 위에서 호출할 스케줄링 메서드 ────────────────
+    private void scheduleNextBackup(Context context) {
+        Constraints constraints = new Constraints.Builder()
+                .addContentUriTrigger(
+                        MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                        /* triggerForDescendants= */ true
+                )
+                .build();
+
+        OneTimeWorkRequest next =
+                new OneTimeWorkRequest.Builder(BackupWorker.class)
+                        .setConstraints(constraints)
+                        .build();
+
+        WorkManager.getInstance(context)
+                .enqueueUniqueWork(
+                        UNIQUE_WORK_NAME,
+                        ExistingWorkPolicy.REPLACE,
+                        next
+                );
     }
 }
 
