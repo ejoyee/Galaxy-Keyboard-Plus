@@ -26,6 +26,8 @@ import android.media.MediaPlayer;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.Message;
 import android.provider.MediaStore;
 import android.provider.Settings;
@@ -50,6 +52,7 @@ import androidx.work.WorkManager;
 import org.dslul.openboard.inputmethod.backup.FullBackupWorker;
 import org.dslul.openboard.inputmethod.backup.IncrementalBackupWorker;
 import org.dslul.openboard.inputmethod.latin.R;
+import org.dslul.openboard.inputmethod.latin.login.KakaoLoginActivity;
 import org.dslul.openboard.inputmethod.latin.search.SearchActivity;
 import org.dslul.openboard.inputmethod.latin.utils.LeakGuardHandlerWrapper;
 import org.dslul.openboard.inputmethod.latin.utils.UncachedInputMethodManagerUtils;
@@ -207,6 +210,12 @@ public final class SetupWizardActivity extends Activity implements View.OnClickL
     private static final int STEP_LAUNCHING_IME_SETTINGS = 4;
     private static final int STEP_BACK_FROM_IME_SETTINGS = 5;
 
+    private static final int STEP_4_LOGIN               = 6; // 카카오 로그인
+    private static final int STEP_5_REQUEST_PHOTO_PERM  = 7; // 사진 권한
+    private static final int STEP_6_REQUEST_NOTIF_PERM  = 8; // 알림 권한
+    private static final int STEP_7_RUN_BACKUP_WORKER   = 9; // 백업 실행
+    private static final long STEP_7_DELAY_MS = 5_000L;      // 5초 딜레이
+
     private SettingsPoolingHandler mHandler;
 
     private static final class SettingsPoolingHandler
@@ -357,6 +366,98 @@ public final class SetupWizardActivity extends Activity implements View.OnClickL
         mActionFinish.setCompoundDrawablesRelativeWithIntrinsicBounds(getResources().getDrawable(R.drawable.ic_setup_finish),
                 null, null, null);
         mActionFinish.setOnClickListener(this);
+
+        // ────────── 추가: STEP_4 - 카카오 로그인 ──────────
+        final SetupStep step4 = new SetupStep(
+                STEP_4_LOGIN, applicationName,
+                findViewById(R.id.setup_step4_bullet),
+                findViewById(R.id.setup_step4),
+                R.string.setup_step4_title,           // “로그인”
+                R.string.setup_step4_instruction,     // “버튼을 눌러 카카오 로그인 페이지로 이동합니다.”
+                0,                                     // 완료(instruction) 없음
+                R.drawable.ic_setup_step4,            // 아이콘
+                R.string.setup_step4_action            // “카카오 로그인”
+        );
+        step4.setAction(new Runnable() {
+            @Override public void run() {
+                // 카카오 로그인 화면으로 이동
+                Intent intent = new Intent(SetupWizardActivity.this, KakaoLoginActivity.class);
+                startActivity(intent);
+            }
+        });
+        mSetupStepGroup.addStep(step4);
+
+        // ────────── 추가: STEP_5 - 사진 접근 권한 요청 ──────────
+        final SetupStep step5 = new SetupStep(
+                STEP_5_REQUEST_PHOTO_PERM, applicationName,
+                findViewById(R.id.setup_step5_bullet),
+                findViewById(R.id.setup_step5),
+                R.string.setup_step5_title,           // “사진 접근 권한 설정”
+                R.string.setup_step5_instruction,     // “버튼을 눌러 사진 권한을 요청합니다.”
+                0,
+                R.drawable.ic_setup_step5,
+                R.string.setup_step5_action           // “사진 권한 요청”
+        );
+        step5.setAction(new Runnable() {
+            @Override public void run() {
+                // 기존 ensureMediaPermission() 호출
+                ensureMediaPermission();
+            }
+        });
+        mSetupStepGroup.addStep(step5);
+
+        // ────────── 추가: STEP_6 - 알림 권한 요청 ──────────
+        final SetupStep step6 = new SetupStep(
+                STEP_6_REQUEST_NOTIF_PERM, applicationName,
+                findViewById(R.id.setup_step6_bullet),
+                findViewById(R.id.setup_step6),
+                R.string.setup_step6_title,           // “알림 권한 설정”
+                R.string.setup_step6_instruction,     // “버튼을 눌러 알림 권한을 요청합니다.”
+                0,
+                R.drawable.ic_setup_step6,
+                R.string.setup_step6_action           // “알림 권한 요청”
+        );
+        step6.setAction(new Runnable() {
+            @Override public void run() {
+                // 기존 ensureNotificationPermission() 호출
+                ensureNotificationPermission();
+            }
+        });
+        mSetupStepGroup.addStep(step6);
+
+        // ────────── 추가: STEP_7 - Backup WorkManager 실행 ──────────
+        final SetupStep step7 = new SetupStep(
+                STEP_7_RUN_BACKUP_WORKER, applicationName,
+                findViewById(R.id.setup_step7_bullet),
+                findViewById(R.id.setup_step7),
+                R.string.setup_step7_title,           // “백업 시작”
+                R.string.setup_step7_instruction,     // “5초 뒤 메인 페이지로 이동합니다.”
+                0,
+                R.drawable.ic_setup_step7,
+                R.string.setup_step7_action           // “백업 실행”
+        );
+        step7.setAction(new Runnable() {
+            @Override public void run() {
+                // WorkManager 제약 설정 후 enqueue
+                Constraints constraints = new Constraints.Builder()
+                        .setRequiredNetworkType(NetworkType.CONNECTED)
+                        .build();
+                OneTimeWorkRequest req = new OneTimeWorkRequest.Builder(FullBackupWorker.class)
+                        .setConstraints(constraints)
+                        .build();
+                WorkManager.getInstance(getApplicationContext()).enqueue(req);
+
+                // 5초 딜레이 후 메인(SearchActivity)로 이동
+                new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
+                    @Override public void run() {
+                        startActivity(new Intent(SetupWizardActivity.this, SearchActivity.class));
+                        finish();
+                    }
+                }, STEP_7_DELAY_MS);
+            }
+        });
+        mSetupStepGroup.addStep(step7);
+
     }
 
     @Override
