@@ -32,7 +32,6 @@ public class FullBackupWorker extends Worker {
          */
         void onProgress(long done);
     }
-    private static final String UNIQUE_WORK_NAME = "image_backup_on_new";
     private static final String TAG = "BackupWorker";
     private static final String CHANNEL_ID = "backup_upload_channel";
     private static final int NOTIF_ID = 1001;
@@ -65,7 +64,7 @@ public class FullBackupWorker extends Worker {
                     totalHolder.set(total);
                     builder[0] = new NotificationCompat.Builder(ctx, CHANNEL_ID)
                             .setSmallIcon(R.drawable.ic_upload)
-                            .setContentTitle("사진을 안전하게 보관하는 중…")
+                            .setContentTitle("포키가 사진을 안전하게 저장하고 있어요.")
                             .setContentText("0/" + total)
                             .setOnlyAlertOnce(true)
                             .setOngoing(true)
@@ -89,7 +88,8 @@ public class FullBackupWorker extends Worker {
                     if (builder[0] != null) {
                         builder[0]
                                 .setProgress(0, 0, false)
-                                .setContentText("모든 사진이 안전하게 보관되었어요! 🎉")
+                                .setContentTitle("모든 사진이 안전하게 보관되었어요! 🎉")
+                                .setContentText("포키에서 사진을 검색해보세요")
                                 .setOngoing(false)
                                 .setAutoCancel(true)
                                 .setSmallIcon(R.drawable.ic_upload_done);

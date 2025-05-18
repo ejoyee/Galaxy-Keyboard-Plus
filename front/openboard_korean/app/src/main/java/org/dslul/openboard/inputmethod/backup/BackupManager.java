@@ -150,6 +150,7 @@ public class BackupManager {
                     android.widget.Toast.makeText(context, "업로드할 이미지가 없습니다.", android.widget.Toast.LENGTH_LONG).show()
             );
             isBackupRunning = false;
+            onComplete.run();
             return;
         }
 
@@ -193,7 +194,7 @@ public class BackupManager {
                             progressListener.onProgress(d);
                             if (d == total) {
                                 Log.i(TAG, "🏁 전체 업로드 완료 (" + (System.currentTimeMillis() - startMs) + "ms)");
-                                UploadStateTracker.setBackedUpContentIds(context, doneIds);
+                                UploadStateTracker.addBackedUpContentIds(context, doneIds);
                                 onComplete.run();
                                 isBackupRunning = false;
                             }

@@ -110,6 +110,7 @@ public final class SetupWizardActivity extends Activity implements View.OnClickL
         // 2) 권한 직후 전체 백업 (한 번만)
         OneTimeWorkRequest fullReq =
                 new OneTimeWorkRequest.Builder(FullBackupWorker.class)
+                        .setConstraints(constraints)
                         .build();
         WorkManager.getInstance(this)
                 .enqueueUniqueWork(
