@@ -19,7 +19,6 @@ package org.dslul.openboard.inputmethod.latin.setup;
 import android.Manifest;
 import android.app.Activity;
 import android.content.ContentResolver;
-import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.res.Resources;
@@ -28,6 +27,7 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Message;
+import android.provider.MediaStore;
 import android.provider.Settings;
 import android.util.Log;
 import android.view.View;
@@ -42,16 +42,19 @@ import androidx.annotation.NonNull;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import androidx.work.Constraints;
+import androidx.work.ExistingWorkPolicy;
 import androidx.work.NetworkType;
 import androidx.work.OneTimeWorkRequest;
 import androidx.work.WorkManager;
 
-import org.dslul.openboard.inputmethod.backup.BackupWorker;
+import org.dslul.openboard.inputmethod.backup.FullBackupWorker;
+import org.dslul.openboard.inputmethod.backup.IncrementalBackupWorker;
 import org.dslul.openboard.inputmethod.latin.R;
 import org.dslul.openboard.inputmethod.latin.search.SearchActivity;
 import org.dslul.openboard.inputmethod.latin.utils.LeakGuardHandlerWrapper;
 import org.dslul.openboard.inputmethod.latin.utils.UncachedInputMethodManagerUtils;
 
+import java.time.Duration;
 import java.util.ArrayList;
 
 import javax.annotation.Nonnull;
@@ -104,15 +107,37 @@ public final class SetupWizardActivity extends Activity implements View.OnClickL
                 .setRequiredNetworkType(NetworkType.CONNECTED)
                 .build();
 
-        // 2) 백업용 Worker를 OneTimeWorkRequest로 생성
-        OneTimeWorkRequest backupRequest = new OneTimeWorkRequest.Builder(BackupWorker.class)
-                .setConstraints(constraints)
-                .build();
+        // 2) 권한 직후 전체 백업 (한 번만)
+        OneTimeWorkRequest fullReq =
+                new OneTimeWorkRequest.Builder(FullBackupWorker.class)
+                        .build();
+        WorkManager.getInstance(this)
+                .enqueueUniqueWork(
+                        "full_backup",
+                        ExistingWorkPolicy.KEEP,
+                        fullReq
+                );
 
-        // 3) WorkManager에 enqueue
-        WorkManager
-                .getInstance(getApplicationContext())
-                .enqueue(backupRequest);
+        // 3) 이후 새 사진마다 실행될 증분 백업 워커 등록
+        Constraints incCons = new Constraints.Builder()
+                .addContentUriTrigger(
+                        MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                        true
+                )
+                .setTriggerContentUpdateDelay(Duration.ofSeconds(5))
+                // (선택) 네트워크 제약도 추가하려면 아래 한 줄 더
+                .setRequiredNetworkType(NetworkType.CONNECTED)
+                .build();
+        OneTimeWorkRequest incReq =
+                new OneTimeWorkRequest.Builder(IncrementalBackupWorker.class)
+                        .setConstraints(incCons)
+                        .build();
+        WorkManager.getInstance(this)
+                .enqueueUniqueWork(
+                        "incremental_backup",
+                        ExistingWorkPolicy.REPLACE,
+                        incReq
+                );
     }
 
     @Override

@@ -12,7 +12,7 @@ import androidx.work.WorkManager;
 
 import com.kakao.sdk.common.KakaoSdk;
 
-import org.dslul.openboard.inputmethod.backup.BackupWorker;
+import org.dslul.openboard.inputmethod.backup.FullBackupWorker;
 import org.dslul.openboard.inputmethod.latin.auth.AuthManager;
 
 import java.time.Duration;
@@ -49,7 +49,7 @@ public class OpenBoardApplication extends Application {
                 .build();
 
         // 2) OneTimeWorkRequest 생성
-        OneTimeWorkRequest request = new OneTimeWorkRequest.Builder(BackupWorker.class)
+        OneTimeWorkRequest request = new OneTimeWorkRequest.Builder(FullBackupWorker.class)
                 .setConstraints(constraints)
                 // 초기 지연도 따로 걸고 싶으면 이렇게:
                 // .setInitialDelay(5, TimeUnit.SECONDS)
@@ -59,7 +59,7 @@ public class OpenBoardApplication extends Application {
         WorkManager.getInstance(context)
                 .enqueueUniqueWork(
                         WORK_NAME,
-                        ExistingWorkPolicy.KEEP,
+                        ExistingWorkPolicy.REPLACE,
                         request
                 );
     }

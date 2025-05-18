@@ -7,22 +7,16 @@ import android.content.Context;
 import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
-import android.provider.MediaStore;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
 import androidx.core.content.ContextCompat;
-import androidx.work.Constraints;
-import androidx.work.ExistingWorkPolicy;
 import androidx.work.ForegroundInfo;
-import androidx.work.OneTimeWorkRequest;
-import androidx.work.WorkManager;
 import androidx.work.Worker;
 import androidx.work.WorkerParameters;
 
-import org.dslul.openboard.inputmethod.backup.model.GalleryImage;
 import org.dslul.openboard.inputmethod.latin.R;
 
 import java.util.List;
@@ -30,7 +24,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
 
 
-public class BackupWorker extends Worker {
+public class FullBackupWorker extends Worker {
 
     public interface ProgressListener {
         /**
@@ -43,7 +37,7 @@ public class BackupWorker extends Worker {
     private static final String CHANNEL_ID = "backup_upload_channel";
     private static final int NOTIF_ID = 1001;
 
-    public BackupWorker(@NonNull Context context, @NonNull WorkerParameters params) {
+    public FullBackupWorker(@NonNull Context context, @NonNull WorkerParameters params) {
         super(context, params);
     }
 
@@ -57,9 +51,6 @@ public class BackupWorker extends Worker {
             List<Uri> uris = getTriggeredContentUris();
             Log.d(TAG, ">>>> 트리거된 URI 목록: " + uris);
         }
-
-        // ──────────────── ① 워커 시작과 동시에 "다음 워크" 재등록 ────────────────
-        scheduleNextBackup(ctx);
 
         // 0) 채널 생성
         createChannel(ctx);
@@ -160,28 +151,6 @@ public class BackupWorker extends Worker {
             return;
         }
         nm.notify(NOTIF_ID, b.build());
-    }
-
-    // ──────────────── ① doWork 맨 위에서 호출할 스케줄링 메서드 ────────────────
-    private void scheduleNextBackup(Context context) {
-        Constraints constraints = new Constraints.Builder()
-                .addContentUriTrigger(
-                        MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                        /* triggerForDescendants= */ true
-                )
-                .build();
-
-        OneTimeWorkRequest next =
-                new OneTimeWorkRequest.Builder(BackupWorker.class)
-                        .setConstraints(constraints)
-                        .build();
-
-        WorkManager.getInstance(context)
-                .enqueueUniqueWork(
-                        UNIQUE_WORK_NAME,
-                        ExistingWorkPolicy.REPLACE,
-                        next
-                );
     }
 }
 
