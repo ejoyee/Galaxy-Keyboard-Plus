@@ -218,10 +218,10 @@ public class KakaoLoginActivity extends Activity {
                         } else {
                             checkAndShowLoginStatus();
                         }
-                        Intent intent = new Intent(getApplicationContext(), SearchActivity.class);
-                        startActivity(intent);
+//                        Intent intent = new Intent(getApplicationContext(), SearchActivity.class);
+//                        startActivity(intent);
                         // 로그인 성공 후 액티비티 종료 (선택적)
-                        // setResult(RESULT_OK);
+                         setResult(RESULT_OK);
                          finish();
                     }
                 });

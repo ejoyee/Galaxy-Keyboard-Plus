@@ -94,16 +94,4 @@
         android:text="@string/setup_finish_action"
         style="@style/setupStepActionLabelStyle"
         android:layout_marginTop="@dimen/setup_step_horizontal_line_height" />
-    <include
-        android:id="@+id/setup_step4"
-        layout="@layout/setup_step" />
-    <include
-        android:id="@+id/setup_step5"
-        layout="@layout/setup_step" />
-    <include
-        android:id="@+id/setup_step6"
-        layout="@layout/setup_step" />
-    <include
-        android:id="@+id/setup_step7"
-        layout="@layout/setup_step" />
 </merge>
