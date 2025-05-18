@@ -20,7 +20,9 @@ import android.app.ActionBar;
 import android.content.Intent;
 import android.os.Bundle;
 import android.preference.PreferenceActivity;
+import android.view.MenuItem;
 
+import org.dslul.openboard.inputmethod.latin.R;
 import org.dslul.openboard.inputmethod.latin.permissions.PermissionsManager;
 import org.dslul.openboard.inputmethod.latin.utils.FragmentUtils;
 
@@ -68,4 +70,23 @@ public final class SettingsActivity extends PreferenceActivity
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         PermissionsManager.get(this).onRequestPermissionsResult(requestCode, permissions, grantResults);
     }
+
+    @Override
+    public void finish() {
+        super.finish();
+        overridePendingTransition(
+                R.anim.slide_in_left,
+                R.anim.slide_out_right
+        );
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+        if (item.getItemId() == android.R.id.home) {
+            finish();  // 위에서 오버라이드한 finish()가 호출됩니다
+            return true;
+        }
+        return super.onOptionsItemSelected(item);
+    }
+
 }
