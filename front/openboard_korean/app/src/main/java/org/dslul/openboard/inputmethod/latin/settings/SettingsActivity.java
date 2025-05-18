@@ -83,10 +83,27 @@ public final class SettingsActivity extends PreferenceActivity
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
         if (item.getItemId() == android.R.id.home) {
-            finish();  // 위에서 오버라이드한 finish()가 호출됩니다
+            // 백스택이 있으면 fragment 팝만
+            if (getFragmentManager().getBackStackEntryCount() > 0) {
+                getFragmentManager().popBackStack();
+            } else {
+                // 백스택 없으면 액티비티 종료
+                finish();
+            }
             return true;
         }
         return super.onOptionsItemSelected(item);
+    }
+
+    @Override
+    public void onBackPressed() {
+        // 프래그먼트 매니저에서 백스택이 있으면 팝
+        if (getFragmentManager().getBackStackEntryCount() > 0) {
+            getFragmentManager().popBackStack();
+        } else {
+            // 백스택이 없으면 액티비티 종료
+            super.onBackPressed();  // super.onBackPressed() → finish()
+        }
     }
 
 }
