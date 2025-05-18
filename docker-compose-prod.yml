@@ -131,6 +131,7 @@ services:
       - "0.0.0.0:8050:8050"
     environment:
       - WEB_SEARCH_URL=http://web-search:8100
+      - GOOGLE_WEB_SEARCH_URL=http://google-web-search:8150
     env_file: .env.prod
     depends_on:
       - web-search
@@ -147,6 +148,19 @@ services:
       - "0.0.0.0:8100:8100"
     environment:
       - BRAVE_API_KEY=${BRAVE_API_KEY}
+    restart: always
+    networks:
+      - internal
+
+
+  google-web-search:
+    container_name: google-web-search
+    build: ./back/google-web-search
+    ports:
+      - "0.0.0.0:8150:8150"
+    environment:
+      - GOOGLE_SEARCH_API_KEY=${GOOGLE_SEARCH_API_KEY}
+      - GOOGLE_SEARCH_ENGINE_ID=${GOOGLE_SEARCH_ENGINE_ID}
     restart: always
     networks:
       - internal

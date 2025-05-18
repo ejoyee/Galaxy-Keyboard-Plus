@@ -2,9 +2,16 @@ import asyncio
 import logging
 import time
 import json
-from typing import List, Dict
-from app.utils.ai_utils import expand_info_query, generate_info_answer
+import re
+import requests
+from typing import List, Dict, Optional
+from app.utils.ai_utils import expand_info_query
 from app.utils.semantic_search import search_similar_items_enhanced_optimized
+from app.utils.context_helpers import (
+    check_if_requires_context,
+    get_chat_context,
+    generate_contextualized_info_answer,
+)
 from app.config.settings import MAX_CONTEXT_ITEMS
 from concurrent.futures import ThreadPoolExecutor
 
@@ -13,8 +20,18 @@ executor = ThreadPoolExecutor(max_workers=10)
 
 
 async def process_info_search(user_id: str, query: str, timings: Dict) -> Dict:
-    """정보 검색 처리"""
-    # 쿼리 확장
+    """정보 검색 처리 - 이전 대화 기록 활용"""
+    # 맥락 필요 여부 확인
+    requires_context = check_if_requires_context(query)
+    chat_history = []
+
+    if requires_context:
+        # 이전 대화 기록 가져오기
+        chat_history, context_timings = await get_chat_context(user_id, query)
+        timings.update(context_timings)
+        logger.info(
+            f"🔍 이전 대화 검색: {len(chat_history)}개 ({timings.get('context_retrieval', 0):.3f}초)"
+        )
     query_expand_start = time.time()
     expanded_queries = await expand_info_query(query)
     timings["query_expansion"] = time.time() - query_expand_start
@@ -39,9 +56,38 @@ async def process_info_search(user_id: str, query: str, timings: Dict) -> Dict:
 
     # 답변 생성
     answer_start = time.time()
-    answer = await generate_info_answer(user_id, query, context_info)
+
+    if chat_history:
+        # 정보와 맥락을 모두 고려한 답변 생성
+        answer, used_info_indices, used_chat = (
+            await generate_contextualized_info_answer(
+                user_id, query, context_info, chat_history
+            )
+        )
+        logger.info(
+            f"✍️ 맥락 기반 답변 생성 (사용된 정보: {len(used_info_indices)}개, 사용된 대화: {len(used_chat)}개)"
+        )
+    else:
+        # 정보만 고려한 답변 생성
+        answer, used_info_indices = await generate_enhanced_info_answer(
+            user_id, query, context_info
+        )
+        used_chat = []
+        logger.info(f"✍️ 일반 답변 생성 (사용된 정보: {len(used_info_indices)}개)")
+
     timings["answer_generation"] = time.time() - answer_start
     logger.info(f"✍️ 답변 생성 완료 ({timings['answer_generation']:.3f}초)")
+
+    # 응답에 실제로 사용된 정보 소스의 ID만 추출
+    photo_ids = []
+    if used_info_indices and context_info:
+        for idx in used_info_indices:
+            if idx < len(context_info):
+                item_id = extract_id_from_item(context_info[idx])
+                if item_id:
+                    photo_ids.append(item_id)
+
+    logger.info(f"🆔 답변에 사용된 ID: {photo_ids}")
 
     # 결과 구성
     return {
@@ -49,7 +95,8 @@ async def process_info_search(user_id: str, query: str, timings: Dict) -> Dict:
         "query": query,
         "answer": answer,
         "context_count": len(context_info),
-        "photo_ids": [],
+        "chat_context_used": len(used_chat) > 0,  # 대화 맥락 사용 여부
+        "photo_ids": photo_ids,
         "_timings": timings,
         "_debug": {
             "expanded_queries": expanded_queries,
@@ -57,6 +104,7 @@ async def process_info_search(user_id: str, query: str, timings: Dict) -> Dict:
             "context_sample": (
                 context_info[0].get("text", "")[:200] if context_info else None
             ),
+            "chat_history_count": len(chat_history),
         },
     }
 
@@ -75,7 +123,7 @@ async def perform_vector_search(
             search_similar_items_enhanced_optimized,
             user_id,
             expanded_queries,
-            "info",
+            "information",
             20,
         )
         context_info.extend(result1)
@@ -88,7 +136,7 @@ async def perform_vector_search(
                 search_similar_items_enhanced_optimized,
                 user_id,
                 [original_query],
-                "info",
+                "information",
                 10,
             )
             context_info.extend(result2)
@@ -108,3 +156,179 @@ async def perform_vector_search(
     except Exception as e:
         logger.error(f"❌ 벡터 검색 실패: {str(e)}", exc_info=True)
         return []
+
+
+async def generate_enhanced_info_answer(
+    user_id: str, query: str, context_info: List[Dict]
+) -> tuple[str, List[int]]:
+    """개선된 정보 기반 답변 생성 - MCP API를 사용하여 답변 생성"""
+
+    def sync_generate_enhanced_answer():
+        # context 정보를 더 체계적으로 정리
+        context_texts = []
+        for i, item in enumerate(context_info[:5]):  # 상위 5개만 사용
+            text = item.get("text", "").strip()
+            if text:
+                context_texts.append(f"{i+1}. {text}")
+
+        context_text = "\n".join(context_texts)
+
+        # 최종 쿼리 구성
+        if context_text:
+            final_query = f"""
+사용자의 질문에 대해 아래 제공된 정보를 활용하여 답변하세요.
+정보가 부족하더라도 최대한 관련된 내용을 추출하여 자연스러운 답변을 구성하세요.
+
+[제공된 정보]
+{context_text}
+
+[사용자 질문]
+{query}
+
+답변 작성 규칙:
+1. 제공된 정보를 기반으로 정확하게 답변
+2. 친근하고 자연스러운 대화체 사용
+3. 정보가 부족한 경우에도 질문에 맞는 답변 제공
+4. 알려진 정보만으로 답변하되, 의미있는 정보가 전혀 없는 경우 적절히 안내
+5. 반드시 사용한 정보의 번호를 마지막에 목록으로 추가 (1, 3, 5처럼 숫자만 쓰고 각 숫자는 쉼표로 구분)
+
+질문에 대한 정확한 정보를 찾지 못했다면, 웹검색을 통해 최대한 관련된 내용을 제공해보세요. 
+정보가 부족하더라도 사용자의 질문에 유용한 답변을 제공하되, 추측임을 명시하고 정확한 정보를 제공하는 방식으로 작성해주세요.
+
+답변:
+"""
+        else:
+            # 컨텍스트가 없는 경우
+            final_query = f"""
+사용자의 질문: "{query}"
+
+질문에 대한 정확한 정보를 찾지 못했다면, 웹검색을 통해 최대한 관련된 내용을 제공해보세요. 
+정보가 부족하더라도 사용자의 질문에 유용한 답변을 제공하되, 추측임을 명시하고 정확한 정보를 제공하는 방식으로 작성해주세요.
+
+답변:
+"""
+
+        # MCP API로 요청
+        try:
+            headers = {
+                "accept": "application/json",
+                "Content-Type": "application/json",
+            }
+
+            payload = {"query": final_query}
+
+            logger.info(f"🚀 MCP API 요청 시작: 쿼리 길이 {len(final_query)} 자")
+            mcp_start_time = time.time()
+
+            response = requests.post(
+                "http://mcp-api:8050/api/search/",
+                # "http://k12e201.p.ssafy.io:8050/api/search/",
+                headers=headers,
+                json=payload,
+                timeout=30,  # 타임아웃 설정
+            )
+
+            mcp_response_time = time.time() - mcp_start_time
+            logger.info(f"✅ MCP API 응답 수신: {mcp_response_time:.3f}초")
+
+            if response.status_code == 200:
+                mcp_parse_start = time.time()
+                result = response.json()
+                answer = result.get(
+                    "answer", "죄송합니다. 답변을 생성하는 데 문제가 발생했습니다."
+                )
+
+                mcp_parse_time = time.time() - mcp_parse_start
+                total_mcp_time = time.time() - mcp_start_time
+
+                logger.info(
+                    f"""
+📊 MCP API 성능 요약:
+- 요청-응답 시간: {mcp_response_time:.3f}초
+- 응답 파싱 시간: {mcp_parse_time:.3f}초
+- 전체 처리 시간: {total_mcp_time:.3f}초
+- 응답 길이: {len(answer)} 자
+                """
+                )
+            else:
+                error_time = time.time() - mcp_start_time
+                logger.error(
+                    f"❌ MCP API 응답 오류 ({error_time:.3f}초): 상태 코드 {response.status_code}, 응답: {response.text}"
+                )
+                answer = "죄송합니다. 답변을 생성하는 데 문제가 발생했습니다."
+        except requests.exceptions.Timeout:
+            error_time = time.time() - mcp_start_time
+            logger.error(f"⏱️ MCP API 타임아웃 발생 ({error_time:.3f}초)")
+            answer = "죄송합니다. 서버 응답 시간이 너무 오래 걸립니다."
+        except requests.exceptions.ConnectionError:
+            error_time = time.time() - mcp_start_time
+            logger.error(
+                f"🔌 MCP API 연결 오류 ({error_time:.3f}초): 서버에 연결할 수 없습니다."
+            )
+            answer = "죄송합니다. MCP 서버에 연결할 수 없습니다."
+        except Exception as e:
+            error_time = time.time() - mcp_start_time
+            logger.error(
+                f"❌ MCP API 요청 오류 ({error_time:.3f}초): {str(e)}", exc_info=True
+            )
+            answer = "죄송합니다. 서버 통신 중 오류가 발생했습니다."
+
+        # 사용된 컨텍스트 인덱스 추출
+        used_indices = []
+        if context_text:  # 컨텍스트가 있었을 때만 추출
+            # 답변 끝부분에서 번호 목록 추출
+            indices_pattern = r"\b([0-9]+(?:,\s*[0-9]+)*)\b"
+            indices_matches = re.findall(indices_pattern, answer.split("\n")[-1])
+
+            if indices_matches:
+                # 마지막 변에서 받은 것이 리스트의 형태로 도출되면 그걸 사용
+                last_match = indices_matches[-1]
+                for idx_str in last_match.split(","):
+                    try:
+                        idx = int(idx_str.strip()) - 1  # 1-based -> 0-based
+                        if 0 <= idx < len(context_info):
+                            used_indices.append(idx)
+                    except ValueError:
+                        continue
+
+            # 수처리된 마지막 행을 제거 (외부에서 보이지 않게)
+            if used_indices and "\n" in answer:
+                lines = answer.split("\n")
+                if any(
+                    all(c in "0123456789, " for c in line.strip())
+                    for line in lines[-2:]
+                ):
+                    answer = "\n".join(lines[:-1]).strip()
+
+        return answer, used_indices
+
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(executor, sync_generate_enhanced_answer)
+
+
+def extract_id_from_item(item: Dict) -> Optional[str]:
+    """한 개의 검색 결과 항목에서 ID 추출"""
+    # ID가 이미 있는 경우
+    if "id" in item and item["id"] not in ["unknown", ""]:
+        return item["id"]
+
+    text = item.get("text", "")
+    if not text:
+        return None
+
+    # 1. 단순 숫자로 시작하는 영수증 번호 패턴
+    receipt_id_match = re.match(r"^(\d{5,10})", text.strip())
+    if receipt_id_match:
+        return receipt_id_match.group(1)
+
+    # 2. "숫자: " 형태의 ID
+    prefix_id_match = re.match(r"^(\d+):\s", text.strip())
+    if prefix_id_match:
+        return prefix_id_match.group(1)
+
+    # 3. 첫 줄이 숫자로만 이루어진 경우
+    first_line = text.strip().split("\n")[0].strip() if "\n" in text else ""
+    if first_line and first_line.isdigit() and len(first_line) > 4:
+        return first_line
+
+    return None

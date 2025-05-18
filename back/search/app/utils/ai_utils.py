@@ -1,5 +1,6 @@
 import asyncio
 import json
+import re
 from typing import List, Dict, Optional
 import logging
 from openai import OpenAI
@@ -76,25 +77,20 @@ async def extract_photo_keywords(query: str) -> List[str]:
     def sync_extract_keywords():
         # 1. 키워드 추출 프롬프트
         prompt = f"""
-다음 질문에서 사진을 찾기 위한 직접 관련 키워드를 추출하세요.
-질문과 직접 관련된 핵심 단어와 유사어만 추출하고, 관련성이 낮은 확장 키워드는 제외합니다.
-날짜/시간 표현은 제외하고 다른 키워드만 추출하세요.
+다음 질문에서 **사진 검색에 도움이 될 핵심 키워드**를 가능한 많이 추출하세요.
+
+- 질문과 **직접 관련된 명사 및 형용사** 중심으로 추출
+- **유사어, 상위 개념어, 사람들이 자주 사용하는 표현도 함께 포함**
+- 예: "기프티콘" → "교환권", "스타벅스" → "커피", "카페", "선물"
+- 날짜/시간 표현은 제외
 
 질문: {query}
 
-추출 규칙:
-1. 질문과 직접 관련된 주요 명사와 형용사만 추출
-2. 핵심 개념의 유사어와 관련어 포함 (최대 2-3개)
-3. 간접적으로 연관된 확장 키워드는 제외
-4. 동사는 관련 명사로만 변환 (예: "먹다" → "식사")
-5. 날짜/시간 표현은 별도로 처리되므로 제외
+출력 예시:
+- "기프티콘 사진" → ["기프티콘", "교환권", "선물"]
+- "스벅 사진" → ["스타벅스", "커피", "카페"]
 
-예시:
-"생일 파티 사진" → ["생일", "파티", "축하"]
-"어제 회사에서 찍은 사진" → ["회사", "사무실", "직장"]
-"지난주 해변에서 찍은 사진" → ["해변", "바다", "바닷가"]
-
-JSON 배열로만 반환하세요.
+결과는 JSON 배열로만 출력하세요.
 """
 
         keyword_response = openai_client.chat.completions.create(
@@ -342,7 +338,7 @@ async def generate_conversation_response(user_id: str, query: str) -> str:
 """
 
         response = openai_client.chat.completions.create(
-            model=ANSWER_GENERATION_MODEL,
+            model="gpt-4o-mini",
             messages=[
                 {
                     "role": "system",
@@ -357,3 +353,97 @@ async def generate_conversation_response(user_id: str, query: str) -> str:
 
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(executor, sync_generate_conversation)
+
+
+async def generate_enhanced_info_answer(
+    user_id: str, query: str, context_info: List[Dict]
+) -> tuple[str, List[int]]:
+    """개선된 정보 기반 답변 생성 - 사용된 컨텍스트 인덱스 반환 & 불충분한 정보에도 대응"""
+
+    def sync_generate_enhanced_answer():
+        # context 정보를 더 체계적으로 정리
+        context_texts = []
+        for i, item in enumerate(context_info[:5]):  # 상위 5개만 사용
+            text = item.get("text", "").strip()
+            if text:
+                context_texts.append(f"{i+1}. {text}")
+
+        context_text = "\n".join(context_texts)
+
+        # 사용된 컨텍스트 인덱스를 추적하기 위한 프롬프트 추가
+        if context_text:
+            prompt = f"""
+사용자의 질문에 대해 아래 제공된 정보를 활용하여 답변하세요.
+정보가 부족하더라도 최대한 관련된 내용을 추출하여 자연스러운 답변을 구성하세요.
+
+[제공된 정보]
+{context_text}
+
+[사용자 질문]
+{query}
+
+답변 작성 규칙:
+1. 제공된 정보를 기반으로 정확하게 답변
+2. 친근하고 자연스러운 대화체 사용
+3. 정보가 부족한 경우에도 질문에 맞는 답변 제공
+4. 알려진 정보만으로 답변하되, 의미있는 정보가 전혀 없는 경우 적절히 안내
+5. 반드시 사용한 정보의 번호를 마지막에 목록으로 추가 (1, 3, 5처럼 숫자만 쓰고 각 숫자는 쉼표로 구분)
+
+답변:
+"""
+        else:
+            # 컨텍스트가 없는 경우
+            prompt = f"""
+사용자의 질문: "{query}"
+
+질문에 대한 정확한 정보를 찾지 못했지만, 최대한 관련된 내용을 제공해보세요. 
+정보가 부족하더라도 사용자의 질문에 유용한 답변을 제공하되, 추측임을 지하고 정확한 정보를 제공하는 방식으로 작성해주세요.
+
+답변:
+"""
+
+        response = openai_client.chat.completions.create(
+            model="gpt-4o-mini",  # 다른 모델로 변경 가능
+            messages=[
+                {
+                    "role": "system",
+                    "content": "너는 사용자의 개인 비서야. 제공된 정보를 활용해 정확하고 도움이 되는 답변을 해줘. 어떤 정보를 사용했는지 표시하라.",
+                },
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.7,
+        )
+
+        answer = response.choices[0].message.content.strip()
+
+        # 사용된 컨텍스트 인덱스 추출
+        used_indices = []
+        if context_text:  # 컨텍스트가 있었을 때만 추출
+            # 답변 끝부분에서 번호 목록 추출
+            indices_pattern = r"\b([0-9]+(?:,\s*[0-9]+)*)\b"
+            indices_matches = re.findall(indices_pattern, answer.split("\n")[-1])
+
+            if indices_matches:
+                # 마지막 변에서 받은 것이 리스트의 형태로 도출되면 그걸 사용
+                last_match = indices_matches[-1]
+                for idx_str in last_match.split(","):
+                    try:
+                        idx = int(idx_str.strip()) - 1  # 1-based -> 0-based
+                        if 0 <= idx < len(context_info):
+                            used_indices.append(idx)
+                    except ValueError:
+                        continue
+
+            # 수처리된 마지막 행을 제거 (외부에서 보이지 않게)
+            if used_indices and "\n" in answer:
+                lines = answer.split("\n")
+                if any(
+                    all(c in "0123456789, " for c in line.strip())
+                    for line in lines[-2:]
+                ):
+                    answer = "\n".join(lines[:-1]).strip()
+
+        return answer, used_indices
+
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(executor, sync_generate_enhanced_answer)
