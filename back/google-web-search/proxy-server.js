@@ -96,7 +96,7 @@ app.post("/", async (req, res) => {
         console.error("[Google MCP] MCP 요청 시간 초과");
         removeResponseHandler();
         reject(new Error("Request timed out"));
-      }, 30000);
+      }, 50000);
 
       let responseBuffer = "";
 
@@ -113,7 +113,7 @@ app.post("/", async (req, res) => {
           } catch (err) {
             // 아직 완전한 JSON이 아님, 더 많은 데이터 기다리기
           }
-          if (alidJsonFound && response.id === requestId) {
+          if (validJsonFound && response.id === requestId) {
             clearTimeout(timeout);
             removeResponseHandler();
             console.log(
@@ -137,7 +137,7 @@ app.post("/", async (req, res) => {
         childProcess.stdout.removeListener("data", responseHandler);
       };
 
-      childProcess.stdout.once("data", listener);
+      childProcess.stdout.on("data", responseHandler);
     });
     const response = await responsePromise;
     console.log(
@@ -160,6 +160,7 @@ app.post("/", async (req, res) => {
 
 // 헬스 체크 엔드포인트
 app.get("/health", (req, res) => {
+  console.log(`[${new Date().toISOString()}] /health 요청 옴`);
   res.status(200).json({ status: "OK" });
 });
 
