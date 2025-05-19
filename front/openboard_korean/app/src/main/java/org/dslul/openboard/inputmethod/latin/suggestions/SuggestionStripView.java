@@ -289,7 +289,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         // 1) 기존 검색 키 숨기고
         mSearchKey.setVisibility(View.GONE);
         mSearchKey.setVisibility(View.VISIBLE);
-        mSearchKey.setAnimation("search_loading.json");    // 움직이는 JSON
+        mSearchKey.setAnimation("ic_search.json");    // 움직이는 JSON
         mSearchKey.setRepeatCount(LottieDrawable.INFINITE);
         mSearchKey.playAnimation();
 
@@ -397,7 +397,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                                     mSearchStatus.setVisibility(View.GONE);
                                     mSearchKey.pauseAnimation();
                                     mSearchKey.setRepeatCount(0);
-                                    mSearchKey.setAnimation("search_loading_blue.json"); // 파랑 정지된 JSON
+                                    mSearchKey.setAnimation("ic_search_blue.json"); // 파랑 정지된 JSON
                                     mSearchKey.setProgress(0f);
                                     mKeyHighlighted = true;
                                     break;
@@ -905,7 +905,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
 
                 // 3) 검색키 애니메이션/아이콘 원복
                 mSearchKey.clearAnimation();
-                mSearchKey.setAnimation("search_loading.json");
+                mSearchKey.setAnimation("ic_search.json");
                 mSearchKey.setProgress(0f);
                 mSearchKey.setRepeatCount(0);
 
@@ -935,7 +935,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
             } else {
                 // 세 번째 클릭(❌): 패널 닫고 키보드 복귀
                 mSearchPanel.dismissMoreKeysPanel();
-                mSearchKey.setAnimation("search_loading.json");  // 흑 정지된 JSON
+                mSearchKey.setAnimation("ic_search.json");  // 흑 정지된 JSON
                 mSearchKey.setRepeatCount(0);
                 mSearchKey.setProgress(0f);
                 mKeyHighlighted = false;
