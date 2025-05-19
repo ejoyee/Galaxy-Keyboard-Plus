@@ -24,6 +24,8 @@ import android.content.res.Resources;
 import android.content.res.TypedArray;
 import android.graphics.Bitmap;
 import android.graphics.Color;
+import android.graphics.PorterDuff;
+import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.net.Uri;
 import android.provider.MediaStore;
@@ -81,6 +83,7 @@ import org.dslul.openboard.inputmethod.latin.suggestions.MoreSuggestionsView.Mor
 import java.util.ArrayList;
 
 import androidx.appcompat.content.res.AppCompatResources;
+import androidx.core.content.ContextCompat;
 import androidx.core.view.ViewCompat;
 
 import com.airbnb.lottie.LottieAnimationView;
@@ -88,8 +91,7 @@ import com.airbnb.lottie.LottieDrawable;
 
 import retrofit2.Call;
 
-public final class SuggestionStripView extends RelativeLayout implements OnClickListener,
-        OnLongClickListener {
+public final class SuggestionStripView extends RelativeLayout implements OnClickListener, OnLongClickListener {
     public interface Listener {
         void pickSuggestionManually(SuggestedWordInfo word);
 
@@ -101,6 +103,8 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
     }
 
     /* ▼ 새로 추가할 필드들 --------------------------------------------------- */
+    private static final Typeface STRIP_TYPEFACE = Typeface.create("samsung_one", Typeface.NORMAL); // 시스템 폰트명
+    private static final float STRIP_TEXT_SCALE = 0.9f;     // 10% 확대 (원하면 조정)
     private ImageButton mFetchClipboardKey;
     private int mDefaultHeight = 0;
     private HorizontalScrollView mPhotoBar;
@@ -108,7 +112,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
     private TextView mSearchAnswer;
     private LottieAnimationView mSearchKey;
     private ImageButton mVoiceKey;       // 마이크(= 클립보드 키 자리에 있던 버튼)
-//    private LinearLayout mInputContainer;// EditText+Send 래퍼
+    //    private LinearLayout mInputContainer;// EditText+Send 래퍼
 //    private EditText mSearchInput;       // 검색어 입력창
     private Button mSearchStatus;
     private boolean mInSearchMode = false;
@@ -157,16 +161,14 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         private final View mSuggestionStripView;
         private final View mSuggestionsStrip;
 
-        public StripVisibilityGroup(final View suggestionStripView,
-                                    final ViewGroup suggestionsStrip) {
+        public StripVisibilityGroup(final View suggestionStripView, final ViewGroup suggestionsStrip) {
             mSuggestionStripView = suggestionStripView;
             mSuggestionsStrip = suggestionsStrip;
             showSuggestionsStrip();
         }
 
         public void setLayoutDirection(final boolean isRtlLanguage) {
-            final int layoutDirection = isRtlLanguage ? ViewCompat.LAYOUT_DIRECTION_RTL
-                    : ViewCompat.LAYOUT_DIRECTION_LTR;
+            final int layoutDirection = isRtlLanguage ? ViewCompat.LAYOUT_DIRECTION_RTL : ViewCompat.LAYOUT_DIRECTION_LTR;
             ViewCompat.setLayoutDirection(mSuggestionStripView, layoutDirection);
             ViewCompat.setLayoutDirection(mSuggestionsStrip, layoutDirection);
         }
@@ -187,12 +189,12 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         this(context, attrs, R.attr.suggestionStripViewStyle);
     }
 
-    public SuggestionStripView(final Context context, final AttributeSet attrs,
-                               final int defStyle) {
+    public SuggestionStripView(final Context context, final AttributeSet attrs, final int defStyle) {
         super(context, attrs, defStyle);
 
         final LayoutInflater inflater = LayoutInflater.from(context);
         inflater.inflate(R.layout.suggestions_strip, this);
+        setBackgroundColor(ContextCompat.getColor(context, R.color.phokey_strip_bg));
 
         mSuggestionsStrip = findViewById(R.id.suggestions_strip);
         mVoiceKey = findViewById(R.id.suggestions_strip_voice_key);
@@ -205,6 +207,11 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
 
         for (int pos = 0; pos < SuggestedWords.MAX_SUGGESTIONS; pos++) {
             final TextView word = new TextView(context, null, R.attr.suggestionWordStyle);
+            // ① 글꼴 적용
+            word.setTypeface(STRIP_TYPEFACE);
+            // ② 글꼴 크기 일괄 스케일
+            word.setTextSize(TypedValue.COMPLEX_UNIT_PX, word.getTextSize() * STRIP_TEXT_SCALE);
+
             word.setContentDescription(getResources().getString(R.string.spoken_empty_suggestion));
             word.setOnClickListener(this);
             word.setOnLongClickListener(this);
@@ -217,22 +224,18 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
             mDebugInfoViews.add(info);
         }
 
-        mLayoutHelper = new SuggestionStripLayoutHelper(
-                context, attrs, defStyle, mWordViews, mDividerViews, mDebugInfoViews);
+        mLayoutHelper = new SuggestionStripLayoutHelper(context, attrs, defStyle, mWordViews, mDividerViews, mDebugInfoViews);
 
         mMoreSuggestionsContainer = inflater.inflate(R.layout.more_suggestions, null);
-        mMoreSuggestionsView = mMoreSuggestionsContainer
-                .findViewById(R.id.more_suggestions_view);
+        mMoreSuggestionsView = mMoreSuggestionsContainer.findViewById(R.id.more_suggestions_view);
         mMoreSuggestionsBuilder = new MoreSuggestions.Builder(context, mMoreSuggestionsView);
+        applyStripTypefaceRecursively(mMoreSuggestionsContainer);
 
         final Resources res = context.getResources();
-        mMoreSuggestionsModalTolerance = res.getDimensionPixelOffset(
-                R.dimen.config_more_suggestions_modal_tolerance);
-        mMoreSuggestionsSlidingDetector = new GestureDetector(
-                context, mMoreSuggestionsSlidingListener);
+        mMoreSuggestionsModalTolerance = res.getDimensionPixelOffset(R.dimen.config_more_suggestions_modal_tolerance);
+        mMoreSuggestionsSlidingDetector = new GestureDetector(context, mMoreSuggestionsSlidingListener);
 
-        final TypedArray keyboardAttr = context.obtainStyledAttributes(attrs,
-                R.styleable.Keyboard, defStyle, R.style.SuggestionStripView);
+        final TypedArray keyboardAttr = context.obtainStyledAttributes(attrs, R.styleable.Keyboard, defStyle, R.style.SuggestionStripView);
         final Drawable iconVoice = keyboardAttr.getDrawable(R.styleable.Keyboard_iconShortcutKey);
         final Drawable iconIncognito = keyboardAttr.getDrawable(R.styleable.Keyboard_iconIncognitoKey);
         final Drawable iconClipboard = keyboardAttr.getDrawable(R.styleable.Keyboard_iconClipboardNormalKey);
@@ -246,8 +249,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
 
         mSearchKey = findViewById(R.id.suggestions_strip_search_key);
         if (mSearchKey == null) {
-            throw new IllegalStateException(
-                    "suggestions_strip_search_key not found in current layout variant");
+            throw new IllegalStateException("suggestions_strip_search_key not found in current layout variant");
         }
 //        mInputContainer = findViewById(R.id.suggestions_strip_input_container);
 //        mSearchInput = findViewById(R.id.suggestions_strip_search_input);
@@ -266,6 +268,11 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         mClipboardKey.setImageDrawable(iconClipboard);
         mClipboardKey.setOnClickListener(this);
         mClipboardKey.setOnLongClickListener(this);
+
+        ContextCompat.getColor(context, R.color.phokey_icon_tint);
+        int tint = ContextCompat.getColor(context, R.color.phokey_icon_tint);
+        mVoiceKey.setColorFilter(tint, PorterDuff.Mode.SRC_IN);
+        mClipboardKey.setColorFilter(tint, PorterDuff.Mode.SRC_IN);
 
         mFetchClipboardKey = findViewById(R.id.suggestions_strip_fetch_clipboard);
         mFetchClipboardKey.setOnClickListener(this);
@@ -297,10 +304,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         mSuggestionsStrip.setVisibility(GONE);
         // 음성·클립보드 버튼은 그대로 노출
         mVoiceKey.setVisibility(VISIBLE);
-        mClipboardKey.setVisibility(
-                Settings.getInstance().getCurrent().mShowsClipboardKey
-                        ? VISIBLE
-                        : (mVoiceKey.getVisibility() == GONE ? INVISIBLE : GONE));
+        mClipboardKey.setVisibility(Settings.getInstance().getCurrent().mShowsClipboardKey ? VISIBLE : (mVoiceKey.getVisibility() == GONE ? INVISIBLE : GONE));
         // photoBar는 검색 중엔 안 쓰이니 숨겨두고,
         mPhotoBar.setVisibility(GONE);
 
@@ -361,46 +365,41 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
 
         Log.d(TAG_NET, "▶ REQUEST\n" +
 //                "URL   : http://k12e201.p.ssafy.io:8090/rag/search/\n" +
-                "user_id = " + DEFAULT_USER_ID + "\n" +
-                "query   = " + query);
+                "user_id = " + DEFAULT_USER_ID + "\n" + "query   = " + query);
 
         // ① Retrofit 호출
-        ApiClient.getChatApiService()
-                .search(DEFAULT_USER_ID, query)
-                .enqueue(new retrofit2.Callback<MessageResponse>() {
-                    @Override
-                    public void onResponse(Call<MessageResponse> call,
-                                           retrofit2.Response<MessageResponse> res) {
-                        if (!res.isSuccessful()) {
-                            Log.e(TAG_NET, "❌ " + res.code() + " " + res.message());
-                            return;
-                        }
-                        MessageResponse body = res.body();
-                        if (body == null) return;
+        ApiClient.getChatApiService().search(DEFAULT_USER_ID, query).enqueue(new retrofit2.Callback<MessageResponse>() {
+            @Override
+            public void onResponse(Call<MessageResponse> call, retrofit2.Response<MessageResponse> res) {
+                if (!res.isSuccessful()) {
+                    Log.e(TAG_NET, "❌ " + res.code() + " " + res.message());
+                    return;
+                }
+                MessageResponse body = res.body();
+                if (body == null) return;
 
-                        post(() -> {
-                            if (body.getType().equals("info_search") || body.getType().equals("conversation"))
-                                mResponseType = ResponseType.LONG_TEXT;
+                post(() -> {
+                    if (body.getType().equals("info_search") || body.getType().equals("conversation"))
+                        mResponseType = ResponseType.LONG_TEXT;
 //                            else if (body.getType().equals("conversation"))
 //                                mResponseType = ResponseType.SHORT_TEXT;
-                            else
-                                mResponseType = ResponseType.PHOTO_ONLY;
+                    else mResponseType = ResponseType.PHOTO_ONLY;
 
-                            mLastResponse = body;
+                    mLastResponse = body;
 
-                            // 2) 분기별 행동
-                            switch (mResponseType) {
-                                case LONG_TEXT:
-                                    // ── 50자 이상: 버튼 강조 후 대기 ──
-                                    Log.d("행동", "LONG_TEXT = \"" + body.getAnswer() + "\"");
-                                    mSearchPanel.clearLoadingBubble();
-                                    mSearchStatus.setVisibility(View.GONE);
-                                    mSearchKey.pauseAnimation();
-                                    mSearchKey.setRepeatCount(0);
-                                    mSearchKey.setAnimation("ic_search_blue.json"); // 파랑 정지된 JSON
-                                    mSearchKey.setProgress(0f);
-                                    mKeyHighlighted = true;
-                                    break;
+                    // 2) 분기별 행동
+                    switch (mResponseType) {
+                        case LONG_TEXT:
+                            // ── 50자 이상: 버튼 강조 후 대기 ──
+                            Log.d("행동", "LONG_TEXT = \"" + body.getAnswer() + "\"");
+                            mSearchPanel.clearLoadingBubble();
+                            mSearchStatus.setVisibility(View.GONE);
+                            mSearchKey.pauseAnimation();
+                            mSearchKey.setRepeatCount(0);
+                            mSearchKey.setAnimation("ic_search_blue.json"); // 파랑 정지된 JSON
+                            mSearchKey.setProgress(0f);
+                            mKeyHighlighted = true;
+                            break;
 
 //                                case SHORT_TEXT:
 //                                    Log.d("행동", "SHORT_TEXT = \"" + body.getAnswer() + "\"");
@@ -426,118 +425,105 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
 //                                    mAnswerShown = true;
 //                                    break;
 
-                                case PHOTO_ONLY:
-                                    Log.d("행동", "PHOTO_ONLY = \"" + body.getAnswer() + "\"");
-                                    Log.d(TAG_NET, "[PHOTO_ONLY] before dismiss: panelShowing="
-                                            + isShowingMoreSuggestionPanel()
-                                            + ", stripVis=" + mSuggestionsStrip.getVisibility());
+                        case PHOTO_ONLY:
+                            Log.d("행동", "PHOTO_ONLY = \"" + body.getAnswer() + "\"");
+                            Log.d(TAG_NET, "[PHOTO_ONLY] before dismiss: panelShowing=" + isShowingMoreSuggestionPanel() + ", stripVis=" + mSuggestionsStrip.getVisibility());
 
-                                    // 1) 남아 있는 추천 단어 팝업이 떠 있으면 닫기
-                                    if (isShowingMoreSuggestionPanel()) {
-                                        dismissMoreSuggestionsPanel();
-                                        Log.d(TAG_NET, "[PHOTO_ONLY] after dismiss: panelShowing="
-                                                + isShowingMoreSuggestionPanel());
-                                    }
+                            // 1) 남아 있는 추천 단어 팝업이 떠 있으면 닫기
+                            if (isShowingMoreSuggestionPanel()) {
+                                dismissMoreSuggestionsPanel();
+                                Log.d(TAG_NET, "[PHOTO_ONLY] after dismiss: panelShowing=" + isShowingMoreSuggestionPanel());
+                            }
 
-                                    // ── 사진 모드: 썸네일 바에 사진만 표시
+                            // ── 사진 모드: 썸네일 바에 사진만 표시
 //                                    mSearchPanel.clearLoadingBubble();
 
-                                    // 기존 텍스트·제안 줄 숨기기
-                                    mSuggestionsStrip.setVisibility(GONE);
-                                    mSuggestionsStrip.setClickable(false);
-                                    mSuggestionsStrip.setEnabled(false);
+                            // 기존 텍스트·제안 줄 숨기기
+                            mSuggestionsStrip.setVisibility(GONE);
+                            mSuggestionsStrip.setClickable(false);
+                            mSuggestionsStrip.setEnabled(false);
 
-                                    mVoiceKey.setVisibility(GONE);
-                                    mClipboardKey.setVisibility(GONE);
-                                    mSearchStatus.setVisibility(GONE);
+                            mVoiceKey.setVisibility(GONE);
+                            mClipboardKey.setVisibility(GONE);
+                            mSearchStatus.setVisibility(GONE);
 
 //                                    mInputContainer.setVisibility(GONE);
-                                    mSearchAnswer.setVisibility(GONE);
+                            mSearchAnswer.setVisibility(GONE);
 
-                                    // photo bar 초기화 및 채우기
-                                    mPhotoBarContainer.removeAllViews();
-                                    for (String idStr : body.getPhotoIds()) {
-                                        try {
-                                            long id = Long.parseLong(idStr);
-                                            Bitmap thumb = MediaStore.Images.Thumbnails.getThumbnail(
-                                                    getContext().getContentResolver(),
-                                                    id,
-                                                    MediaStore.Images.Thumbnails.MINI_KIND,
-                                                    null);
-                                            ImageView iv = new ImageView(getContext());
-                                            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                                                    dpToPx(80), dpToPx(80));
-                                            lp.setMargins(dpToPx(4), 0, dpToPx(4), 0);
-                                            iv.setLayoutParams(lp);
-                                            iv.setScaleType(ImageView.ScaleType.CENTER_CROP);
-                                            iv.setImageBitmap(thumb);
-                                            // 클릭 시 클립보드 복사
-                                            Uri uri = ContentUris.withAppendedId(
-                                                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id);
-                                            iv.setOnClickListener(v -> {
-                                                ClipboardManager cm = (ClipboardManager)
-                                                        getContext().getSystemService(Context.CLIPBOARD_SERVICE);
-                                                cm.setPrimaryClip(ClipData.newUri(
-                                                        getContext().getContentResolver(), "Image", uri));
-                                                Toast.makeText(getContext(),
-                                                        "이미지가 클립보드에 복사되었습니다",
-                                                        Toast.LENGTH_SHORT).show();
-                                                InputConnection ic = mMainKeyboardView.getInputConnection();
-                                                if (ic != null) {
-                                                    // 컴포지션 확정
-                                                    ic.finishComposingText();
-                                                    // 최대한 많은 텍스트 요청
-                                                    ExtractedTextRequest req = new ExtractedTextRequest();
-                                                    req.hintMaxChars = Integer.MAX_VALUE;
-                                                    req.hintMaxLines = Integer.MAX_VALUE;
-                                                    ExtractedText et = ic.getExtractedText(req, 0);
-                                                    if (et != null && et.text != null) {
-                                                        int len = et.text.length();
-                                                        ic.beginBatchEdit();
-                                                        ic.setSelection(0, len);
-                                                        ic.commitText("", 1);
-                                                        ic.endBatchEdit();
-                                                    }
-                                                }
-                                            });
-                                            mPhotoBarContainer.addView(iv);
-                                        } catch (NumberFormatException ignored) {
+                            // photo bar 초기화 및 채우기
+                            mPhotoBarContainer.removeAllViews();
+                            for (String idStr : body.getPhotoIds()) {
+                                try {
+                                    long id = Long.parseLong(idStr);
+                                    Bitmap thumb = MediaStore.Images.Thumbnails.getThumbnail(getContext().getContentResolver(), id, MediaStore.Images.Thumbnails.MINI_KIND, null);
+                                    ImageView iv = new ImageView(getContext());
+                                    LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dpToPx(80), dpToPx(80));
+                                    lp.setMargins(dpToPx(4), 0, dpToPx(4), 0);
+                                    iv.setLayoutParams(lp);
+                                    iv.setScaleType(ImageView.ScaleType.CENTER_CROP);
+                                    iv.setImageBitmap(thumb);
+                                    // 클릭 시 클립보드 복사
+                                    Uri uri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id);
+                                    iv.setOnClickListener(v -> {
+                                        ClipboardManager cm = (ClipboardManager) getContext().getSystemService(Context.CLIPBOARD_SERVICE);
+                                        cm.setPrimaryClip(ClipData.newUri(getContext().getContentResolver(), "Image", uri));
+                                        Toast.makeText(getContext(), "이미지가 클립보드에 복사되었습니다", Toast.LENGTH_SHORT).show();
+                                        InputConnection ic = mMainKeyboardView.getInputConnection();
+                                        if (ic != null) {
+                                            // 컴포지션 확정
+                                            ic.finishComposingText();
+                                            // 최대한 많은 텍스트 요청
+                                            ExtractedTextRequest req = new ExtractedTextRequest();
+                                            req.hintMaxChars = Integer.MAX_VALUE;
+                                            req.hintMaxLines = Integer.MAX_VALUE;
+                                            ExtractedText et = ic.getExtractedText(req, 0);
+                                            if (et != null && et.text != null) {
+                                                int len = et.text.length();
+                                                ic.beginBatchEdit();
+                                                ic.setSelection(0, len);
+                                                ic.commitText("", 1);
+                                                ic.endBatchEdit();
+                                            }
                                         }
-                                    }
-                                    ViewGroup.LayoutParams lp = mPhotoBar.getLayoutParams();
-                                    lp.height = dpToPx(80);          // 원하는 높이(dp 단위)
-                                    setLayoutParams(lp);
-                                    mPhotoBar.setVisibility(VISIBLE);
-
-                                    // 검색 아이콘 → ❌ 로 변경
-                                    mSearchKey.clearAnimation();
-                                    mSearchKey.setRepeatCount(0);
-                                    mSearchKey.setImageDrawable(mIconClose);
-
-                                    mAnswerShown = true;
-                                    break;
+                                    });
+                                    mPhotoBarContainer.addView(iv);
+                                } catch (NumberFormatException ignored) {
+                                }
                             }
-                            Toast.makeText(getContext(), "검색 완료", Toast.LENGTH_SHORT).show();
-                        });
-                        Log.d(TAG_NET, "✅ 결과 수신");
+                            ViewGroup.LayoutParams lp = mPhotoBar.getLayoutParams();
+                            lp.height = dpToPx(80);          // 원하는 높이(dp 단위)
+                            setLayoutParams(lp);
+                            mPhotoBar.setVisibility(VISIBLE);
 
-                    }
-
-                    @Override
-                    public void onFailure(Call<MessageResponse> call, Throwable t) {
-                        post(() -> {
-                            mSearchPanel.clearLoadingBubble();
-                            // 에러 시에도 버튼 복원
-                            mSearchStatus.setVisibility(View.GONE);
-                            mSearchKey.setVisibility(View.VISIBLE);
+                            // 검색 아이콘 → ❌ 로 변경
                             mSearchKey.clearAnimation();
-                            mKeyHighlighted = false;
-                            mInSearchMode = false;
-                            Toast.makeText(getContext(), "검색 요청에 실패했습니다", Toast.LENGTH_SHORT).show();
-                        });
-                        Log.e(TAG_NET, "❌ onFailure", t);
+                            mSearchKey.setRepeatCount(0);
+                            mSearchKey.setImageDrawable(mIconClose);
+
+                            mAnswerShown = true;
+                            break;
                     }
+                    Toast.makeText(getContext(), "검색 완료", Toast.LENGTH_SHORT).show();
                 });
+                Log.d(TAG_NET, "✅ 결과 수신");
+
+            }
+
+            @Override
+            public void onFailure(Call<MessageResponse> call, Throwable t) {
+                post(() -> {
+                    mSearchPanel.clearLoadingBubble();
+                    // 에러 시에도 버튼 복원
+                    mSearchStatus.setVisibility(View.GONE);
+                    mSearchKey.setVisibility(View.VISIBLE);
+                    mSearchKey.clearAnimation();
+                    mKeyHighlighted = false;
+                    mInSearchMode = false;
+                    Toast.makeText(getContext(), "검색 요청에 실패했습니다", Toast.LENGTH_SHORT).show();
+                });
+                Log.e(TAG_NET, "❌ onFailure", t);
+            }
+        });
 
     }
 
@@ -575,8 +561,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         clear();
         mStripVisibilityGroup.setLayoutDirection(isRtlLanguage);
         mSuggestedWords = suggestedWords;
-        mStartIndexOfMoreSuggestions = mLayoutHelper.layoutAndReturnStartIndexOfMoreSuggestions(
-                getContext(), mSuggestedWords, mSuggestionsStrip, this);
+        mStartIndexOfMoreSuggestions = mLayoutHelper.layoutAndReturnStartIndexOfMoreSuggestions(getContext(), mSuggestedWords, mSuggestionsStrip, this);
         mStripVisibilityGroup.showSuggestionsStrip();
     }
 
@@ -614,23 +599,22 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         }
     };
 
-    private final MoreKeysPanel.Controller mMoreSuggestionsController =
-            new MoreKeysPanel.Controller() {
-                @Override
-                public void onDismissMoreKeysPanel() {
-                    mMainKeyboardView.onDismissMoreKeysPanel();
-                }
+    private final MoreKeysPanel.Controller mMoreSuggestionsController = new MoreKeysPanel.Controller() {
+        @Override
+        public void onDismissMoreKeysPanel() {
+            mMainKeyboardView.onDismissMoreKeysPanel();
+        }
 
-                @Override
-                public void onShowMoreKeysPanel(final MoreKeysPanel panel) {
-                    mMainKeyboardView.onShowMoreKeysPanel(panel);
-                }
+        @Override
+        public void onShowMoreKeysPanel(final MoreKeysPanel panel) {
+            mMainKeyboardView.onShowMoreKeysPanel(panel);
+        }
 
-                @Override
-                public void onCancelMoreKeysPanel() {
-                    dismissMoreSuggestionsPanel();
-                }
-            };
+        @Override
+        public void onCancelMoreKeysPanel() {
+            dismissMoreSuggestionsPanel();
+        }
+    };
 
     public boolean isShowingMoreSuggestionPanel() {
         return mMoreSuggestionsView.isShowingInParent();
@@ -655,12 +639,10 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                     mListener.onTextInput(clipString.substring(clipString.length() - 1));
                 }
             }
-            AudioAndHapticFeedbackManager.getInstance().performHapticAndAudioFeedback(
-                    Constants.NOT_A_CODE, this);
+            AudioAndHapticFeedbackManager.getInstance().performHapticAndAudioFeedback(Constants.NOT_A_CODE, this);
             return true;
         }
-        AudioAndHapticFeedbackManager.getInstance().performHapticAndAudioFeedback(
-                Constants.NOT_A_CODE, this);
+        AudioAndHapticFeedbackManager.getInstance().performHapticAndAudioFeedback(Constants.NOT_A_CODE, this);
         return showMoreSuggestions();
     }
 
@@ -682,17 +664,14 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         final View container = mMoreSuggestionsContainer;
         final int maxWidth = stripWidth - container.getPaddingLeft() - container.getPaddingRight();
         final MoreSuggestions.Builder builder = mMoreSuggestionsBuilder;
-        builder.layout(mSuggestedWords, mStartIndexOfMoreSuggestions, maxWidth,
-                (int) (maxWidth * layoutHelper.mMinMoreSuggestionsWidth),
-                layoutHelper.getMaxMoreSuggestionsRow(), parentKeyboard);
+        builder.layout(mSuggestedWords, mStartIndexOfMoreSuggestions, maxWidth, (int) (maxWidth * layoutHelper.mMinMoreSuggestionsWidth), layoutHelper.getMaxMoreSuggestionsRow(), parentKeyboard);
         mMoreSuggestionsView.setKeyboard(builder.build());
         container.measure(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
 
         final MoreKeysPanel moreKeysPanel = mMoreSuggestionsView;
         final int pointX = stripWidth / 2;
         final int pointY = -layoutHelper.mMoreSuggestionsBottomGap;
-        moreKeysPanel.showMoreKeysPanel(this, mMoreSuggestionsController, pointX, pointY,
-                mMoreSuggestionsListener);
+        moreKeysPanel.showMoreKeysPanel(this, mMoreSuggestionsController, pointX, pointY, mMoreSuggestionsListener);
         mOriginX = mLastX;
         mOriginY = mLastY;
         for (int i = 0; i < mStartIndexOfMoreSuggestions; i++) {
@@ -711,17 +690,16 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
     private boolean mNeedsToTransformTouchEventToHoverEvent;
     private boolean mIsDispatchingHoverEventToMoreSuggestions;
     private final GestureDetector mMoreSuggestionsSlidingDetector;
-    private final GestureDetector.OnGestureListener mMoreSuggestionsSlidingListener =
-            new GestureDetector.SimpleOnGestureListener() {
-                @Override
-                public boolean onScroll(MotionEvent down, MotionEvent me, float deltaX, float deltaY) {
-                    final float dy = me.getY() - down.getY();
-                    if (deltaY > 0 && dy < 0) {
-                        return showMoreSuggestions();
-                    }
-                    return false;
-                }
-            };
+    private final GestureDetector.OnGestureListener mMoreSuggestionsSlidingListener = new GestureDetector.SimpleOnGestureListener() {
+        @Override
+        public boolean onScroll(MotionEvent down, MotionEvent me, float deltaX, float deltaY) {
+            final float dy = me.getY() - down.getY();
+            if (deltaY > 0 && dy < 0) {
+                return showMoreSuggestions();
+            }
+            return false;
+        }
+    };
 
     @Override
     public boolean onInterceptTouchEvent(final MotionEvent me) {
@@ -739,13 +717,11 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         final int index = me.getActionIndex();
         final int x = (int) me.getX(index);
         final int y = (int) me.getY(index);
-        if (Math.abs(x - mOriginX) >= mMoreSuggestionsModalTolerance
-                || mOriginY - y >= mMoreSuggestionsModalTolerance) {
+        if (Math.abs(x - mOriginX) >= mMoreSuggestionsModalTolerance || mOriginY - y >= mMoreSuggestionsModalTolerance) {
             // Decided to be in the sliding suggestion mode only when the touch point has been moved
             // upward. Further {@link MotionEvent}s will be delivered to
             // {@link #onTouchEvent(MotionEvent)}.
-            mNeedsToTransformTouchEventToHoverEvent =
-                    AccessibilityUtils.Companion.getInstance().isTouchExplorationEnabled();
+            mNeedsToTransformTouchEventToHoverEvent = AccessibilityUtils.Companion.getInstance().isTouchExplorationEnabled();
             mIsDispatchingHoverEventToMoreSuggestions = false;
             return true;
         }
@@ -813,19 +789,14 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
 
     @Override
     public void onClick(final View view) {
-        AudioAndHapticFeedbackManager.getInstance().performHapticAndAudioFeedback(
-                Constants.CODE_UNSPECIFIED, this);
+        AudioAndHapticFeedbackManager.getInstance().performHapticAndAudioFeedback(Constants.CODE_UNSPECIFIED, this);
         if (view == mVoiceKey) {
-            mListener.onCodeInput(Constants.CODE_SHORTCUT,
-                    Constants.SUGGESTION_STRIP_COORDINATE, Constants.SUGGESTION_STRIP_COORDINATE,
-                    false /* isKeyRepeat */);
+            mListener.onCodeInput(Constants.CODE_SHORTCUT, Constants.SUGGESTION_STRIP_COORDINATE, Constants.SUGGESTION_STRIP_COORDINATE, false /* isKeyRepeat */);
             return;
         }
 
         if (view == mClipboardKey) {
-            mListener.onCodeInput(Constants.CODE_CLIPBOARD,
-                    Constants.SUGGESTION_STRIP_COORDINATE, Constants.SUGGESTION_STRIP_COORDINATE,
-                    false /* isKeyRepeat */);
+            mListener.onCodeInput(Constants.CODE_CLIPBOARD, Constants.SUGGESTION_STRIP_COORDINATE, Constants.SUGGESTION_STRIP_COORDINATE, false /* isKeyRepeat */);
             return;
         }
 
@@ -834,7 +805,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
             String userId = am.getUserId();
             // ① null 체크, ② "null" 문자열 비교를 뒤집어서 호출
             if (userId == null || "null".equals(userId)) {
-                Toast.makeText(getContext(), "로그인이 필요한 기능 입니다." , Toast.LENGTH_SHORT).show();
+                Toast.makeText(getContext(), "로그인이 필요한 기능 입니다.", Toast.LENGTH_SHORT).show();
             } else {
                 // API 호출 부분
                 ClipboardService clipboardService = ApiClient.getClipboardService();
@@ -850,10 +821,8 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                                 mListener.onTextInput(clipboardText);
 
                                 // 2. 클립보드에 복사
-                                android.content.ClipboardManager clipboardManager =
-                                        (android.content.ClipboardManager) getContext().getSystemService(Context.CLIPBOARD_SERVICE);
-                                android.content.ClipData clipData =
-                                        android.content.ClipData.newPlainText("clipboard text", clipboardText);
+                                android.content.ClipboardManager clipboardManager = (android.content.ClipboardManager) getContext().getSystemService(Context.CLIPBOARD_SERVICE);
+                                android.content.ClipData clipData = android.content.ClipData.newPlainText("clipboard text", clipboardText);
                                 clipboardManager.setPrimaryClip(clipData);
 
                                 // 3. 토스트 메시지 표시
@@ -880,8 +849,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
 
         if (view == mSearchKey) {
             // conversation 또는 photo 모드에서는 ❌ 클릭 시 원상복귀
-            if (mResponseType == ResponseType.SHORT_TEXT
-                    || mResponseType == ResponseType.PHOTO_ONLY) {
+            if (mResponseType == ResponseType.SHORT_TEXT || mResponseType == ResponseType.PHOTO_ONLY) {
 
                 // ── height 복원
                 if (mDefaultHeight > 0) {
@@ -898,10 +866,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                 // 2) 제안 줄 & 버튼들 복원
                 mSuggestionsStrip.setVisibility(VISIBLE);
                 mVoiceKey.setVisibility(VISIBLE);
-                mClipboardKey.setVisibility(
-                        Settings.getInstance().getCurrent().mShowsClipboardKey
-                                ? VISIBLE
-                                : (mVoiceKey.getVisibility() == GONE ? INVISIBLE : GONE));
+                mClipboardKey.setVisibility(Settings.getInstance().getCurrent().mShowsClipboardKey ? VISIBLE : (mVoiceKey.getVisibility() == GONE ? INVISIBLE : GONE));
 
                 // 3) 검색키 애니메이션/아이콘 원복
                 mSearchKey.clearAnimation();
@@ -1035,5 +1000,18 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
 
     private int dpToPx(int dp) {
         return Math.round(dp * getResources().getDisplayMetrics().density);
+    }
+
+    private void applyStripTypefaceRecursively(View v) {
+        if (v instanceof TextView) {
+            TextView tv = (TextView) v;
+            tv.setTypeface(STRIP_TYPEFACE);
+            tv.setTextSize(TypedValue.COMPLEX_UNIT_PX, tv.getTextSize() * STRIP_TEXT_SCALE);
+        } else if (v instanceof ViewGroup) {
+            ViewGroup vg = (ViewGroup) v;
+            for (int i = 0; i < vg.getChildCount(); i++) {
+                applyStripTypefaceRecursively(vg.getChildAt(i));
+            }
+        }
     }
 }

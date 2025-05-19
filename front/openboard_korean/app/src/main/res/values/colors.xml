@@ -114,4 +114,11 @@
     <color name="setup_welcome_video_margin_color">#FFCCCCCC</color>
     <!-- Accent color for the notification. We need to match this to the OS build -->
     <color name="notification_accent_color">#FF607D8B</color>
+
+    <color name="phokey_strip_bg">#F4F4F4</color>
+    <color name="phokey_keyboard_bg">#E3E3E3</color>
+    <color name="phokey_icon_tint">#292929</color>
+    <color name="ripple_pressed">#C7C7C7</color> <!-- 원하는 눌림색 -->
+
+
 </resources>
