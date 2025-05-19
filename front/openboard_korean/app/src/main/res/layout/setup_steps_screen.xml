@@ -1,28 +1,43 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="match_parent"
-    android:layout_height="match_parent"
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
-    android:orientation="vertical">
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
 
-    <!-- ① 단계 타이틀(유지) -->
-    <include layout="@layout/setup_steps_title" />
+    <!-- ── 헤더 + 게이지 한 덩어리 ───────────────────────── -->
+    <LinearLayout
+        android:id="@+id/header_container"
+        android:orientation="vertical"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        android:layout_marginTop="0dp">
 
-    <!-- ② Toss-스타일 게이지바 (신규) -->
-    <org.dslul.openboard.inputmethod.latin.setup.StepGaugeView
-        android:id="@+id/setup_step_gauge"
-        android:layout_width="match_parent"
-        android:layout_height="@dimen/gauge_height"
-        android:layout_marginTop="8dp"
-        app:sgv_totalSteps="7"
-        app:sgv_currentStep="0" />
+        <include layout="@layout/setup_steps_title"/>
 
-    <!-- (변경) 단계별 카드 영역만 따로 FrameLayout -->
+        <org.dslul.openboard.inputmethod.latin.setup.StepGaugeView
+            android:id="@+id/setup_step_gauge"
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/gauge_height"
+            android:layout_marginTop="8dp"
+            app:sgv_totalSteps="7"
+            app:sgv_currentStep="0"/>
+    </LinearLayout>
+
+    <!-- ── 단계 카드 영역만 슬라이드 대상 ───────────────── -->
     <FrameLayout
         android:id="@+id/step_content_pane"
-        android:layout_width="match_parent"
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_marginTop="24dp">
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        android:layout_marginTop="72dp"
+        app:layout_constraintBottom_toTopOf="@id/cta_container"
+        >
 
         <include android:id="@+id/setup_step1" layout="@layout/setup_step"/>
         <include android:id="@+id/setup_step2" layout="@layout/setup_step"/>
@@ -33,18 +48,33 @@
         <include android:id="@+id/setup_step7" layout="@layout/setup_step"/>
     </FrameLayout>
 
-    <!-- CTA 버튼 -->
-    <TextView
-        android:id="@+id/setup_next"
-        android:text="@string/setup_next_action"
-        android:gravity="end|center_vertical"
-        style="@style/setupStepActionLabelStyleCommon"
-        android:layout_marginTop="@dimen/setup_step_horizontal_line_height"/>
+    <!-- ── CTA 버튼: Toss 스타일 ─────────────────────────── -->
+    <LinearLayout
+        android:id="@+id/cta_container"
+        android:orientation="horizontal"
+        android:gravity="end"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginEnd="16dp"
+        android:layout_marginBottom="12dp"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent">
 
-    <TextView
-        android:id="@+id/setup_finish"
-        android:text="@string/setup_finish_action"
-        style="@style/setupStepActionLabelStyle"
-        android:layout_marginTop="@dimen/setup_step_horizontal_line_height"/>
+        <Button
+            android:id="@+id/setup_next"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            style="@style/TossCTA"
+        android:text="@string/setup_next_action"/>
 
-</LinearLayout>
+        <Button
+            android:id="@+id/setup_finish"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            style="@style/TossCTA.Outline"
+            android:layout_marginStart="8dp"
+            android:text="@string/setup_finish_action"/>
+    </LinearLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout>

@@ -311,7 +311,7 @@ public final class SetupWizardActivity extends Activity implements View.OnClickL
         final SetupStep step1 = new SetupStep(STEP_1, applicationName,
                 null, findViewById(R.id.setup_step1),
                 R.string.setup_step1_title, R.string.setup_step1_instruction,
-                R.string.setup_step1_finished_instruction, R.drawable.ic_setup_step1,
+                R.string.setup_step1_finished_instruction, 0,
                 R.string.setup_step1_action);
         step1.setAction(() -> {
             invokeLanguageAndInputSettings();
@@ -322,7 +322,7 @@ public final class SetupWizardActivity extends Activity implements View.OnClickL
         final SetupStep step2 = new SetupStep(STEP_2, applicationName,
                 null, findViewById(R.id.setup_step2),
                 R.string.setup_step2_title, R.string.setup_step2_instruction,
-                0 /* finishedInstruction */, R.drawable.ic_setup_step2,
+                0 /* finishedInstruction */, 0,
                 R.string.setup_step2_action);
         step2.setAction(this::invokeInputMethodPicker);
         mSetupStepGroup.addStep(step2);
@@ -330,7 +330,7 @@ public final class SetupWizardActivity extends Activity implements View.OnClickL
         final SetupStep step3 = new SetupStep(STEP_3, applicationName,
                 null, findViewById(R.id.setup_step3),
                 R.string.setup_step3_title, R.string.setup_step3_instruction,
-                0 /* finishedInstruction */, R.drawable.ic_setup_step3,
+                0 /* finishedInstruction */, 0,
                 R.string.setup_step3_action);
         step3.setAction(this::invokeSubtypeEnablerOfThisIme);
         mSetupStepGroup.addStep(step3);
@@ -378,7 +378,7 @@ public final class SetupWizardActivity extends Activity implements View.OnClickL
                 R.string.setup_step4_title,           // “로그인”
                 R.string.setup_step4_instruction,     // “버튼을 눌러 카카오 로그인 페이지로 이동합니다.”
                 0,                                     // 완료(instruction) 없음
-                R.drawable.ic_setup_step4,            // 아이콘
+                0,            // 아이콘
                 R.string.setup_step4_action            // “카카오 로그인”
         );
         step4.setAction(() -> {
@@ -413,7 +413,7 @@ public final class SetupWizardActivity extends Activity implements View.OnClickL
                 R.string.setup_step6_title,           // “알림 권한 설정”
                 R.string.setup_step6_instruction,     // “버튼을 눌러 알림 권한을 요청합니다.”
                 0,
-                R.drawable.ic_setup_step6,
+                0,
                 R.string.setup_step6_action           // “알림 권한 요청”
         );
         step6.setAction(() -> {
@@ -439,7 +439,7 @@ public final class SetupWizardActivity extends Activity implements View.OnClickL
                 R.string.setup_step7_title,           // “백업 시작”
                 R.string.setup_step7_instruction,     // “5초 뒤 메인 페이지로 이동합니다.”
                 0,
-                R.drawable.ic_setup_step7,
+                0,
                 R.string.setup_step7_action           // “백업 실행”
         );
         step7.setAction(() -> {
