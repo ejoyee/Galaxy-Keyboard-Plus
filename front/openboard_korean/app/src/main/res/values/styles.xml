@@ -48,4 +48,9 @@
         <item name="android:clickable">true</item>
         <item name="android:focusable">true</item>
     </style>
+
+    <style name="setupStepInstructionStyle.Large" parent="setupStepInstructionStyle">
+        <item name="android:textSize">17sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
 </resources>
