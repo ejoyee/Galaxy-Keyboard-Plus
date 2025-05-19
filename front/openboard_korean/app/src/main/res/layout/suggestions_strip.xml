@@ -33,12 +33,12 @@
         <com.airbnb.lottie.LottieAnimationView
             android:id="@+id/suggestions_strip_search_key"
             style="?attr/suggestionWordStyle"
-            app:lottie_autoPlay="false"
-            app:lottie_fileName="search_loading.json"
-            app:lottie_loop="false"
             android:layout_width="@dimen/config_suggestions_strip_edge_key_width"
             android:layout_height="match_parent"
-            android:contentDescription="@string/search" />
+            android:contentDescription="@string/search"
+            app:lottie_autoPlay="false"
+            app:lottie_fileName="search_loading.json"
+            app:lottie_loop="false" />
 
         <!-- ImageButton(search_key) 아래나 옆에 -->
         <Button
@@ -48,43 +48,43 @@
             android:layout_height="wrap_content"
             android:visibility="gone" />
 
-        <LinearLayout
-            android:id="@+id/suggestions_strip_input_container"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:gravity="center_vertical"
-            android:orientation="horizontal"
-            android:paddingStart="8dp"
-            android:paddingEnd="8dp"
-            android:visibility="gone">
+<!--                <LinearLayout-->
+<!--                    android:id="@+id/suggestions_strip_input_container"-->
+<!--                    android:layout_width="match_parent"-->
+<!--                    android:layout_height="match_parent"-->
+<!--                    android:gravity="center_vertical"-->
+<!--                    android:orientation="horizontal"-->
+<!--                    android:paddingStart="8dp"-->
+<!--                    android:paddingEnd="8dp"-->
+<!--                    android:visibility="gone">-->
 
-            <EditText
-                android:id="@+id/suggestions_strip_search_input"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:cursorVisible="true"
-                android:layout_marginHorizontal="8dp"
-                android:minWidth="120dp"
-                android:imeOptions="actionSearch|flagNoExtractUi"
-                android:inputType="text"
-                android:maxLines="1" />
+<!--                    <EditText-->
+<!--                        android:id="@+id/suggestions_strip_search_input"-->
+<!--                        android:layout_width="wrap_content"-->
+<!--                        android:layout_height="wrap_content"-->
+<!--                        android:cursorVisible="true"-->
+<!--                        android:layout_marginHorizontal="8dp"-->
+<!--                        android:minWidth="120dp"-->
+<!--                        android:imeOptions="actionSearch|flagNoExtractUi"-->
+<!--                        android:inputType="text"-->
+<!--                        android:maxLines="1" />-->
 
-            <ImageButton
-                android:id="@+id/suggestions_strip_send_key"
-                style="?attr/suggestionWordStyle"
-                android:layout_width="wrap_content"
-                android:layout_height="match_parent"
-                android:contentDescription="@string/send"
-                android:src="@drawable/ic_send" />
+<!--                    <ImageButton-->
+<!--                        android:id="@+id/suggestions_strip_send_key"-->
+<!--                        style="?attr/suggestionWordStyle"-->
+<!--                        android:layout_width="wrap_content"-->
+<!--                        android:layout_height="match_parent"-->
+<!--                        android:contentDescription="@string/send"-->
+<!--                        android:src="@drawable/ic_send" />-->
 
-            <ImageButton
-                android:id="@+id/suggestions_strip_copy_key"
-                style="?attr/suggestionWordStyle"
-                android:layout_width="wrap_content"
-                android:layout_height="match_parent"
-                android:src="@drawable/ic_copy" />
+<!--                    <ImageButton-->
+<!--                        android:id="@+id/suggestions_strip_copy_key"-->
+<!--                        style="?attr/suggestionWordStyle"-->
+<!--                        android:layout_width="wrap_content"-->
+<!--                        android:layout_height="match_parent"-->
+<!--                        android:src="@drawable/ic_copy" />-->
 
-        </LinearLayout>
+<!--                </LinearLayout>-->
 
         <!--        <ImageButton-->
         <!--            android:id="@+id/suggestions_strip_other_key"-->
@@ -108,18 +108,28 @@
             android:layout_width="@dimen/config_suggestions_strip_edge_key_width"
             android:layout_height="fill_parent" />
 
+        <ImageButton
+            android:id="@+id/suggestions_strip_fetch_clipboard"
+            style="?attr/suggestionWordStyle"
+            android:layout_width="@dimen/config_suggestions_strip_edge_key_width"
+            android:layout_height="match_parent"
+            android:src="@drawable/ic_fetch_clipboard"
+            android:contentDescription="@string/fetch_clipboard" />
+
+
         <!-- ① 사진 바: 기본적으로 GONE -->
         <HorizontalScrollView
             android:id="@+id/suggestions_strip_photo_bar"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:visibility="gone"
-            android:padding="4dp">
+            android:padding="4dp"
+            android:visibility="gone">
+
             <LinearLayout
                 android:id="@+id/photo_bar_container"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal"/>
+                android:orientation="horizontal" />
         </HorizontalScrollView>
 
         <LinearLayout

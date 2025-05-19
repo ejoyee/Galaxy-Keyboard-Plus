@@ -101,21 +101,22 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
     }
 
     /* ▼ 새로 추가할 필드들 --------------------------------------------------- */
+    private ImageButton mFetchClipboardKey;
     private int mDefaultHeight = 0;
     private HorizontalScrollView mPhotoBar;
     private LinearLayout mPhotoBarContainer;
     private TextView mSearchAnswer;
     private LottieAnimationView mSearchKey;
     private ImageButton mVoiceKey;       // 마이크(= 클립보드 키 자리에 있던 버튼)
-    private LinearLayout mInputContainer;// EditText+Send 래퍼
-    private EditText mSearchInput;       // 검색어 입력창
+//    private LinearLayout mInputContainer;// EditText+Send 래퍼
+//    private EditText mSearchInput;       // 검색어 입력창
     private Button mSearchStatus;
     private boolean mInSearchMode = false;
     private String mLastQuery;
 
     // 기존 필드 바로 아래
     private Drawable mIconClose;    // X 아이콘
-    private ImageButton mCopyKey;
+//    private ImageButton mCopyKey;
 
     private static final String TAG_NET = "SearchAPI";
     private static final String DEFAULT_USER_ID = "36648ad3-ed4b-4eb0-bcf1-1dc66fa5d258"; // TODO: 실제 계정으로 치환
@@ -248,14 +249,14 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
             throw new IllegalStateException(
                     "suggestions_strip_search_key not found in current layout variant");
         }
-        mInputContainer = findViewById(R.id.suggestions_strip_input_container);
-        mSearchInput = findViewById(R.id.suggestions_strip_search_input);
-        mCopyKey = findViewById(R.id.suggestions_strip_copy_key);
-        mCopyKey.setOnClickListener(this);
-        mCopyKey.setVisibility(GONE);    // ← 초기엔 숨김
+//        mInputContainer = findViewById(R.id.suggestions_strip_input_container);
+//        mSearchInput = findViewById(R.id.suggestions_strip_search_input);
+//        mCopyKey = findViewById(R.id.suggestions_strip_copy_key);
+//        mCopyKey.setOnClickListener(this);
+//        mCopyKey.setVisibility(GONE);    // ← 초기엔 숨김
 
-        mSearchInput.setFocusableInTouchMode(true);
-        mSearchInput.setCursorVisible(true);
+//        mSearchInput.setFocusableInTouchMode(true);
+//        mSearchInput.setCursorVisible(true);
 
 
         mSearchKey.setOnClickListener(this);
@@ -265,6 +266,9 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         mClipboardKey.setImageDrawable(iconClipboard);
         mClipboardKey.setOnClickListener(this);
         mClipboardKey.setOnLongClickListener(this);
+
+        mFetchClipboardKey = findViewById(R.id.suggestions_strip_fetch_clipboard);
+        mFetchClipboardKey.setOnClickListener(this);
 
         mPhotoBar = findViewById(R.id.suggestions_strip_photo_bar);
         mPhotoBarContainer = findViewById(R.id.photo_bar_container);
@@ -314,11 +318,11 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         }
 
 //        mSearchKey.setImageDrawable(mIconSearch);      // 🔍 복원
-        mInputContainer.setVisibility(GONE);
+//        mInputContainer.setVisibility(GONE);
         mSuggestionsStrip.setVisibility(VISIBLE);
         updateVisibility(true /* strip */, false /* isFullscreen */); // 버튼들 복원
 
-        mCopyKey.setVisibility(GONE);
+//        mCopyKey.setVisibility(GONE);
 
         if (mSearchPanel != null && mSearchPanel.isShowingInParent()) {
             mSearchPanel.dismissMoreKeysPanel();
@@ -447,7 +451,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                                     mClipboardKey.setVisibility(GONE);
                                     mSearchStatus.setVisibility(GONE);
 
-                                    mInputContainer.setVisibility(GONE);
+//                                    mInputContainer.setVisibility(GONE);
                                     mSearchAnswer.setVisibility(GONE);
 
                                     // photo bar 초기화 및 채우기
@@ -817,13 +821,21 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                     false /* isKeyRepeat */);
             return;
         }
+
         if (view == mClipboardKey) {
+            mListener.onCodeInput(Constants.CODE_CLIPBOARD,
+                    Constants.SUGGESTION_STRIP_COORDINATE, Constants.SUGGESTION_STRIP_COORDINATE,
+                    false /* isKeyRepeat */);
+            return;
+        }
+
+        if (view == mFetchClipboardKey) {
             AuthManager am = AuthManager.getInstance(getContext());
             String userId = am.getUserId();
             // ① null 체크, ② "null" 문자열 비교를 뒤집어서 호출
             if (userId == null || "null".equals(userId)) {
                 Toast.makeText(getContext(), "로그인이 필요한 기능 입니다." , Toast.LENGTH_SHORT).show();
-            }else{
+            } else {
                 // API 호출 부분
                 ClipboardService clipboardService = ApiClient.getClipboardService();
                 clipboardService.getLatestClipboard(userId).enqueue(new retrofit2.Callback<ClipBoardResponse>() {
@@ -881,7 +893,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                 // 1) 숨겨뒀던 결과 영역 전부 감추기
                 mSearchAnswer.setVisibility(GONE);
                 mPhotoBar.setVisibility(GONE);
-                mCopyKey.setVisibility(GONE);
+//                mCopyKey.setVisibility(GONE);
 
                 // 2) 제안 줄 & 버튼들 복원
                 mSuggestionsStrip.setVisibility(VISIBLE);
@@ -898,10 +910,10 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                 mSearchKey.setRepeatCount(0);
 
                 // 4) 상태 초기화
-                mInSearchMode   = false;
-                mAnswerShown    = false;
-                mResponseType   = null;
-                mLastResponse   = null;
+                mInSearchMode = false;
+                mAnswerShown = false;
+                mResponseType = null;
+                mLastResponse = null;
                 return;
             }
             // 1) 검색 모드가 아니면 진입
@@ -933,38 +945,38 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
             return;
         }
 
-        if (view == mCopyKey) {                   // ⧉ 복사 버튼
-            if (mSearchPanel != null) {
-                String answer = mSearchPanel.getAnswerText();
-
-                if (!answer.isEmpty()) {
-                    ClipboardManager cb = (ClipboardManager)
-                            getContext().getSystemService(Context.CLIPBOARD_SERVICE);
-                    cb.setPrimaryClip(ClipData.newPlainText("answer", answer));
-
-                    // ▼ 여기 한 줄 추가
-                    Toast.makeText(getContext(), "복사되었습니다", Toast.LENGTH_SHORT).show();
-                    // 선택사항: 피드백
-                    AudioAndHapticFeedbackManager.getInstance()
-                            .performHapticAndAudioFeedback(Constants.NOT_A_CODE, this);
-                    Log.d("clipboard", "clipboard 저장");
-                    // 4. 입력해 준 만큼, 백스페이스 키 이벤트를 보내서
-                    //    원래 호스트 입력창에 남아 있던 쿼리를 모두 지워준다
-                    if (mLastQuery != null) {
-                        for (int i = 0; i < mLastQuery.length(); i++) {
-                            mListener.onCodeInput(
-                                    Constants.CODE_DELETE,
-                                    Constants.SUGGESTION_STRIP_COORDINATE,
-                                    Constants.SUGGESTION_STRIP_COORDINATE,
-                                    false
-                            );
-                        }
-                        mLastQuery = null;
-                    }
-                }
-            }
-            return;
-        }
+//        if (view == mCopyKey) {                   // ⧉ 복사 버튼
+//            if (mSearchPanel != null) {
+//                String answer = mSearchPanel.getAnswerText();
+//
+//                if (!answer.isEmpty()) {
+//                    ClipboardManager cb = (ClipboardManager)
+//                            getContext().getSystemService(Context.CLIPBOARD_SERVICE);
+//                    cb.setPrimaryClip(ClipData.newPlainText("answer", answer));
+//
+//                    // ▼ 여기 한 줄 추가
+//                    Toast.makeText(getContext(), "복사되었습니다", Toast.LENGTH_SHORT).show();
+//                    // 선택사항: 피드백
+//                    AudioAndHapticFeedbackManager.getInstance()
+//                            .performHapticAndAudioFeedback(Constants.NOT_A_CODE, this);
+//                    Log.d("clipboard", "clipboard 저장");
+//                    // 4. 입력해 준 만큼, 백스페이스 키 이벤트를 보내서
+//                    //    원래 호스트 입력창에 남아 있던 쿼리를 모두 지워준다
+//                    if (mLastQuery != null) {
+//                        for (int i = 0; i < mLastQuery.length(); i++) {
+//                            mListener.onCodeInput(
+//                                    Constants.CODE_DELETE,
+//                                    Constants.SUGGESTION_STRIP_COORDINATE,
+//                                    Constants.SUGGESTION_STRIP_COORDINATE,
+//                                    false
+//                            );
+//                        }
+//                        mLastQuery = null;
+//                    }
+//                }
+//            }
+//            return;
+//        }
 
         final Object tag = view.getTag();
         // {@link Integer} tag is set at
@@ -992,12 +1004,6 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         // This may be overriden by showing suggestions later, if applicable.
     }
 
-    /**
-     * 검색 모드 시 타이핑한 문자열을 보여줄 EditText
-     */
-    public EditText getSearchInput() {
-        return mSearchInput;
-    }
 
     // SuggestionStripView 내부
     private void showSearchPanel() {
