@@ -1,27 +1,50 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!--
-/*
-**
-** Copyright 2013, The Android Open Source Project
-**
-** Licensed under the Apache License, Version 2.0 (the "License");
-** you may not use this file except in compliance with the License.
-** You may obtain a copy of the License at
-**
-**     http://www.apache.org/licenses/LICENSE-2.0
-**
-** Unless required by applicable law or agreed to in writing, software
-** distributed under the License is distributed on an "AS IS" BASIS,
-** WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-** See the License for the specific language governing permissions and
-** limitations under the License.
-*/
--->
-
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:orientation="vertical">
+
+    <!-- ① 단계 타이틀(유지) -->
     <include layout="@layout/setup_steps_title" />
-    <include layout="@layout/setup_steps_cards" />
+
+    <!-- ② Toss-스타일 게이지바 (신규) -->
+    <org.dslul.openboard.inputmethod.latin.setup.StepGaugeView
+        android:id="@+id/setup_step_gauge"
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/gauge_height"
+        android:layout_marginTop="8dp"
+        app:sgv_totalSteps="7"
+        app:sgv_currentStep="0" />
+
+    <!-- (변경) 단계별 카드 영역만 따로 FrameLayout -->
+    <FrameLayout
+        android:id="@+id/step_content_pane"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="24dp">
+
+        <include android:id="@+id/setup_step1" layout="@layout/setup_step"/>
+        <include android:id="@+id/setup_step2" layout="@layout/setup_step"/>
+        <include android:id="@+id/setup_step3" layout="@layout/setup_step"/>
+        <include android:id="@+id/setup_step4" layout="@layout/setup_step"/>
+        <include android:id="@+id/setup_step5" layout="@layout/setup_step"/>
+        <include android:id="@+id/setup_step6" layout="@layout/setup_step"/>
+        <include android:id="@+id/setup_step7" layout="@layout/setup_step"/>
+    </FrameLayout>
+
+    <!-- CTA 버튼 -->
+    <TextView
+        android:id="@+id/setup_next"
+        android:text="@string/setup_next_action"
+        android:gravity="end|center_vertical"
+        style="@style/setupStepActionLabelStyleCommon"
+        android:layout_marginTop="@dimen/setup_step_horizontal_line_height"/>
+
+    <TextView
+        android:id="@+id/setup_finish"
+        android:text="@string/setup_finish_action"
+        style="@style/setupStepActionLabelStyle"
+        android:layout_marginTop="@dimen/setup_step_horizontal_line_height"/>
+
 </LinearLayout>
