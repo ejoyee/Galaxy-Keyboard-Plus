@@ -32,7 +32,7 @@ public class IncrementalBackupWorker extends Worker {
     private static final String TAG = "IncrementalBackupWorker";
     private static final String CHANNEL_ID = "backup_upload_channel";
     private static final int NOTIF_ID = 1001;
-    private static final long DELAY_SEC = 5;
+    private static final long DELAY_SEC = 1;
 
     public IncrementalBackupWorker(
             @NonNull Context context,
