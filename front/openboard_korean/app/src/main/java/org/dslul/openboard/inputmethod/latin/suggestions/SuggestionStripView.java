@@ -1107,7 +1107,6 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                 iv.setOnClickListener(v -> {
                     ClipboardManager cm = (ClipboardManager) getContext().getSystemService(Context.CLIPBOARD_SERVICE);
                     cm.setPrimaryClip(ClipData.newUri(getContext().getContentResolver(), "Image", uri));
-                    Toast.makeText(getContext(), "이미지가 클립보드에 복사되었습니다", Toast.LENGTH_SHORT).show();
                 });
                 mPhotoBarContainer.addView(iv);
             } catch (NumberFormatException ignored) {}

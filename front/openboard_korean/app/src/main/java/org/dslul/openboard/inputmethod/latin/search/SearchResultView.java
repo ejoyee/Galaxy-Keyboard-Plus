@@ -277,7 +277,6 @@ public class SearchResultView extends FrameLayout implements MoreKeysPanel {
             ClipboardManager cm = (ClipboardManager)
                     getContext().getSystemService(Context.CLIPBOARD_SERVICE);
             cm.setPrimaryClip(ClipData.newPlainText("tvContent", fullText));
-            Toast.makeText(getContext(), "클립보드에 복사되었습니다", Toast.LENGTH_SHORT).show();
             Log.d("clipboard", "clipboard 저장");
 
             // 2) 호스트 앱 편집창 전체 텍스트를 요청
