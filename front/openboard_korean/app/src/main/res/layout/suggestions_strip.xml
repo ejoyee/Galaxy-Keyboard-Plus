@@ -44,13 +44,12 @@
         <!-- keyword 검색 버튼 -->
         <com.airbnb.lottie.LottieAnimationView
             android:id="@+id/suggestions_strip_keyword_key"
-            style="?attr/suggestionWordStyle"
+            style="@style/SuggestionIconStyle"
             app:lottie_autoPlay="false"
             app:lottie_fileName="keyword_highlight.json"
             app:lottie_loop="true"
-            android:layout_width="48dp"
-            android:layout_height="match_parent"
-            android:layout_marginStart="4dp"
+            android:layout_width="@dimen/icon_btn_size"
+            android:layout_height="@dimen/icon_btn_size"
             android:contentDescription="@string/keyword_button" />
 
         <!-- ImageButton(search_key) 아래나 옆에 -->
