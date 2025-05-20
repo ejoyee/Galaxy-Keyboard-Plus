@@ -623,4 +623,6 @@ disposition rather than other common dispositions for Latin languages. [CHAR LIM
     <string name="settings_search_summary">Navigate to the new search page</string>
 
     <string name="kakao_login_progress">now login...</string>
+    <string name="fetch_clipboard">클립보드 내용 가져오기</string>
+
 </resources>
