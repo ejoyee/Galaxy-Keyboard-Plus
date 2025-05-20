@@ -40,6 +40,18 @@
             android:layout_height="match_parent"
             android:contentDescription="@string/search" />
 
+        <!-- keyword 검색 버튼 -->
+        <com.airbnb.lottie.LottieAnimationView
+            android:id="@+id/suggestions_strip_keyword_key"
+            style="?attr/suggestionWordStyle"
+            app:lottie_autoPlay="false"
+            app:lottie_fileName="keyword_highlight.json"
+            app:lottie_loop="true"
+            android:layout_width="48dp"
+            android:layout_height="match_parent"
+            android:layout_marginStart="4dp"
+            android:contentDescription="@string/keyword_button" />
+
         <!-- ImageButton(search_key) 아래나 옆에 -->
         <Button
             android:id="@+id/suggestions_strip_search_status"
@@ -143,5 +155,4 @@
         android:textColor="@android:color/white"
         android:textSize="14sp"
         android:visibility="gone" />
-
 </merge>
