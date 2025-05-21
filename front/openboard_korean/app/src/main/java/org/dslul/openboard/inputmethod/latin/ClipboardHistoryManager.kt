@@ -2,6 +2,7 @@ package org.dslul.openboard.inputmethod.latin
 
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
 import android.text.TextUtils
 import android.util.Base64
 import android.util.Log
@@ -52,24 +53,45 @@ class ClipboardHistoryManager(
     private fun fetchPrimaryClip() {
         val clipData = clipboardManager.primaryClip ?: return
         if (clipData.itemCount == 0) return
-        clipData.getItemAt(0)?.let { clipItem ->
-            // Starting from API 30, onPrimaryClipChanged() can be called multiple times
-            // for the same clip. We can identify clips with their timestamps since API 26.
-            // We use that to prevent unwanted duplicates.
-            val timeStamp = ClipboardManagerCompat.getClipTimestamp(clipData)?.also { stamp ->
-                if (historyEntries.any { it.timeStamp == stamp }) return
-            } ?: System.currentTimeMillis()
+        val clipItem = clipData.getItemAt(0) ?: return
 
-            val content = clipItem.coerceToText(latinIME)
-            if (TextUtils.isEmpty(content)) return
+        // 중복 방지용 타임스탬프 계산
+        val timeStamp = ClipboardManagerCompat.getClipTimestamp(clipData)?.also { stamp ->
+            if (historyEntries.any { it.timeStamp == stamp }) return
+        } ?: System.currentTimeMillis()
 
-            val entry = ClipboardHistoryEntry(timeStamp, content)
+        // 1) 이미지 URI가 있으면, content 대신 uri 필드에 담아서 히스토리에 추가
+        clipItem.uri?.let { uri ->
+            // 읽기 권한 부여 (FileProvider 등 ACL 필요시)
+            latinIME.grantUriPermission("*", uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+
+            val entry = ClipboardHistoryEntry(
+                timeStamp = timeStamp,
+                content   = "",     // 텍스트는 비워두고
+                uri       = uri     // 여기에 URI 저장
+            )
             historyEntries.add(entry)
             sortHistoryEntries()
             val at = historyEntries.indexOf(entry)
             onHistoryChangeListener?.onClipboardHistoryEntryAdded(at)
+            return
         }
+
+        // 2) URI가 없으면 기존대로 텍스트 처리
+        val content = clipItem.coerceToText(latinIME)?.toString()
+        if (content.isNullOrEmpty()) return
+
+        val entry = ClipboardHistoryEntry(
+            timeStamp = timeStamp,
+            content   = content,
+            uri       = null
+        )
+        historyEntries.add(entry)
+        sortHistoryEntries()
+        val at = historyEntries.indexOf(entry)
+        onHistoryChangeListener?.onClipboardHistoryEntryAdded(at)
     }
+
 
     fun toggleClipPinned(ts: Long) {
         val from = historyEntries.indexOfFirst { it.timeStamp == ts }
