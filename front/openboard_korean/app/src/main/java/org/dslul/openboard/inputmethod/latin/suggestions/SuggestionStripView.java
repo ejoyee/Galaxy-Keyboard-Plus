@@ -444,7 +444,32 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         } else {
             query = "";
         }
-        if (query.isEmpty()) return;
+        // ★ 추가: 입력이 비어 있으면 토스트만 띄우고 종료
+        if (query.isEmpty()) {
+            // 1) 검색 모드 해제 상태로 복구
+            mInSearchMode = false;
+            // Lottie 애니메이션 멈추고 아이콘/상태 복원
+            mSearchKey.clearAnimation();
+            mSearchKey.setAnimation("ic_search.json");
+            mSearchKey.setProgress(0f);
+            mSearchKey.setRepeatCount(0);
+            // 제안줄 및 버튼들 복원
+            mSuggestionsStrip.setVisibility(VISIBLE);
+            mVoiceKey.setVisibility(VISIBLE);
+            mClipboardKey.setVisibility(
+                    Settings.getInstance().getCurrent().mShowsClipboardKey
+                            ? VISIBLE : (mVoiceKey.getVisibility() == GONE ? INVISIBLE : GONE)
+            );
+            mFetchClipboardKey.setVisibility(VISIBLE);
+            mPhotoBar.setVisibility(GONE);
+
+            Toast.makeText(
+                    getContext(),
+                    "활성화된 앱 입력창에 질문을 입력해주세요.",
+                    Toast.LENGTH_SHORT
+            ).show();
+            return;
+        }
 
         mLastQuery = query;  // ◀ 사용자가 입력한 원본 질문 보관
         Log.d("SugStrip", "dispatchSearchQuery: mLastQuery = \"" + mLastQuery + "\"");
