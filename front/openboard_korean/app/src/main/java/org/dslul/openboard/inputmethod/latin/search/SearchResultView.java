@@ -321,6 +321,12 @@ public class SearchResultView extends FrameLayout implements MoreKeysPanel {
                             id,
                             MediaStore.Images.Thumbnails.MINI_KIND,
                             null);
+
+                    // 실패했거나 null이면 그냥 스킵
+                    if (thumb == null) {
+                        continue;
+                    }
+
                     ImageView iv = new ImageView(getContext());
                     LinearLayout.LayoutParams ivLp = new LinearLayout.LayoutParams(
                             dpToPx(80), dpToPx(80));
