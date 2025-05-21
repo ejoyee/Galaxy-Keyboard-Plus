@@ -131,11 +131,22 @@ class ClipboardAdapter(
             pinIcon.visibility = if (e.isPinned) View.VISIBLE else View.GONE
         }
 
-        override fun onClick(v: View) {
-            val e = clipboardHistoryManager?.getHistoryEntry(bindingAdapterPosition) ?: return
-            val cm = v.context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-            // 텍스트 복사
-            val clip = ClipData.newPlainText("Text", e.content)
+        override fun onClick(view: View) {
+            // ① bindingAdapterPosition 으로 안전하게 위치 가져오기
+            val pos = bindingAdapterPosition
+            if (pos == RecyclerView.NO_POSITION) return
+
+            // ② 관리자로 리스트 맨 앞으로 이동시키기
+            val entry = clipboardHistoryManager?.getHistoryEntry(pos) ?: return
+            clipboardHistoryManager?.refreshEntry(entry.timeStamp)
+
+            // ③ 실제로 시스템 클립보드에 복사
+            val cm = view.context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            val clip = if (entry.uri != null) {
+                ClipData.newUri(view.context.contentResolver, "Image", entry.uri)
+            } else {
+                ClipData.newPlainText("Text", entry.content)
+            }
             cm.setPrimaryClip(clip)
         }
 

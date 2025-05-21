@@ -55,10 +55,19 @@ class ClipboardHistoryManager(
         if (clipData.itemCount == 0) return
         val clipItem = clipData.getItemAt(0) ?: return
 
-        // 중복 방지용 타임스탬프 계산
-        val timeStamp = ClipboardManagerCompat.getClipTimestamp(clipData)?.also { stamp ->
-            if (historyEntries.any { it.timeStamp == stamp }) return
-        } ?: System.currentTimeMillis()
+        // --- URI 버전 중복 검사 ---
+        clipItem.uri?.let { uri ->
+            if (historyEntries.any { it.uri == uri }) return
+            // (아래에 추가 로직 계속...)
+        }
+
+        // --- 텍스트 버전 중복 검사 ---
+        val text = clipItem.coerceToText(latinIME).toString()
+        if (text.isBlank()) return
+        if (historyEntries.any { it.content == text }) return
+
+        // 타임스탬프
+        val timeStamp = System.currentTimeMillis()
 
         // 1) 이미지 URI가 있으면, content 대신 uri 필드에 담아서 히스토리에 추가
         clipItem.uri?.let { uri ->
@@ -135,7 +144,9 @@ class ClipboardHistoryManager(
 
     fun getHistoryEntry(position: Int) = historyEntries[position]
 
-    fun getHistoryEntryContent(timeStamp: Long) = historyEntries.first { it.timeStamp == timeStamp }
+    fun getHistoryEntryContent(timeStamp: Long): ClipboardHistoryEntry? {
+        return historyEntries.first { it.timeStamp == timeStamp }
+    }
 
     fun setHistoryChangeListener(l: OnHistoryChangeListener?) {
         onHistoryChangeListener = l
@@ -198,6 +209,20 @@ class ClipboardHistoryManager(
         } catch (e: Exception) {
             Log.w(TAG, "Couldn't write to $pinnedHistoryClipsFile", e)
         }
+    }
+
+    /**
+     * 클릭된 항목(ts)에 해당하는 historyEntries 내부 순서를
+     * 맨 앞으로 옮기고 표시 위치도 갱신해 줍니다.
+     */
+    fun refreshEntry(ts: Long) {
+        val from = historyEntries.indexOfFirst { it.timeStamp == ts }
+        if (from == -1) return
+        val entry = historyEntries.removeAt(from)
+        entry.timeStamp = System.currentTimeMillis()
+        historyEntries.add(0, entry)
+        onHistoryChangeListener?.onClipboardHistoryEntryMoved(from, 0)
+        startSavePinnedClipsToDisk()
     }
 
     interface OnHistoryChangeListener {

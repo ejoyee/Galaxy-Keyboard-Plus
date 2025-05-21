@@ -7,8 +7,8 @@
     <!-- 썸네일을 좀 더 크게 띄우기 위해 96dp x 96dp -->
     <ImageView
         android:id="@+id/clipboard_entry_image"
-        android:layout_width="256dp"
-        android:layout_height="256dp"
+        android:layout_width="128dp"
+        android:layout_height="128dp"
         android:scaleType="centerCrop" />
 
     <!-- 핀 아이콘 (텍스트 레이아웃과 동일하게 어댑터에서 채워줌) -->
