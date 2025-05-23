@@ -41,6 +41,7 @@ import android.view.View.OnLongClickListener;
 import android.view.ViewGroup;
 import android.view.ViewParent;
 import android.view.accessibility.AccessibilityEvent;
+import android.view.animation.AnimationUtils;
 import android.view.inputmethod.ExtractedText;
 import android.view.inputmethod.ExtractedTextRequest;
 import android.view.inputmethod.InputConnection;
@@ -83,6 +84,7 @@ import java.util.ArrayList;
 import java.util.List;
 import androidx.core.content.ContextCompat;
 import androidx.core.view.ViewCompat;
+import androidx.interpolator.view.animation.FastOutSlowInInterpolator;
 
 import com.airbnb.lottie.LottieAnimationView;
 import com.airbnb.lottie.LottieDrawable;
@@ -114,6 +116,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
     private ImageButton mFetchClipboardKey;
     private int mDefaultHeight = 0;
     private HorizontalScrollView mPhotoBar;
+    private View mWrapper;
     private LinearLayout mPhotoBarContainer;
     private TextView mSearchAnswer;
     private LottieAnimationView mSearchKey;
@@ -312,6 +315,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         mFetchClipboardKey = findViewById(R.id.suggestions_strip_fetch_clipboard);
         mFetchClipboardKey.setOnClickListener(this);
 
+        mWrapper = findViewById(R.id.suggestions_strip_wrapper);
         mPhotoBar = findViewById(R.id.suggestions_strip_photo_bar);
         mPhotoBarContainer = findViewById(R.id.photo_bar_container);
         mSearchAnswer = findViewById(R.id.search_answer);
@@ -565,7 +569,26 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                             /* 3) 부모 레이아웃 재측정/재배치 */
                             requestLayout();
 
+//                            // 1) wrapper 를 화면 아래로 옮겨서 숨김 상태로 시작
+//                            mWrapper.setTranslationY(mWrapper.getHeight());
+//                            // 2) wrapper 를 보이게 설정
+//                            mWrapper.setVisibility(View.VISIBLE);
+//                            // 3) 슬라이드 업 애니메이션
+//                            mWrapper.animate()
+//                                    .translationY(0)                          // 원래 위치로
+//                                    .setDuration(10000)                         // 300ms
+//                                    .setInterpolator(AnimationUtils.loadInterpolator(getContext(), android.R.interpolator.fast_out_slow_in))
+//                                    .start();
+
+                            mPhotoBar.setTranslationY(mPhotoBar.getHeight());
+
                             mPhotoBar.setVisibility(VISIBLE);
+
+                            mPhotoBar.animate()
+                                    .translationY(0)
+                                    .setDuration(5000)
+                                    .setInterpolator(new FastOutSlowInInterpolator())
+                                    .start();
 
                             // 검색 아이콘 → ❌ 로 변경
                             mSearchKey.clearAnimation();
