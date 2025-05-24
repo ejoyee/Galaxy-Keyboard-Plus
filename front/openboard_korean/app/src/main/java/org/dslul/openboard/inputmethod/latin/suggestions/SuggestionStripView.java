@@ -84,6 +84,7 @@ import org.dslul.openboard.inputmethod.latin.suggestions.MoreSuggestionsView.Mor
 
 import java.util.ArrayList;
 import java.util.List;
+
 import androidx.core.content.ContextCompat;
 import androidx.core.view.ViewCompat;
 import androidx.interpolator.view.animation.FastOutSlowInInterpolator;
@@ -293,6 +294,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                             Log.d("KeywordSearch", "이미지 API 응답 실패 또는 결과 없음 → 패널에 '이미지가 없습니다' 표시");
                         }
                     }
+
                     @Override
                     public void onFailure(Call<KeywordImagesResponse> call, Throwable t) {
                         Log.e("KeywordSearch", "이미지 API 호출 실패: " + t.getMessage(), t);
@@ -358,75 +360,40 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
             KeywordApi api = ApiClient.getKeywordApi();
             Call<KeywordExistsResponse> call = api.exists(userId, lastWord);
 
-
-
-//            if (lastWord.equals("테스트")) {
-//                if (!mSearchKey.isAnimating()) {
-//                    mSearchKey.setRepeatCount(LottieDrawable.INFINITE);
-////                    mSearchKey.setAnimation();
-//                    mSearchKey.setAnimation("keyword_highlight.json");
-//                    mSearchKey.playAnimation();
-//                    mLastKeywordWithImages = lastWord;
-//                }
-//            } else {
-//                // "테스트"가 아닌 다른 단어일 때 애니메이션 정지
-//                if (mSearchKey.isAnimating()) {
-//                    mSearchKey.pauseAnimation();
-//                    mSearchKey.setAnimation("ic_search.json");
-//                    mSearchKey.setProgress(0f);
-//                }
-//                // 상태 초기화
-//                mLastKeywordWithImages = null;
-//            }
-
-
             // 5. 비동기 호출 및 결과 처리
             call.enqueue(new retrofit2.Callback<KeywordExistsResponse>() {
                 @Override
                 public void onResponse(Call<KeywordExistsResponse> call, retrofit2.Response<KeywordExistsResponse> response) {
                     if (response.isSuccessful() && response.body() != null) {
                         boolean exists = response.body().exists;
-                        Log.d("KeywordSearch", "[API] 단어 \"" + lastWord  + "\" 존재여부: " + exists);
+                        Log.d("KeywordSearch", "[API] 단어 \"" + lastWord + "\" 존재여부: " + exists);
 
-//                        if (exists && mKeywordKey != null) {
-//                            if (!mKeywordKey.isAnimating()) {
-//                                mKeywordKey.setRepeatCount(LottieDrawable.INFINITE);
-//                                mKeywordKey.setAnimation("keyword_highlight.json");
-//                                mKeywordKey.playAnimation();
-//                                mLastKeywordWithImages = lastWord;
-//                            }
-//                        }
                         if (exists && mSearchKey != null) {
-                            if (!mKeywordKey.isAnimating()) {
-                                mSearchKey.setAnimation(LottieDrawable.INFINITE);
-                                mSearchKey.setAnimation("keyword_highlight.json");
+                            if (!mSearchKey.isAnimating()) {
+                                mSearchKey.setRepeatCount(LottieDrawable.INFINITE);
+                                mSearchKey.setAnimation("ic_search.json");
                                 mSearchKey.playAnimation();
                                 mLastKeywordWithImages = lastWord;
                             }
                         }
-
                     } else {
                         Log.e("KeywordSearch", "API 응답 실패: " + response.code());
                     }
                 }
+
                 @Override
                 public void onFailure(Call<KeywordExistsResponse> call, Throwable t) {
                     Log.e("KeywordSearch", "API 호출 에러: ", t);
                 }
             });
         } else if (event.type == HangulCommitEvent.TYPE_END) {
-//            if (mKeywordKey != null && mKeywordKey.isAnimating()) {
-//                mKeywordKey.pauseAnimation();     // 일시정지
-//                mKeywordKey.setProgress(0f);      // 초기 상태로(선택)
-//            }
             if (mSearchKey != null && mSearchKey.isAnimating()) {
                 mSearchKey.pauseAnimation();
-                mSearchKey.setAnimation("ic_search.json");
                 mSearchKey.setProgress(0f);
             }
-
         }
     }
+
     // ========== Search Mode helpers ======================================
     private void enterSearchMode() {
         if (mInSearchMode) return;
@@ -664,6 +631,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
 
     }
 // =====================================================================
+
     /**
      * A connection back to the input method.
      *
@@ -1067,6 +1035,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
             mListener.pickSuggestionManually(wordInfo);
         }
     }
+
     private boolean isSearchInputEmpty() {
         InputConnection ic = mMainKeyboardView.getInputConnection();
         ExtractedText et = ic == null ? null : ic.getExtractedText(new ExtractedTextRequest(), 0);
