@@ -190,11 +190,11 @@ async def generate_enhanced_info_answer(
 2. 친근하고 자연스러운 대화체 사용
 3. 정보가 부족한 경우에도 질문에 맞는 답변 제공
 4. 알려진 정보만으로 답변하되, 의미있는 정보가 전혀 없는 경우 적절히 안내
-5. 반드시 사용한 정보의 번호를 마지막에 목록으로 추가 (1, 3, 5처럼 숫자만 쓰고 각 숫자는 쉼표로 구분)
+5. “제공된 정보에는 없지만”이라는 표현은 사용하지 말 것
 
 질문에 대한 정확한 정보를 찾지 못했다면, 웹검색을 통해 최대한 관련된 내용을 제공해보세요. 
 정보가 부족하더라도 사용자의 질문에 유용한 답변을 제공하되, 추측임을 명시하고 정확한 정보를 제공하는 방식으로 작성해주세요.
-
+사용자가 참고할 수 있는 URL을 3개정도 마지막에 포함해주세요. URL 제목은 그 링크에 대한 설명으로 해주세요.
 답변:
 """
         else:
@@ -221,8 +221,8 @@ async def generate_enhanced_info_answer(
             mcp_start_time = time.time()
 
             response = requests.post(
-                "http://mcp-api:8050/api/search/",
-                # "http://k12e201.p.ssafy.io:8050/api/search/",
+                # "http://mcp-api:8050/api/search/",
+                "http://k12e201.p.ssafy.io:8050/api/search/",
                 headers=headers,
                 json=payload,
                 timeout=30,  # 타임아웃 설정
