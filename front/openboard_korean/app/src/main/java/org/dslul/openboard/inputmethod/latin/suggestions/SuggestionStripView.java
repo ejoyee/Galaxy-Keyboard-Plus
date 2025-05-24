@@ -35,6 +35,8 @@ import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
+import android.os.VibrationEffect;
+import android.os.Vibrator;
 import android.provider.MediaStore;
 import android.util.AttributeSet;
 import android.util.Log;
@@ -146,7 +148,9 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
 
     private boolean mIsDragging = false;
     private int     mDragExtra  = 0;
+    private boolean mDragHover = false;
     private Paint mOverlayPaint;
+    private Paint mOverlayPaintHover;
 
     // 기존 필드 바로 아래
     private Drawable mIconClose;    // X 아이콘
@@ -191,6 +195,8 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
     private Drawable mOriginalSearchKeyBg;
 
     private EditorInfo mEditorInfo;
+    private Drawable mDropIcon;
+    private int      mDropIconSize;
 
     /** IME 서비스로부터 EditorInfo 를 전달받습니다 */
     public void setEditorInfo(EditorInfo info) {
@@ -264,6 +270,9 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         // blink 애니메이션 리소스 로드  ◀ 수정
         mKeyHighlighted = false;
         mAnswerShown = false;
+
+        mDropIcon = ContextCompat.getDrawable(context, R.drawable.ic_paste_here);
+        mDropIconSize = dpToPx(200); // 원하는 픽셀 크기
 
         for (int pos = 0; pos < SuggestedWords.MAX_SUGGESTIONS; pos++) {
             final TextView word = new TextView(context, null, R.attr.suggestionWordStyle);
@@ -414,47 +423,51 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                     return false;
 
                 case DragEvent.ACTION_DRAG_LOCATION:
-                    // 선택된 상태에서 뷰가 계속 올라가도록—필요시 비주얼만션 추가
+                    // y 좌표가 strip 최상단(=0)에서 mDragExtra 안쪽이면 hover 로 간주
+                    float y = event.getY();
+                    boolean nowHover = (y < mDragExtra);
+                    if (nowHover != mDragHover) {
+                        mDragHover = nowHover;   // 상태 갱신
+                        invalidate();            // 색 다시 칠하게 draw() 호출
+                    }
                     return true;
 
                 case DragEvent.ACTION_DROP:
-                    // 1) URI 파싱
-                    Uri uri = Uri.parse(event.getClipData().getItemAt(0).getText().toString());
-
-                    // 2) Rich Content 전송 (commitContent)
-                    InputConnection ic = mMainKeyboardView.getInputConnection();
-                    boolean handled = false;
-                    if (ic != null && mEditorInfo != null) {
-                        // 1) InputContentInfoCompat 생성
-                        ClipDescription desc = new ClipDescription("pasted image", new String[]{"image/*"});
-                        InputContentInfoCompat content = new InputContentInfoCompat(uri, desc, null);
-                        // 2) 읽기 권한 플래그 포함
-                        final int flags = InputConnectionCompat.INPUT_CONTENT_GRANT_READ_URI_PERMISSION;
-                        handled = InputConnectionCompat.commitContent(ic, mEditorInfo, content, flags, null);
-                    }
-                    if (!handled) {
-                        // ① 클립보드에 이미지 URI 저장
-                        ClipboardManager cm = (ClipboardManager)getContext().getSystemService(Context.CLIPBOARD_SERVICE);
-                        ClipData clip = ClipData.newUri(getContext().getContentResolver(), "Image", uri);
-                        cm.setPrimaryClip(clip);
-                        // ② 입력창에 붙여넣기 요청
-                        if (ic != null) {
-                            // 대부분의 EditText/Paste 가능한 뷰에서 동작
+                    // 드롭 위치가 추가된 빈 공간 안인지 체크
+                    float area = event.getY();
+                    if (area < mDragExtra) {
+                        // ── 추가된 영역: 기존 로직 (commitContent or clipboard-paste) 실행
+                        Uri uri = Uri.parse(event.getClipData().getItemAt(0).getText().toString());
+                        InputConnection ic = mMainKeyboardView.getInputConnection();
+                        boolean handled = false;
+                        if (ic != null && mEditorInfo != null) {
+                            ClipDescription desc = new ClipDescription("pasted image", new String[]{"image/*"});
+                            InputContentInfoCompat content =
+                                    new InputContentInfoCompat(uri, desc, null);
+                            handled = InputConnectionCompat.commitContent(
+                                    ic, mEditorInfo, content,
+                                    InputConnectionCompat.INPUT_CONTENT_GRANT_READ_URI_PERMISSION,
+                                    null);
+                        }
+                        if (!handled && ic != null) {
+                            // fallback: clipboard → paste
+                            ClipboardManager cm =
+                                    (ClipboardManager) getContext().getSystemService(Context.CLIPBOARD_SERVICE);
+                            cm.setPrimaryClip(ClipData.newUri(
+                                    getContext().getContentResolver(), "Image", uri));
                             ic.performContextMenuAction(android.R.id.paste);
                         }
+                    } else {
+                        // ── 기존 썸네일 영역: 아무 작업 없이 드래그만 정리
                     }
-
-                    // --- 2) 드래그 원본 뷰 알파 복원 ---
-                    View draggedView = (View) event.getLocalState();
-                    draggedView.setAlpha(1f);
-
-                    // 드롭 이후에 Insets 고정 해제
+                    // 공통으로 드래그 모드 해제 & 원복
+                    mDragHover = false;
                     if (mImeService != null) mImeService.setDragging(false);
-
                     collapseDragArea();
                     return true;
 
                 case DragEvent.ACTION_DRAG_ENDED:
+                    mDragHover = false;
                     // 1) IME Insets Freeze OFF
                     if (mImeService != null) mImeService.setDragging(false);
 
@@ -471,9 +484,11 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
             }
         });
 
-        // 반투명 오버레이용 Paint (흰색 50% 알파)
+        // 반투명 오버레이용 Paint
         mOverlayPaint = new Paint();
-        mOverlayPaint.setColor(Color.parseColor("#80FFFFFF"));
+        mOverlayPaintHover  = new Paint();
+        mOverlayPaint.setColor(Color.parseColor("#15000000"));
+        mOverlayPaintHover.setColor(Color.parseColor("#40000000"));
     }
 
     /* ▼ EventBus로 HangulCommitEvent 이벤트 구독 --------------------------------------------------- */
@@ -591,22 +606,22 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         mSuggestionsStrip.setVisibility(GONE);
 
         // 2) 뷰 높이를 애니메이션으로 늘리기 (PHOTO_ONLY 때처럼)
-        int photoBarHeight = dpToPx(96) + dpToPx(6);
-        final View strip = this;
-        int startH = strip.getHeight();
-        int endH = photoBarHeight;
-        ValueAnimator expandAnim = ValueAnimator.ofInt(startH, endH);
-        expandAnim.setDuration(500);
-        expandAnim.setInterpolator(new FastOutSlowInInterpolator());
-        expandAnim.addUpdateListener(anim -> {
-            ViewGroup.LayoutParams lp = strip.getLayoutParams();
-            lp.height = (int) anim.getAnimatedValue();
-            strip.setLayoutParams(lp);
-        });
-        expandAnim.start();
+//        int photoBarHeight = dpToPx(96) + dpToPx(6);
+//        final View strip = this;
+//        int startH = strip.getHeight();
+//        int endH = photoBarHeight;
+//        ValueAnimator expandAnim = ValueAnimator.ofInt(startH, endH);
+//        expandAnim.setDuration(500);
+//        expandAnim.setInterpolator(new FastOutSlowInInterpolator());
+//        expandAnim.addUpdateListener(anim -> {
+//            ViewGroup.LayoutParams lp = strip.getLayoutParams();
+//            lp.height = (int) anim.getAnimatedValue();
+//            strip.setLayoutParams(lp);
+//        });
+//        expandAnim.start();
 
         // 3) 로딩 스피너 보이기
-        mLoadingSpinner.setScaleX(0.8f); // 60% 크기로 축소
+        mLoadingSpinner.setScaleX(0.8f);
         mLoadingSpinner.setScaleY(0.8f);
         mLoadingSpinner.setVisibility(VISIBLE);
         mLoadingSpinner.bringToFront();
@@ -1015,6 +1030,14 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
 
     @Override
     public boolean onLongClick(final View view) {
+        // 1) 진동 효과
+//        Vibrator vib = (Vibrator)
+//                view.getContext().getSystemService(Context.VIBRATOR_SERVICE);
+//        if (vib != null) {
+//            vib.vibrate(VibrationEffect.createOneShot(50,
+//                    VibrationEffect.DEFAULT_AMPLITUDE));
+//        }
+
         if (view == mClipboardKey) {
             ClipboardManager clipboardManager = (ClipboardManager) getContext().getSystemService(Context.CLIPBOARD_SERVICE);
             ClipData clipData = clipboardManager.getPrimaryClip();
@@ -1448,7 +1471,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
 
     private void expandDragArea() {
         // 원래 높이 + 확장 크기
-        int extra = dpToPx(100);
+        int extra = dpToPx(417);
         mDragExtra    = extra;
         mIsDragging   = true;
 
@@ -1492,12 +1515,26 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
     @Override
     public void draw(Canvas canvas) {
         if (mIsDragging && mDragExtra > 0) {
+            // 1) 뷰의 “원래” 부분만 정상 렌더링
             int save = canvas.save();
-            // 상단 mDragExtra 만큼은 그리지 말고 클립
+            // y = mDragExtra 아래만 그리도록 클립
             canvas.clipRect(0, mDragExtra, getWidth(), getHeight());
-            // 뷰의 배경·onDraw·dispatchDraw 전부 이 영역에서만 그려짐
             super.draw(canvas);
             canvas.restoreToCount(save);
+
+            // hover 중이면 더 진한 페인트 사용
+            Paint p = mDragHover ? mOverlayPaintHover : mOverlayPaint;
+            canvas.drawRect(0, 0, getWidth(), mDragExtra, p);
+
+            // ── 여기서 드롭 아이콘 그리기 ──
+            if (mDropIcon != null) {
+                int cx = getWidth() / 2;
+                int cy = mDragExtra / 2;
+                int half = mDropIconSize / 2;
+                mDropIcon.setBounds(cx - half, cy - half, cx + half, cy + half);
+                mDropIcon.draw(canvas);
+            }
+
         } else {
             super.draw(canvas);
         }
