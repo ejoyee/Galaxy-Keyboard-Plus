@@ -180,6 +180,9 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
     private final SuggestionStripLayoutHelper mLayoutHelper;
     private final StripVisibilityGroup mStripVisibilityGroup;
 
+    private ValueAnimator mBorderPulseAnimator;
+    private Drawable mOriginalSearchKeyBg;
+
     private static class StripVisibilityGroup {
         private final View mSuggestionStripView;
         private final View mSuggestionsStrip;
@@ -277,6 +280,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         if (mSearchKey == null) {
             throw new IllegalStateException("suggestions_strip_search_key not found in current layout variant");
         }
+        mOriginalSearchKeyBg = mSearchKey.getBackground();
 
         mKeywordKey = findViewById(R.id.suggestions_strip_keyword_key);
         mKeywordKey.setVisibility(View.GONE);
@@ -383,9 +387,9 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                         if (exists && mSearchKey != null) {
                             if (!mSearchKey.isAnimating()) {
                                 int[] gradientColors = new int[]{
-                                        Color.parseColor("#60BA68C8"),  // 연한 바이올렛
-                                        Color.parseColor("#60A0DFFF"),  // 연한 스카이블루
-                                        Color.parseColor("#60A0F0C0")   // 연한 민트
+                                        Color.parseColor("#DDA0FF"), // 연한 네온 바이올렛
+                                        Color.parseColor("#A0DFFF"), // 연한 네온 스카이블루
+                                        Color.parseColor("#A0FFD6")  // 연한 네온 민트
                                 };
 
                                 GradientDrawable glowBg = new GradientDrawable();
@@ -404,16 +408,16 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                                 mSearchKey.setAnimation("ic_search.json");
                                 mSearchKey.playAnimation();
 
-                                ValueAnimator borderPulse = ValueAnimator.ofInt(50, 200);
-                                borderPulse.setDuration(500);
-                                borderPulse.setRepeatMode(ValueAnimator.REVERSE);
-                                borderPulse.setRepeatCount(ValueAnimator.INFINITE);
-                                borderPulse.addUpdateListener(anim -> {
+                                mBorderPulseAnimator = ValueAnimator.ofInt(1, 200);
+                                mBorderPulseAnimator.setDuration(500);
+                                mBorderPulseAnimator.setRepeatMode(ValueAnimator.REVERSE);
+                                mBorderPulseAnimator.setRepeatCount(ValueAnimator.INFINITE);
+                                mBorderPulseAnimator.addUpdateListener(anim -> {
                                     int alpha = (int) anim.getAnimatedValue();
                                     // 전체 글로우 배경의 투명도 조절
                                     glowBg.setAlpha(alpha);
                                 });
-                                borderPulse.start();
+                                mBorderPulseAnimator.start();
 
                                 mLastKeywordWithImages = lastWord;
                             }
@@ -432,6 +436,14 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
             if (mSearchKey != null && mSearchKey.isAnimating()) {
                 mSearchKey.pauseAnimation();
                 mSearchKey.setProgress(0f);
+
+                if (mBorderPulseAnimator != null) {
+                    mBorderPulseAnimator.cancel();
+                    mBorderPulseAnimator = null;
+                }
+
+                mSearchKey.setBackground(mOriginalSearchKeyBg);
+                mSearchKey.setLayerType(View.LAYER_TYPE_NONE, null);
             }
         }
     }
@@ -541,6 +553,16 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                             mSearchKey.setRepeatCount(0);
                             mSearchKey.setAnimation("ic_search_blue.json"); // 파랑 정지된 JSON
                             mSearchKey.setProgress(0f);
+
+                            if (mBorderPulseAnimator != null) {
+                                mBorderPulseAnimator.cancel();
+                                mBorderPulseAnimator = null;
+                            }
+                            // ② 원래 배경으로 복원
+                            mSearchKey.setBackground(mOriginalSearchKeyBg);
+                            // ③ (선택) 레이어 타입도 원래대로 돌려놓기
+                            mSearchKey.setLayerType(View.LAYER_TYPE_NONE, null);
+
                             mKeyHighlighted = true;
                             break;
                         case PHOTO_ONLY:
