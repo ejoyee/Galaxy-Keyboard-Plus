@@ -899,6 +899,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
     private boolean mNeedsToTransformTouchEventToHoverEvent;
     private boolean mIsDispatchingHoverEventToMoreSuggestions;
     private final GestureDetector mMoreSuggestionsSlidingDetector;
+    private Drawable mOriginalKeyboardBackground;
     private final GestureDetector.OnGestureListener mMoreSuggestionsSlidingListener = new GestureDetector.SimpleOnGestureListener() {
         @Override
         public boolean onScroll(MotionEvent down, MotionEvent me, float deltaX, float deltaY) {
@@ -1057,6 +1058,10 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         if (view == mSearchStatus) return;
 
         if (view == mSearchKey) {
+
+            // 🎨 클릭 시 단발성 키보드 애니메이션 효과
+            showKeyboardClickAnimation();
+
             // ❌ 클릭 시 닫기 애니메이션 (사진 역순 스케일 → strip 닫기)
             if (mResponseType == ResponseType.SHORT_TEXT || mResponseType == ResponseType.PHOTO_ONLY) {
                 final View strip = SuggestionStripView.this;
@@ -1252,4 +1257,110 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
             }
         }
     }
+
+    /**
+     * 🎨 클릭 시 단발성 키보드 애니메이션 (웨이브 효과)
+     */
+    private void showKeyboardClickAnimation() {
+        if (mMainKeyboardView == null) return;
+
+        // 기존 애니메이션이 실행 중이면 취소
+        mMainKeyboardView.clearAnimation();
+
+        // 원본 배경 저장 (한 번만)
+        if (mOriginalKeyboardBackground == null) {
+            mOriginalKeyboardBackground = mMainKeyboardView.getBackground();
+        }
+
+        // 웨이브 확산 효과 애니메이션
+        ValueAnimator waveAnimator = ValueAnimator.ofFloat(0f, 1f);
+        waveAnimator.setDuration(800); // 0.8초로 조금 더 길게
+        waveAnimator.setInterpolator(new androidx.interpolator.view.animation.FastOutSlowInInterpolator());
+
+        waveAnimator.addUpdateListener(animation -> {
+            float progress = (float) animation.getAnimatedValue();
+            applyWaveEffect(progress);
+        });
+
+        waveAnimator.addListener(new android.animation.AnimatorListenerAdapter() {
+            @Override
+            public void onAnimationEnd(android.animation.Animator animation) {
+                // 애니메이션 완료 후 원래 배경으로 복원
+                restoreKeyboardBackground();
+            }
+        });
+
+        waveAnimator.start();
+        Log.d("KeyboardAnimation", "단발성 웨이브 애니메이션 실행");
+    }
+
+    /**
+     * 🎨 웨이브 확산 효과 - 수정된 버전
+     */
+    private void applyWaveEffect(float progress) {
+        if (mMainKeyboardView == null) return;
+
+        // 더 명확한 색상 변화 (0 → 1 → 0)
+        float intensity = progress < 0.5f ? progress * 2f : (1f - progress) * 2f;
+        int alpha = (int) (intensity * 180); // 더 강한 알파값 (최대 180)
+
+        // 여러 색상 선택지
+        int[] colors = {
+                Color.parseColor("#4CAF50"), // 초록
+                Color.parseColor("#2196F3"), // 파랑
+                Color.parseColor("#FF9800"), // 오렌지
+                Color.parseColor("#9C27B0")  // 보라
+        };
+
+        // progress에 따라 색상 변경
+        int colorIndex = (int) (progress * colors.length) % colors.length;
+        int baseColor = colors[colorIndex];
+
+        int waveColor = Color.argb(alpha,
+                Color.red(baseColor),
+                Color.green(baseColor),
+                Color.blue(baseColor));
+
+        // 간단한 단색 배경으로 변경
+        GradientDrawable waveDrawable = new GradientDrawable();
+        waveDrawable.setShape(GradientDrawable.RECTANGLE);
+        waveDrawable.setColor(waveColor); // 단순 색상
+        waveDrawable.setCornerRadius(dpToPx(12));
+
+        // 테두리 효과 (더 명확하게)
+        if (alpha > 50) {
+            int strokeColor = Color.argb(alpha, 255, 255, 255);
+            waveDrawable.setStroke(dpToPx(3), strokeColor);
+        }
+
+        mMainKeyboardView.setBackground(waveDrawable);
+
+        // 더 큰 스케일 효과
+        float scale = 1f + (intensity * 0.1f); // 최대 10% 확대
+        mMainKeyboardView.setScaleX(scale);
+        mMainKeyboardView.setScaleY(scale);
+    }
+
+    /**
+     * 🎨 키보드 배경 원상복구
+     */
+    private void restoreKeyboardBackground() {
+        if (mMainKeyboardView != null) {
+            // 스케일 원상복구
+            mMainKeyboardView.setScaleX(1f);
+            mMainKeyboardView.setScaleY(1f);
+
+            // 배경 원상복구
+            if (mOriginalKeyboardBackground != null) {
+                mMainKeyboardView.setBackground(mOriginalKeyboardBackground);
+            } else {
+                mMainKeyboardView.setBackground(null); // 투명 배경
+            }
+
+            Log.d("KeyboardAnimation", "키보드 배경 원상복구 완료");
+        }
+    }
+
+
+
 }
