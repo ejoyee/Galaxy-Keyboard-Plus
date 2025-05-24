@@ -664,6 +664,16 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
 
                             mPhotoBar.setVisibility(VISIBLE);
 
+                            // ⬇️ “❌” 아이콘으로 바뀔 때 글로우 애니메이션 정리
+                            if (mBorderPulseAnimator != null) {
+                                mBorderPulseAnimator.cancel();
+                                mBorderPulseAnimator = null;
+                            }
+                            // 원래 배경으로 복원
+                            mSearchKey.setBackground(mOriginalSearchKeyBg);
+                            // 레이어 타입도 기본으로 되돌리기
+                            mSearchKey.setLayerType(View.LAYER_TYPE_NONE, null);
+
                             // 검색 아이콘 → ❌ 로 변경
                             mSearchKey.clearAnimation();
                             mSearchKey.setRepeatCount(0);
@@ -1019,40 +1029,73 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         if (view == mSearchStatus) return;
 
         if (view == mSearchKey) {
-            // conversation 또는 photo 모드에서는 ❌ 클릭 시 원상복귀
+            // ❌ 클릭 시 닫기 애니메이션 (사진 역순 스케일 → strip 닫기)
             if (mResponseType == ResponseType.SHORT_TEXT || mResponseType == ResponseType.PHOTO_ONLY) {
+                final View strip = SuggestionStripView.this;
 
-                // ── height 복원
-                if (mDefaultHeight > 0) {
-                    ViewGroup.LayoutParams rootLp2 = getLayoutParams();
-                    rootLp2.height = mDefaultHeight;
-                    setLayoutParams(rootLp2);
+                // — PHOTO_ONLY 모드면 사진을 역순으로 축소 —
+                if (mResponseType == ResponseType.PHOTO_ONLY) {
+                    int count = mPhotoBarContainer.getChildCount();
+                    for (int i = count - 1; i >= 0; i--) {
+                        View iv = mPhotoBarContainer.getChildAt(i);
+                        iv.animate()
+                                .scaleX(0f).scaleY(0f)
+                                .setStartDelay(count - 1 - i)
+                                .setDuration(300)
+                                .setInterpolator(new FastOutSlowInInterpolator())
+                                .start();
+                    }
                 }
 
-                // 1) 숨겨뒀던 결과 영역 전부 감추기
-                mSearchAnswer.setVisibility(GONE);
-                mPhotoBar.setVisibility(GONE);
-//                mCopyKey.setVisibility(GONE);
+                // — 사진 애니메이션 끝난 뒤에 strip 닫기 —
+                long delay = (mResponseType == ResponseType.PHOTO_ONLY
+                        ? mPhotoBarContainer.getChildCount() + 300
+                        : 0);
+                strip.postDelayed(() -> {
+                    // 1) 높이 축소
+                    if (mDefaultHeight > 0) {
+                        int startH = strip.getHeight();
+                        int endH = mDefaultHeight;
+                        ValueAnimator collapse = ValueAnimator.ofInt(startH, endH);
+                        collapse.setDuration(300);
+                        collapse.setInterpolator(new FastOutSlowInInterpolator());
+                        collapse.addUpdateListener(anim -> {
+                            strip.getLayoutParams().height = (int) anim.getAnimatedValue();
+                            strip.requestLayout();
+                        });
+                        collapse.start();
+                    }
 
-                // 2) 제안 줄 & 버튼들 복원
-                mSuggestionsStrip.setVisibility(GONE);
-                mVoiceKey.setVisibility(VISIBLE);
-                mClipboardKey.setVisibility(GONE);
-                mFetchClipboardKey.setVisibility(VISIBLE);
+                    // 2) 페이드아웃
+                    strip.animate()
+                            .alpha(1f)
+                            .setDuration(200)
+                            .withEndAction(() -> {
+                                //— 완전히 닫힌 뒤 원상복구 —
+                                strip.getLayoutParams().height = mDefaultHeight;
+                                strip.requestLayout();
 
-                // 3) 검색키 애니메이션/아이콘 원복
-                mSearchKey.clearAnimation();
-                mSearchKey.setAnimation("ic_search.json");
-                mSearchKey.setProgress(0f);
-                mSearchKey.setRepeatCount(0);
+                                mSearchAnswer.setVisibility(GONE);
+                                mPhotoBar.setVisibility(GONE);
+                                mSuggestionsStrip.setVisibility(GONE);
+                                mVoiceKey.setVisibility(VISIBLE);
+                                mClipboardKey.setVisibility(GONE);
+                                mFetchClipboardKey.setVisibility(VISIBLE);
 
-                // 4) 상태 초기화
-                mInSearchMode = false;
-                mAnswerShown = false;
-                mResponseType = null;
-                mLastResponse = null;
+                                mSearchKey.clearAnimation();
+                                mSearchKey.setAnimation("ic_search.json");
+                                mSearchKey.setProgress(0f);
+                                mSearchKey.setRepeatCount(0);
+
+                                mInSearchMode = false;
+                                mAnswerShown = false;
+                                mResponseType = null;
+                                mLastResponse = null;
+                            });
+                }, delay);
                 return;
             }
+
             // 1) 검색 모드가 아니면 진입
             if (!mInSearchMode) {
                 if (isSearchInputEmpty()) {
