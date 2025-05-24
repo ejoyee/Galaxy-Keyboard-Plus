@@ -553,9 +553,6 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
 
                 post(() -> {
 
-                    // 🎨 API 응답 성공 시 키보드 애니메이션 중지
-                    stopKeyboardAnimation();
-
                     // ① **스피너 숨기기**
                     mLoadingSpinner.setVisibility(View.GONE);
                     mSearchKey.setVisibility(VISIBLE);
@@ -1322,70 +1319,73 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
 
 
     /**
-     * 🎨 하늘색-보라색으로 키보드 끝까지 채우는 웨이브 효과
+     * 🎨 키보드 애니메이션 빈 여백 제거 - 빠른 수정
+     * 기존 코드에서 이 부분만 교체하세요
      */
     private void applyVisibleWaveEffect(float progress) {
         if (mMainKeyboardView == null) return;
+
         // 자연스러운 물결 패턴
-        double mainWave = Math.sin(progress * Math.PI); // 메인 웨이브 (0 → 1 → 0)
-        float wave1 = (float) Math.sin(progress * Math.PI * 3) * 0.2f;     // 빠른 작은 파동
-        float wave2 = (float) Math.sin(progress * Math.PI * 1.5f) * 0.15f; // 중간 파동
+        double mainWave = Math.sin(progress * Math.PI);
+        float wave1 = (float) Math.sin(progress * Math.PI * 3) * 0.2f;
+        float wave2 = (float) Math.sin(progress * Math.PI * 1.5f) * 0.15f;
 
         float intensity = (float) (mainWave + wave1 + wave2);
-        intensity = Math.max(0f, Math.min(1f, intensity)); // 0~1 범위
+        intensity = Math.max(0f, Math.min(1f, intensity));
 
-        // 하늘색-보라색 계열 (잘 보이는 색상들)
+        // 하늘색-보라색 계열
         int[] skyPurpleColors = {
-                Color.parseColor("#87CEEB"), // 하늘색 (Sky Blue)
+                Color.parseColor("#87CEEB"), // 하늘색
                 Color.parseColor("#6495ED"), // 콘플라워 블루
                 Color.parseColor("#7B68EE"), // 미디엄 슬레이트 블루
-                Color.parseColor("#9370DB"), // 미디엄 슬레이트 블루 (보라쪽)
+                Color.parseColor("#9370DB"), // 보라색
                 Color.parseColor("#BA68C8"), // 미디엄 오키드
                 Color.parseColor("#8A2BE2")  // 블루 바이올렛
         };
 
-        // 시간에 따라 색상 변경
         int colorIndex = (int) (progress * 2) % skyPurpleColors.length;
         int nextColorIndex = (colorIndex + 1) % skyPurpleColors.length;
         float colorProgress = (progress * 2) % 1f;
 
         int baseColor = interpolateColor(skyPurpleColors[colorIndex], skyPurpleColors[nextColorIndex], colorProgress);
 
-        // 아래에서 위로 채워지는 그라디언트
         GradientDrawable waveDrawable = new GradientDrawable();
         waveDrawable.setShape(GradientDrawable.RECTANGLE);
         waveDrawable.setOrientation(GradientDrawable.Orientation.BOTTOM_TOP);
 
-        // 적당한 투명도 (잘 보이도록)
-        int baseAlpha = (int) (intensity * 140); // 최대 140 알파값으로 조금 더 진하게
+        int baseAlpha = (int) (intensity * 140);
 
-        // 키보드 끝까지 채우는 그라디언트 색상 배열 (8단계로 더 부드럽게)
+        // ✨ 핵심 수정: 더 넓은 범위의 그라디언트로 여백까지 커버
         int[] gradientColors = new int[]{
-                Color.argb(baseAlpha, Color.red(baseColor), Color.green(baseColor), Color.blue(baseColor)),           // 100% - 아래
-                Color.argb(baseAlpha * 6/7, Color.red(baseColor), Color.green(baseColor), Color.blue(baseColor)),    // 85%
-                Color.argb(baseAlpha * 5/7, Color.red(baseColor), Color.green(baseColor), Color.blue(baseColor)),    // 70%
-                Color.argb(baseAlpha * 4/7, Color.red(baseColor), Color.green(baseColor), Color.blue(baseColor)),    // 55%
-                Color.argb(baseAlpha * 3/7, Color.red(baseColor), Color.green(baseColor), Color.blue(baseColor)),    // 40%
-                Color.argb(baseAlpha * 2/7, Color.red(baseColor), Color.green(baseColor), Color.blue(baseColor)),    // 25%
-                Color.argb(baseAlpha / 7, Color.red(baseColor), Color.green(baseColor), Color.blue(baseColor)),      // 15%
-                Color.argb(baseAlpha / 14, Color.red(baseColor), Color.green(baseColor), Color.blue(baseColor))      // 7% - 위쪽도 색이 남음
+                Color.argb(baseAlpha, Color.red(baseColor), Color.green(baseColor), Color.blue(baseColor)),           // 100%
+                Color.argb(baseAlpha * 9/10, Color.red(baseColor), Color.green(baseColor), Color.blue(baseColor)),   // 90%
+                Color.argb(baseAlpha * 8/10, Color.red(baseColor), Color.green(baseColor), Color.blue(baseColor)),   // 80%
+                Color.argb(baseAlpha * 7/10, Color.red(baseColor), Color.green(baseColor), Color.blue(baseColor)),   // 70%
+                Color.argb(baseAlpha * 6/10, Color.red(baseColor), Color.green(baseColor), Color.blue(baseColor)),   // 60%
+                Color.argb(baseAlpha * 5/10, Color.red(baseColor), Color.green(baseColor), Color.blue(baseColor)),   // 50%
+                Color.argb(baseAlpha * 4/10, Color.red(baseColor), Color.green(baseColor), Color.blue(baseColor)),   // 40%
+                Color.argb(baseAlpha * 3/10, Color.red(baseColor), Color.green(baseColor), Color.blue(baseColor)),   // 30%
+                Color.argb(baseAlpha * 2/10, Color.red(baseColor), Color.green(baseColor), Color.blue(baseColor)),   // 20%
+                Color.argb(baseAlpha / 10, Color.red(baseColor), Color.green(baseColor), Color.blue(baseColor))      // 10%
         };
 
         waveDrawable.setColors(gradientColors);
-        waveDrawable.setCornerRadius(dpToPx(12));
 
-        // 미묘한 테두리
-        if (baseAlpha > 30) {
-            int strokeColor = Color.argb(baseAlpha / 2, 255, 255, 255);
-            waveDrawable.setStroke(dpToPx(1), strokeColor);
-        }
+        // ✨ 핵심 수정: 코너를 완전히 제거하여 전체 영역 채우기
+        waveDrawable.setCornerRadius(0);
+
+        // ✨ 핵심 수정: 스트로크 제거 (테두리로 인한 여백 방지)
+        // 기존 스트로크 코드 주석 처리:
+        // if (baseAlpha > 30) {
+        //     int strokeColor = Color.argb(baseAlpha / 2, 255, 255, 255);
+        //     waveDrawable.setStroke(dpToPx(1), strokeColor);
+        // }
 
         mMainKeyboardView.setBackground(waveDrawable);
 
-        // 자연스러운 스케일 효과
-        float scale = 1f + (intensity * 0.03f); // 최대 3% 확대
-        mMainKeyboardView.setScaleX(scale);
-        mMainKeyboardView.setScaleY(scale);
+        // 미세한 투명도 변화
+        float breathingAlpha = 0.95f + (intensity * 0.05f);
+        mMainKeyboardView.setAlpha(breathingAlpha);
     }
 
     /**
@@ -1411,13 +1411,16 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
     }
 
     /**
-     * 🎨 키보드 배경 원상복구
+     * 🎨 키보드 배경 원상복구 (스케일 복원 제거)
      */
     private void restoreKeyboardBackground() {
         if (mMainKeyboardView != null) {
-            // 스케일 원상복구
-            mMainKeyboardView.setScaleX(1f);
-            mMainKeyboardView.setScaleY(1f);
+            // ✨ 스케일 복원 제거 - 키보드 위치 건드리지 않음
+            // mMainKeyboardView.setScaleX(1f);  // 제거
+            // mMainKeyboardView.setScaleY(1f);  // 제거
+
+            // 투명도 원상복구
+            mMainKeyboardView.setAlpha(1f);
 
             // 배경 원상복구
             if (mOriginalKeyboardBackground != null) {
@@ -1426,10 +1429,8 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                 mMainKeyboardView.setBackground(null); // 투명 배경
             }
 
-            Log.d("KeyboardAnimation", "키보드 배경 원상복구 완료");
+            Log.d("KeyboardAnimation", "키보드 배경 원상복구 완료 (위치 고정)");
         }
     }
-
-
 
 }
