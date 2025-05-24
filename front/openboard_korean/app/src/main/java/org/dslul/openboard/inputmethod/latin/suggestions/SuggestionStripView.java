@@ -552,6 +552,10 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                 );
 
                 post(() -> {
+
+                    // 🎨 API 응답 성공 시 키보드 애니메이션 중지
+                    stopKeyboardAnimation();
+
                     // ① **스피너 숨기기**
                     mLoadingSpinner.setVisibility(View.GONE);
                     mSearchKey.setVisibility(VISIBLE);
@@ -710,6 +714,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
             @Override
             public void onFailure(Call<MessageResponse> call, Throwable t) {
                 post(() -> {
+                    stopKeyboardAnimation();
                     // ① **스피너 숨기기**
                     mLoadingSpinner.setVisibility(View.GONE);
 
@@ -899,7 +904,12 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
     private boolean mNeedsToTransformTouchEventToHoverEvent;
     private boolean mIsDispatchingHoverEventToMoreSuggestions;
     private final GestureDetector mMoreSuggestionsSlidingDetector;
+    
+    // 키보드 애니메이션 관련 변수
     private Drawable mOriginalKeyboardBackground;
+    private ValueAnimator mKeyboardWaveAnimator;
+    private boolean mIsAnimatingKeyboard = false;
+
     private final GestureDetector.OnGestureListener mMoreSuggestionsSlidingListener = new GestureDetector.SimpleOnGestureListener() {
         @Override
         public boolean onScroll(MotionEvent down, MotionEvent me, float deltaX, float deltaY) {
@@ -1058,13 +1068,11 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         if (view == mSearchStatus) return;
 
         if (view == mSearchKey) {
-
-            // 🎨 클릭 시 단발성 키보드 애니메이션 효과
-
-
             // ❌ 클릭 시 닫기 애니메이션 (사진 역순 스케일 → strip 닫기)
             if (mResponseType == ResponseType.SHORT_TEXT || mResponseType == ResponseType.PHOTO_ONLY) {
                 final View strip = SuggestionStripView.this;
+
+                stopKeyboardAnimation();
 
                 // — PHOTO_ONLY 모드면 사진을 역순으로 축소 —
                 if (mResponseType == ResponseType.PHOTO_ONLY) {
@@ -1135,10 +1143,9 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                     showEmptyToast();
                     return;
                 }
-                
-                //애니메이션 적용
+
+                // 🎨 클릭 시 단발성 키보드 애니메이션 효과
                 showKeyboardClickAnimation();
-                
                 enterSearchMode();
                 return;
             }
@@ -1155,6 +1162,8 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                 mAnswerShown = true;
             } else {
                 // 세 번째 클릭(❌): 패널 닫고 키보드 복귀
+
+                stopKeyboardAnimation();
                 mSearchPanel.dismissMoreKeysPanel();
                 mSearchKey.setAnimation("ic_search.json");  // 흑 정지된 JSON
                 mSearchKey.setRepeatCount(0);
@@ -1265,29 +1274,52 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
     /**
      * 🎨 자연스럽고 적당히 보이는 그라디언트 웨이브 애니메이션
      */
+    /**
+     * 🎨 검색 모드 동안 지속되는 키보드 웨이브 애니메이션
+     */
     private void showKeyboardClickAnimation() {
-        if (mMainKeyboardView == null) return;
+        if (mMainKeyboardView == null || mIsAnimatingKeyboard) return;
+
         // 원본 배경 저장
         if (mOriginalKeyboardBackground == null) {
             mOriginalKeyboardBackground = mMainKeyboardView.getBackground();
         }
-        // 부드러운 웨이브 애니메이션
-        ValueAnimator waveAnimator = ValueAnimator.ofFloat(0f, 1f);
-        waveAnimator.setDuration(1000); // 1초
-        waveAnimator.setInterpolator(new android.view.animation.DecelerateInterpolator());
-        waveAnimator.addUpdateListener(animation -> {
-            float progress = (float) animation.getAnimatedValue();
-            applyVisibleWaveEffect(progress);
-        });
-        waveAnimator.addListener(new android.animation.AnimatorListenerAdapter() {
-            @Override
-            public void onAnimationEnd(android.animation.Animator animation) {
-                restoreKeyboardBackground();
+
+        mIsAnimatingKeyboard = true;
+
+        // 무한 반복되는 부드러운 웨이브 애니메이션
+        mKeyboardWaveAnimator = ValueAnimator.ofFloat(0f, 1f);
+        mKeyboardWaveAnimator.setDuration(2000); // 2초 주기
+        mKeyboardWaveAnimator.setRepeatCount(ValueAnimator.INFINITE);
+        mKeyboardWaveAnimator.setRepeatMode(ValueAnimator.RESTART);
+        mKeyboardWaveAnimator.setInterpolator(new android.view.animation.LinearInterpolator());
+
+        mKeyboardWaveAnimator.addUpdateListener(animation -> {
+            if (mIsAnimatingKeyboard) {
+                float progress = (float) animation.getAnimatedValue();
+                applyVisibleWaveEffect(progress);
             }
         });
-        waveAnimator.start();
-        Log.d("KeyboardAnimation", "자연스러운 웨이브 애니메이션 시작");
+
+        mKeyboardWaveAnimator.start();
+        Log.d("KeyboardAnimation", "지속적인 웨이브 애니메이션 시작");
     }
+
+    /**
+     * 🎨 키보드 애니메이션 중지 및 원상복구
+     */
+    private void stopKeyboardAnimation() {
+        if (mKeyboardWaveAnimator != null) {
+            mKeyboardWaveAnimator.cancel();
+            mKeyboardWaveAnimator = null;
+        }
+
+        mIsAnimatingKeyboard = false;
+        restoreKeyboardBackground();
+        Log.d("KeyboardAnimation", "키보드 애니메이션 중지 및 원상복구");
+    }
+
+
 
     /**
      * 🎨 하늘색-보라색으로 키보드 끝까지 채우는 웨이브 효과
