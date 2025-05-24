@@ -43,6 +43,7 @@ import android.util.Log;
 import android.util.TypedValue;
 import android.view.DragEvent;
 import android.view.GestureDetector;
+import android.view.HapticFeedbackConstants;
 import android.view.LayoutInflater;
 import android.view.MotionEvent;
 import android.view.View;
@@ -104,6 +105,7 @@ import androidx.interpolator.view.animation.FastOutSlowInInterpolator;
 import com.airbnb.lottie.LottieAnimationView;
 import com.airbnb.lottie.LottieDrawable;
 import com.bumptech.glide.Glide;
+import com.bumptech.glide.load.engine.DiskCacheStrategy;
 import com.bumptech.glide.load.resource.drawable.DrawableTransitionOptions;
 import com.google.gson.Gson;
 
@@ -198,6 +200,11 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
     private Drawable mDropIcon;
     private int      mDropIconSize;
 
+    private final int mPhotoBarSizePx;
+    private final LinearLayout.LayoutParams mPhotoItemLp;
+
+    private Drawable mOriginalStripBackground;
+
     /** IME 서비스로부터 EditorInfo 를 전달받습니다 */
     public void setEditorInfo(EditorInfo info) {
         mEditorInfo = info;
@@ -241,6 +248,14 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
 
     public SuggestionStripView(final Context context, final AttributeSet attrs, final int defStyle) {
         super(context, attrs, defStyle);
+
+        // 1) dp → px 변환을 미리 해두기
+        mPhotoBarSizePx = dpToPx(96);
+        int photoItemMargin = dpToPx(4);
+
+        // 2) LayoutParams도 한 번만 생성
+        mPhotoItemLp = new LinearLayout.LayoutParams(mPhotoBarSizePx, mPhotoBarSizePx);
+        mPhotoItemLp.setMargins(photoItemMargin, 0, photoItemMargin, 0);
 
         // ─── ContextThemeWrapper 언래핑 ───
         Context base = context;
@@ -395,6 +410,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         Glide.with(context)
                 .asGif()
                 .load(R.drawable.galaxyai_loading_spinner)
+                .diskCacheStrategy(DiskCacheStrategy.ALL)          // 메모리+디스크 캐시
                 .transition(DrawableTransitionOptions.withCrossFade())
                 .into(mLoadingSpinner);
 
@@ -748,6 +764,8 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
 
                             break;
                         case PHOTO_ONLY:
+                            SuggestionStripView.this.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+
                             Log.d("행동", "PHOTO_ONLY = \"" + body.getAnswer() + "\"");
                             Log.d(TAG_NET, "[PHOTO_ONLY] before dismiss: panelShowing=" + isShowingMoreSuggestionPanel() + ", stripVis=" + mSuggestionsStrip.getVisibility());
 
@@ -778,9 +796,10 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                                     long id = Long.parseLong(idStr);
                                     Bitmap thumb = MediaStore.Images.Thumbnails.getThumbnail(getContext().getContentResolver(), id, MediaStore.Images.Thumbnails.MINI_KIND, null);
                                     ImageView iv = new ImageView(getContext());
-                                    LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(barSize, barSize);
-                                    lp.setMargins(dpToPx(4), 0, dpToPx(4), 0);
-                                    iv.setLayoutParams(lp);
+//                                    LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(barSize, barSize);
+//                                    lp.setMargins(dpToPx(4), 0, dpToPx(4), 0);
+//                                    iv.setLayoutParams(lp);
+                                    iv.setLayoutParams(mPhotoItemLp);
                                     iv.setScaleType(ImageView.ScaleType.CENTER_CROP);
                                     iv.setImageBitmap(thumb);
                                     // 클릭 시 클립보드 복사
@@ -1030,14 +1049,6 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
 
     @Override
     public boolean onLongClick(final View view) {
-        // 1) 진동 효과
-//        Vibrator vib = (Vibrator)
-//                view.getContext().getSystemService(Context.VIBRATOR_SERVICE);
-//        if (vib != null) {
-//            vib.vibrate(VibrationEffect.createOneShot(50,
-//                    VibrationEffect.DEFAULT_AMPLITUDE));
-//        }
-
         if (view == mClipboardKey) {
             ClipboardManager clipboardManager = (ClipboardManager) getContext().getSystemService(Context.CLIPBOARD_SERVICE);
             ClipData clipData = clipboardManager.getPrimaryClip();
@@ -1051,10 +1062,10 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                     mListener.onTextInput(clipString.substring(clipString.length() - 1));
                 }
             }
-            AudioAndHapticFeedbackManager.getInstance().performHapticAndAudioFeedback(Constants.NOT_A_CODE, this);
+            AudioAndHapticFeedbackManager.getInstance().performHapticAndAudioFeedback(Constants.NOT_A_CODE, view);
             return true;
         }
-        AudioAndHapticFeedbackManager.getInstance().performHapticAndAudioFeedback(Constants.NOT_A_CODE, this);
+        AudioAndHapticFeedbackManager.getInstance().performHapticAndAudioFeedback(Constants.NOT_A_CODE, view);
         return showMoreSuggestions();
     }
 
@@ -1333,6 +1344,8 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                             });
                     mKeyHighlighted = false;
                 }, delay);
+
+                SuggestionStripView.this.setLayerType(View.LAYER_TYPE_NONE, null);
                 return;
             }
 
@@ -1558,7 +1571,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
 
         // 무한 반복되는 부드러운 웨이브 애니메이션
         mKeyboardWaveAnimator = ValueAnimator.ofFloat(0f, 1f);
-        mKeyboardWaveAnimator.setDuration(2000); // 2초 주기
+        mKeyboardWaveAnimator.setDuration(3000); // 주기
         mKeyboardWaveAnimator.setRepeatCount(ValueAnimator.INFINITE);
         mKeyboardWaveAnimator.setRepeatMode(ValueAnimator.RESTART);
         mKeyboardWaveAnimator.setInterpolator(new android.view.animation.LinearInterpolator());
@@ -1584,7 +1597,13 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         }
 
         mIsAnimatingKeyboard = false;
-        restoreKeyboardBackground();
+
+        // 키보드 원복
+        if (mMainKeyboardView != null && mOriginalKeyboardBackground != null) {
+            mMainKeyboardView.setBackground(mOriginalKeyboardBackground);
+            mMainKeyboardView.setAlpha(1f);
+        }
+
         Log.d("KeyboardAnimation", "키보드 애니메이션 중지 및 원상복구");
     }
 
@@ -1680,28 +1699,5 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                 (int) (gA + (gB - gA) * progress),
                 (int) (bA + (bB - bA) * progress)
         );
-    }
-
-    /**
-     * 🎨 키보드 배경 원상복구 (스케일 복원 제거)
-     */
-    private void restoreKeyboardBackground() {
-        if (mMainKeyboardView != null) {
-            // ✨ 스케일 복원 제거 - 키보드 위치 건드리지 않음
-            // mMainKeyboardView.setScaleX(1f);  // 제거
-            // mMainKeyboardView.setScaleY(1f);  // 제거
-
-            // 투명도 원상복구
-            mMainKeyboardView.setAlpha(1f);
-
-            // 배경 원상복구
-            if (mOriginalKeyboardBackground != null) {
-                mMainKeyboardView.setBackground(mOriginalKeyboardBackground);
-            } else {
-                mMainKeyboardView.setBackground(null); // 투명 배경
-            }
-
-            Log.d("KeyboardAnimation", "키보드 배경 원상복구 완료 (위치 고정)");
-        }
     }
 }
