@@ -2057,23 +2057,4 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
                     visible ? Color.BLACK : Color.TRANSPARENT);
         }
     }
-
-    public HangulCombiner getSearchCombiner() {
-        return mSearchCombiner;
-    }
-
-    /**
-     * 검색 모드 조합기 초기화 용도로만 쓰입니다
-     */
-    public void resetSearchCombiner() {
-        mSearchCombiner.reset();
-    }
-
-    // LatinIME.java (public 메서드로 추가)
-    public void resetSearchBuffers() {
-        mSearchCommitted.setLength(0);
-        mSearchCombiner.reset();
-    }
-
-
 }

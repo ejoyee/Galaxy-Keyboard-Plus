@@ -401,15 +401,24 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
 
                     // 2) Rich Content 전송 (commitContent)
                     InputConnection ic = mMainKeyboardView.getInputConnection();
+                    boolean handled = false;
                     if (ic != null && mEditorInfo != null) {
                         // 1) InputContentInfoCompat 생성
                         ClipDescription desc = new ClipDescription("pasted image", new String[]{"image/*"});
                         InputContentInfoCompat content = new InputContentInfoCompat(uri, desc, null);
                         // 2) 읽기 권한 플래그 포함
                         final int flags = InputConnectionCompat.INPUT_CONTENT_GRANT_READ_URI_PERMISSION;
-                        boolean result = InputConnectionCompat.commitContent(ic, mEditorInfo, content, flags, null);
-                        if (!result) {
-                            Toast.makeText(getContext(), "result가 null입니다.", Toast.LENGTH_SHORT).show();
+                        handled = InputConnectionCompat.commitContent(ic, mEditorInfo, content, flags, null);
+                    }
+                    if (!handled) {
+                        // ① 클립보드에 이미지 URI 저장
+                        ClipboardManager cm = (ClipboardManager)getContext().getSystemService(Context.CLIPBOARD_SERVICE);
+                        ClipData clip = ClipData.newUri(getContext().getContentResolver(), "Image", uri);
+                        cm.setPrimaryClip(clip);
+                        // ② 입력창에 붙여넣기 요청
+                        if (ic != null) {
+                            // 대부분의 EditText/Paste 가능한 뷰에서 동작
+                            ic.performContextMenuAction(android.R.id.paste);
                         }
                     }
 
@@ -433,8 +442,6 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                     return true;
             }
         });
-
-
     }
 
     /* ▼ EventBus로 HangulCommitEvent 이벤트 구독 --------------------------------------------------- */
