@@ -43,6 +43,7 @@ import android.view.ViewGroup;
 import android.view.ViewParent;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.animation.AnimationUtils;
+import android.view.animation.OvershootInterpolator;
 import android.view.inputmethod.ExtractedText;
 import android.view.inputmethod.ExtractedTextRequest;
 import android.view.inputmethod.InputConnection;
@@ -520,7 +521,9 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                             // photo bar 초기화 및 채우기
                             mPhotoBarContainer.removeAllViews();
                             int barSize = dpToPx(96);
-                            for (String idStr : body.getPhotoIds()) {
+                            List<String> photoIds = body.getPhotoIds();
+                            for (int i = 0; i < photoIds.size(); i++) {
+                                String idStr = photoIds.get(i);
                                 try {
                                     long id = Long.parseLong(idStr);
                                     Bitmap thumb = MediaStore.Images.Thumbnails.getThumbnail(getContext().getContentResolver(), id, MediaStore.Images.Thumbnails.MINI_KIND, null);
@@ -553,7 +556,21 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                                             }
                                         }
                                     });
+                                    // ① 추가: 뷰를 0배율에서 시작
+                                    iv.setScaleX(0f);
+                                    iv.setScaleY(0f);
+
+                                    // ② 컨테이너에 뷰 추가
                                     mPhotoBarContainer.addView(iv);
+
+                                    // ③ 순차적 스케일 애니메이션 (0 → 1.1 → 1.0)
+                                    iv.animate()
+                                            .scaleX(1f)
+                                            .scaleY(1f)
+                                            .setStartDelay(i * 100L)                // 각 아이템마다 100ms씩 딜레이
+                                            .setDuration(300L)                      // 300ms 동안 실행
+                                            .setInterpolator(new OvershootInterpolator()) // 오버슈트 바운스 효과
+                                            .start();
                                 } catch (NumberFormatException ignored) {
                                 }
                             }
