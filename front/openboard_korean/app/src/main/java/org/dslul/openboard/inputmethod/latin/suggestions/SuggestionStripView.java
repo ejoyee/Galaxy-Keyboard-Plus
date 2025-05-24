@@ -28,6 +28,7 @@ import android.content.res.TypedArray;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.Paint;
 import android.graphics.Point;
 import android.graphics.PorterDuff;
 import android.graphics.Typeface;
@@ -142,6 +143,10 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
     private boolean mInSearchMode = false;
     private String mLastQuery;
     private LatinIME mImeService = null;
+
+    private boolean mIsDragging = false;
+    private int     mDragExtra  = 0;
+    private Paint mOverlayPaint;
 
     // 기존 필드 바로 아래
     private Drawable mIconClose;    // X 아이콘
@@ -465,6 +470,10 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                     return true;
             }
         });
+
+        // 반투명 오버레이용 Paint (흰색 50% 알파)
+        mOverlayPaint = new Paint();
+        mOverlayPaint.setColor(Color.parseColor("#80FFFFFF"));
     }
 
     /* ▼ EventBus로 HangulCommitEvent 이벤트 구독 --------------------------------------------------- */
@@ -1440,6 +1449,9 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
     private void expandDragArea() {
         // 원래 높이 + 확장 크기
         int extra = dpToPx(100);
+        mDragExtra    = extra;
+        mIsDragging   = true;
+
         ViewGroup.LayoutParams lp = getLayoutParams();
         lp.height += extra;
         setLayoutParams(lp);
@@ -1451,9 +1463,14 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                 getPaddingRight(),
                 getPaddingBottom()
         );
+
+        invalidate();
     }
 
     private void collapseDragArea() {
+        mDragExtra  = 0;
+        mIsDragging = false;
+
         // 1) 위쪽 패딩 원복
         setPadding(
                 getPaddingLeft(),
@@ -1468,6 +1485,22 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         ViewGroup.LayoutParams lp = getLayoutParams();
         lp.height = targetHeight;
         setLayoutParams(lp);
+
+        invalidate();
+    }
+
+    @Override
+    public void draw(Canvas canvas) {
+        if (mIsDragging && mDragExtra > 0) {
+            int save = canvas.save();
+            // 상단 mDragExtra 만큼은 그리지 말고 클립
+            canvas.clipRect(0, mDragExtra, getWidth(), getHeight());
+            // 뷰의 배경·onDraw·dispatchDraw 전부 이 영역에서만 그려짐
+            super.draw(canvas);
+            canvas.restoreToCount(save);
+        } else {
+            super.draw(canvas);
+        }
     }
 
     /**
