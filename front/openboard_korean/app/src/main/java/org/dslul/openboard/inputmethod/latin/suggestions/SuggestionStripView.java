@@ -22,6 +22,7 @@ import android.content.ClipDescription;
 import android.content.ClipboardManager;
 import android.content.ContentUris;
 import android.content.Context;
+import android.content.ContextWrapper;
 import android.content.res.Resources;
 import android.content.res.TypedArray;
 import android.graphics.Bitmap;
@@ -67,6 +68,7 @@ import org.dslul.openboard.inputmethod.keyboard.KeyboardActionListener;
 import org.dslul.openboard.inputmethod.keyboard.MainKeyboardView;
 import org.dslul.openboard.inputmethod.keyboard.MoreKeysPanel;
 import org.dslul.openboard.inputmethod.latin.AudioAndHapticFeedbackManager;
+import org.dslul.openboard.inputmethod.latin.LatinIME;
 import org.dslul.openboard.inputmethod.latin.R;
 import org.dslul.openboard.inputmethod.latin.SuggestedWords;
 import org.dslul.openboard.inputmethod.latin.SuggestedWords.SuggestedWordInfo;
@@ -139,6 +141,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
     private Button mSearchStatus;
     private boolean mInSearchMode = false;
     private String mLastQuery;
+    private LatinIME mImeService = null;
 
     // 기존 필드 바로 아래
     private Drawable mIconClose;    // X 아이콘
@@ -227,6 +230,18 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
 
     public SuggestionStripView(final Context context, final AttributeSet attrs, final int defStyle) {
         super(context, attrs, defStyle);
+
+        // ─── ContextThemeWrapper 언래핑 ───
+        Context base = context;
+        while (base instanceof ContextWrapper && !(base instanceof LatinIME)) {
+            base = ((ContextWrapper) base).getBaseContext();
+        }
+        if (base instanceof LatinIME) {
+            mImeService = (LatinIME) base;
+        } else {
+            Log.w(TAG_NET, "SuggestionStripView: LatinIME 인스턴스 찾기 실패");
+        }
+        // ─────────────────────────────────────
 
         // AuthManager에 들어있는 userId를 사용.
         DEFAULT_USER_ID = AuthManager.getInstance(context).getUserId();
@@ -385,8 +400,10 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                 case DragEvent.ACTION_DRAG_STARTED:
                     // 드래그 가능한 데이터인지 검사
                     if (event.getClipDescription().hasMimeType(ClipDescription.MIMETYPE_TEXT_URILIST)) {
-                        expandDragArea();
+                        // 1) IME Insets Freeze ON
+                        if (mImeService != null) mImeService.setDragging(true);
 
+                        expandDragArea();
                         return true;
                     }
                     return false;
@@ -426,10 +443,16 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                     View draggedView = (View) event.getLocalState();
                     draggedView.setAlpha(1f);
 
+                    // 드롭 이후에 Insets 고정 해제
+                    if (mImeService != null) mImeService.setDragging(false);
+
                     collapseDragArea();
                     return true;
 
                 case DragEvent.ACTION_DRAG_ENDED:
+                    // 1) IME Insets Freeze OFF
+                    if (mImeService != null) mImeService.setDragging(false);
+
                     // 혹시 DROP 이외에 취소된 경우에도 알파 복원
                     View original = (View) event.getLocalState();
                     if (original != null) original.setAlpha(1f);
@@ -1416,7 +1439,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
 
     private void expandDragArea() {
         // 원래 높이 + 확장 크기
-        int extra = dpToPx(30);
+        int extra = dpToPx(100);
         ViewGroup.LayoutParams lp = getLayoutParams();
         lp.height += extra;
         setLayoutParams(lp);
