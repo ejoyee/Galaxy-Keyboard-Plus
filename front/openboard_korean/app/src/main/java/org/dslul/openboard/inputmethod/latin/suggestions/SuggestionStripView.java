@@ -1415,14 +1415,30 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
     }
 
     private void expandDragArea() {
-        // 원래 높이 + 확장 크기 (예: 200dp)
-        int extra = dpToPx(200);
+        // 원래 높이 + 확장 크기
+        int extra = dpToPx(30);
         ViewGroup.LayoutParams lp = getLayoutParams();
-        lp.height = mDefaultHeight + extra;
+        lp.height += extra;
         setLayoutParams(lp);
+
+        // 2) 위쪽 패딩 추가 — 늘어난 빈 공간이 위에 생김
+        setPadding(
+                getPaddingLeft(),
+                extra,
+                getPaddingRight(),
+                getPaddingBottom()
+        );
     }
 
     private void collapseDragArea() {
+        // 1) 위쪽 패딩 원복
+        setPadding(
+                getPaddingLeft(),
+                0,
+                getPaddingRight(),
+                getPaddingBottom()
+        );
+
         // PHOTO_ONLY 모드 때의 높이 (96dp 썸네일 + 6dp 여유)
         int barSize = dpToPx(96);
         int targetHeight = barSize + dpToPx(6);
