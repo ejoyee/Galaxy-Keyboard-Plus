@@ -16,6 +16,7 @@
 
 package org.dslul.openboard.inputmethod.latin.suggestions;
 
+import android.animation.ValueAnimator;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.ContentUris;
@@ -561,34 +562,22 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                             barLp.height = barSize;
                             mPhotoBar.setLayoutParams(barLp);
 
-                            /* 2) SuggestionStripView(자신) 높이 = barSize + gapBottom */
-                            ViewGroup.LayoutParams rootLp = getLayoutParams();
-                            rootLp.height = barSize + dpToPx(6);
-                            setLayoutParams(rootLp);
+                            final View strip = SuggestionStripView.this; // SuggestionStripView 자신
+                            final int startH = strip.getHeight();
+                            final int endH = barSize + dpToPx(6);
+                            ValueAnimator heightAnimator = ValueAnimator.ofInt(startH, endH);
+                            heightAnimator.addUpdateListener(anim -> {
+                                strip.getLayoutParams().height = (int) anim.getAnimatedValue();
+                                strip.requestLayout();
+                            });
+                            heightAnimator.setDuration(500);
+                            heightAnimator.setInterpolator(new FastOutSlowInInterpolator());
+                            heightAnimator.start();
 
                             /* 3) 부모 레이아웃 재측정/재배치 */
                             requestLayout();
 
-//                            // 1) wrapper 를 화면 아래로 옮겨서 숨김 상태로 시작
-//                            mWrapper.setTranslationY(mWrapper.getHeight());
-//                            // 2) wrapper 를 보이게 설정
-//                            mWrapper.setVisibility(View.VISIBLE);
-//                            // 3) 슬라이드 업 애니메이션
-//                            mWrapper.animate()
-//                                    .translationY(0)                          // 원래 위치로
-//                                    .setDuration(10000)                         // 300ms
-//                                    .setInterpolator(AnimationUtils.loadInterpolator(getContext(), android.R.interpolator.fast_out_slow_in))
-//                                    .start();
-
-                            mPhotoBar.setTranslationY(mPhotoBar.getHeight());
-
                             mPhotoBar.setVisibility(VISIBLE);
-
-                            mPhotoBar.animate()
-                                    .translationY(0)
-                                    .setDuration(5000)
-                                    .setInterpolator(new FastOutSlowInInterpolator())
-                                    .start();
 
                             // 검색 아이콘 → ❌ 로 변경
                             mSearchKey.clearAnimation();
@@ -601,7 +590,6 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                     Toast.makeText(getContext(), "검색 완료", Toast.LENGTH_SHORT).show();
                 });
                 Log.d(TAG_NET, "✅ 결과 수신");
-
             }
 
             @Override
