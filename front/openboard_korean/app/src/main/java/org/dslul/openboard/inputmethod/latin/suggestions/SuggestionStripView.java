@@ -48,6 +48,7 @@ import android.view.ViewGroup;
 import android.view.ViewParent;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.animation.OvershootInterpolator;
+import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.ExtractedText;
 import android.view.inputmethod.ExtractedTextRequest;
 import android.view.inputmethod.InputConnection;
@@ -90,6 +91,9 @@ import java.util.List;
 
 import androidx.core.content.ContextCompat;
 import androidx.core.view.ViewCompat;
+import androidx.core.view.inputmethod.EditorInfoCompat;
+import androidx.core.view.inputmethod.InputConnectionCompat;
+import androidx.core.view.inputmethod.InputContentInfoCompat;
 import androidx.interpolator.view.animation.FastOutSlowInInterpolator;
 
 import com.airbnb.lottie.LottieAnimationView;
@@ -177,6 +181,18 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
 
     private ValueAnimator mBorderPulseAnimator;
     private Drawable mOriginalSearchKeyBg;
+
+    private EditorInfo mEditorInfo;
+
+    /** IME 서비스로부터 EditorInfo 를 전달받습니다 */
+    public void setEditorInfo(EditorInfo info) {
+        mEditorInfo = info;
+
+        // 지원할 MIME 타입을 에디터에 등록
+        // AndroidX EditorInfoCompat 사용
+        String[] mimeTypes = new String[] { "image/*" };
+        EditorInfoCompat.setContentMimeTypes(info, mimeTypes);
+    }
 
     private static class StripVisibilityGroup {
         private final View mSuggestionStripView;
@@ -370,6 +386,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                     // 드래그 가능한 데이터인지 검사
                     if (event.getClipDescription().hasMimeType(ClipDescription.MIMETYPE_TEXT_URILIST)) {
                         expandDragArea();
+
                         return true;
                     }
                     return false;
@@ -380,25 +397,35 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
 
                 case DragEvent.ACTION_DROP:
                     // 1) URI 파싱
-                    String uriStr = event.getClipData().getItemAt(0).getText().toString();
-                    Uri droppedUri = Uri.parse(uriStr);
+                    Uri uri = Uri.parse(event.getClipData().getItemAt(0).getText().toString());
 
-                    // 2) InputConnection 에 이미지 붙여넣기
+                    // 2) Rich Content 전송 (commitContent)
                     InputConnection ic = mMainKeyboardView.getInputConnection();
-                    if (ic != null) {
-                        ic.finishComposingText();
-                        ic.beginBatchEdit();
-                        // 여기서는 단순히 URI 텍스트로 커밋, 필요에 따라 Tag나 HTML 삽입
-                        ic.commitText(droppedUri.toString(), 1);
-                        ic.endBatchEdit();
+                    if (ic != null && mEditorInfo != null) {
+                        // 1) InputContentInfoCompat 생성
+                        ClipDescription desc = new ClipDescription("pasted image", new String[]{"image/*"});
+                        InputContentInfoCompat content = new InputContentInfoCompat(uri, desc, null);
+                        // 2) 읽기 권한 플래그 포함
+                        final int flags = InputConnectionCompat.INPUT_CONTENT_GRANT_READ_URI_PERMISSION;
+                        boolean result = InputConnectionCompat.commitContent(ic, mEditorInfo, content, flags, null);
+                        if (!result) {
+                            Toast.makeText(getContext(), "result가 null입니다.", Toast.LENGTH_SHORT).show();
+                        }
                     }
+
+                    // --- 2) 드래그 원본 뷰 알파 복원 ---
+                    View draggedView = (View) event.getLocalState();
+                    draggedView.setAlpha(1f);
 
                     collapseDragArea();
                     return true;
 
                 case DragEvent.ACTION_DRAG_ENDED:
-                    // 투명도 원복
-                    v.invalidate();  // 뷰 재렌더링
+                    // 혹시 DROP 이외에 취소된 경우에도 알파 복원
+                    View original = (View) event.getLocalState();
+                    if (original != null) original.setAlpha(1f);
+
+                    // 크기 원복
                     collapseDragArea();
                     return true;
 
@@ -406,6 +433,8 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                     return true;
             }
         });
+
+
     }
 
     /* ▼ EventBus로 HangulCommitEvent 이벤트 구독 --------------------------------------------------- */
@@ -748,7 +777,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                                         };
 
                                         // 3) 드래그 시작 (API 24 이상은 startDragAndDrop())
-                                        iv.startDragAndDrop(dragData, shadow, null, 0);
+                                        iv.startDragAndDrop(dragData, shadow, iv, 0);
                                         return true;
                                     });
 
@@ -1374,8 +1403,11 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
     }
 
     private void collapseDragArea() {
+        // PHOTO_ONLY 모드 때의 높이 (96dp 썸네일 + 6dp 여유)
+        int barSize = dpToPx(96);
+        int targetHeight = barSize + dpToPx(6);
         ViewGroup.LayoutParams lp = getLayoutParams();
-        lp.height = mDefaultHeight;
+        lp.height = targetHeight;
         setLayoutParams(lp);
     }
 }
