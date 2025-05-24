@@ -1060,7 +1060,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         if (view == mSearchKey) {
 
             // 🎨 클릭 시 단발성 키보드 애니메이션 효과
-            showKeyboardClickAnimation();
+
 
             // ❌ 클릭 시 닫기 애니메이션 (사진 역순 스케일 → strip 닫기)
             if (mResponseType == ResponseType.SHORT_TEXT || mResponseType == ResponseType.PHOTO_ONLY) {
@@ -1135,6 +1135,10 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                     showEmptyToast();
                     return;
                 }
+                
+                //애니메이션 적용
+                showKeyboardClickAnimation();
+                
                 enterSearchMode();
                 return;
             }
@@ -1263,39 +1267,33 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
      */
     private void showKeyboardClickAnimation() {
         if (mMainKeyboardView == null) return;
-
         // 원본 배경 저장
         if (mOriginalKeyboardBackground == null) {
             mOriginalKeyboardBackground = mMainKeyboardView.getBackground();
         }
-
         // 부드러운 웨이브 애니메이션
         ValueAnimator waveAnimator = ValueAnimator.ofFloat(0f, 1f);
         waveAnimator.setDuration(1000); // 1초
         waveAnimator.setInterpolator(new android.view.animation.DecelerateInterpolator());
-
         waveAnimator.addUpdateListener(animation -> {
             float progress = (float) animation.getAnimatedValue();
             applyVisibleWaveEffect(progress);
         });
-
         waveAnimator.addListener(new android.animation.AnimatorListenerAdapter() {
             @Override
             public void onAnimationEnd(android.animation.Animator animation) {
                 restoreKeyboardBackground();
             }
         });
-
         waveAnimator.start();
         Log.d("KeyboardAnimation", "자연스러운 웨이브 애니메이션 시작");
     }
 
     /**
-     * 🎨 적당히 보이는 그라디언트 웨이브 효과
+     * 🎨 하늘색-보라색으로 키보드 끝까지 채우는 웨이브 효과
      */
     private void applyVisibleWaveEffect(float progress) {
         if (mMainKeyboardView == null) return;
-
         // 자연스러운 물결 패턴
         double mainWave = Math.sin(progress * Math.PI); // 메인 웨이브 (0 → 1 → 0)
         float wave1 = (float) Math.sin(progress * Math.PI * 3) * 0.2f;     // 빠른 작은 파동
@@ -1304,20 +1302,22 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         float intensity = (float) (mainWave + wave1 + wave2);
         intensity = Math.max(0f, Math.min(1f, intensity)); // 0~1 범위
 
-        // 잘 보이는 색상들 (적당한 채도)
-        int[] visibleColors = {
-                Color.parseColor("#64B5F6"), // 중간 파랑
-                Color.parseColor("#81C784"), // 중간 초록
-                Color.parseColor("#FFB74D"), // 중간 오렌지
-                Color.parseColor("#BA68C8")  // 중간 보라
+        // 하늘색-보라색 계열 (잘 보이는 색상들)
+        int[] skyPurpleColors = {
+                Color.parseColor("#87CEEB"), // 하늘색 (Sky Blue)
+                Color.parseColor("#6495ED"), // 콘플라워 블루
+                Color.parseColor("#7B68EE"), // 미디엄 슬레이트 블루
+                Color.parseColor("#9370DB"), // 미디엄 슬레이트 블루 (보라쪽)
+                Color.parseColor("#BA68C8"), // 미디엄 오키드
+                Color.parseColor("#8A2BE2")  // 블루 바이올렛
         };
 
         // 시간에 따라 색상 변경
-        int colorIndex = (int) (progress * 2) % visibleColors.length;
-        int nextColorIndex = (colorIndex + 1) % visibleColors.length;
+        int colorIndex = (int) (progress * 2) % skyPurpleColors.length;
+        int nextColorIndex = (colorIndex + 1) % skyPurpleColors.length;
         float colorProgress = (progress * 2) % 1f;
 
-        int baseColor = interpolateColor(visibleColors[colorIndex], visibleColors[nextColorIndex], colorProgress);
+        int baseColor = interpolateColor(skyPurpleColors[colorIndex], skyPurpleColors[nextColorIndex], colorProgress);
 
         // 아래에서 위로 채워지는 그라디언트
         GradientDrawable waveDrawable = new GradientDrawable();
@@ -1325,14 +1325,18 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         waveDrawable.setOrientation(GradientDrawable.Orientation.BOTTOM_TOP);
 
         // 적당한 투명도 (잘 보이도록)
-        int baseAlpha = (int) (intensity * 120); // 최대 120 알파값
+        int baseAlpha = (int) (intensity * 140); // 최대 140 알파값으로 조금 더 진하게
 
-        // 그라디언트 색상 배열
+        // 키보드 끝까지 채우는 그라디언트 색상 배열 (8단계로 더 부드럽게)
         int[] gradientColors = new int[]{
-                Color.argb(baseAlpha, Color.red(baseColor), Color.green(baseColor), Color.blue(baseColor)),         // 아래: 진한 색
-                Color.argb(baseAlpha * 2/3, Color.red(baseColor), Color.green(baseColor), Color.blue(baseColor)),  // 중간
-                Color.argb(baseAlpha / 3, Color.red(baseColor), Color.green(baseColor), Color.blue(baseColor)),    // 중상단
-                Color.TRANSPARENT  // 위: 투명
+                Color.argb(baseAlpha, Color.red(baseColor), Color.green(baseColor), Color.blue(baseColor)),           // 100% - 아래
+                Color.argb(baseAlpha * 6/7, Color.red(baseColor), Color.green(baseColor), Color.blue(baseColor)),    // 85%
+                Color.argb(baseAlpha * 5/7, Color.red(baseColor), Color.green(baseColor), Color.blue(baseColor)),    // 70%
+                Color.argb(baseAlpha * 4/7, Color.red(baseColor), Color.green(baseColor), Color.blue(baseColor)),    // 55%
+                Color.argb(baseAlpha * 3/7, Color.red(baseColor), Color.green(baseColor), Color.blue(baseColor)),    // 40%
+                Color.argb(baseAlpha * 2/7, Color.red(baseColor), Color.green(baseColor), Color.blue(baseColor)),    // 25%
+                Color.argb(baseAlpha / 7, Color.red(baseColor), Color.green(baseColor), Color.blue(baseColor)),      // 15%
+                Color.argb(baseAlpha / 14, Color.red(baseColor), Color.green(baseColor), Color.blue(baseColor))      // 7% - 위쪽도 색이 남음
         };
 
         waveDrawable.setColors(gradientColors);
