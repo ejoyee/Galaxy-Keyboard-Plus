@@ -16,18 +16,29 @@
 
 package org.dslul.openboard.inputmethod.latin.suggestions;
 
+import android.animation.ArgbEvaluator;
 import android.animation.ValueAnimator;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.ContentUris;
 import android.content.Context;
+import android.content.res.ColorStateList;
 import android.content.res.Resources;
 import android.content.res.TypedArray;
 import android.graphics.Bitmap;
+import android.graphics.BlurMaskFilter;
 import android.graphics.Color;
+import android.graphics.LinearGradient;
+import android.graphics.Paint;
 import android.graphics.PorterDuff;
+import android.graphics.RadialGradient;
+import android.graphics.Shader;
+import android.graphics.SweepGradient;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
+import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.ShapeDrawable;
+import android.graphics.drawable.shapes.OvalShape;
 import android.net.Uri;
 import android.provider.MediaStore;
 import android.util.AttributeSet;
@@ -268,6 +279,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         }
 
         mKeywordKey = findViewById(R.id.suggestions_strip_keyword_key);
+        mKeywordKey.setVisibility(View.GONE);
         if (mKeywordKey == null) {
             throw new IllegalStateException(
                     "suggestions_strip_keyword_key not found in current layout variant");
@@ -370,9 +382,39 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
 
                         if (exists && mSearchKey != null) {
                             if (!mSearchKey.isAnimating()) {
+                                int[] gradientColors = new int[]{
+                                        Color.parseColor("#60BA68C8"),  // 연한 바이올렛
+                                        Color.parseColor("#60A0DFFF"),  // 연한 스카이블루
+                                        Color.parseColor("#60A0F0C0")   // 연한 민트
+                                };
+
+                                GradientDrawable glowBg = new GradientDrawable();
+                                glowBg.setShape(GradientDrawable.OVAL);
+                                // 그라데이션 타입을 RADIAL 로
+                                glowBg.setGradientType(GradientDrawable.LINEAR_GRADIENT);
+                                glowBg.setOrientation(GradientDrawable.Orientation.TL_BR);
+                                glowBg.setColors(gradientColors);
+                                // 부드러운 흐림 효과를 위해 외곽 스트로크를 반투명으로
+                                glowBg.setStroke(dpToPx(2), Color.argb(0x40, 255, 255, 255));
+
+                                // 2) 뷰 배경에 바로 적용
+                                mSearchKey.setBackground(glowBg);
+
                                 mSearchKey.setRepeatCount(LottieDrawable.INFINITE);
                                 mSearchKey.setAnimation("ic_search.json");
                                 mSearchKey.playAnimation();
+
+                                ValueAnimator borderPulse = ValueAnimator.ofInt(50, 200);
+                                borderPulse.setDuration(500);
+                                borderPulse.setRepeatMode(ValueAnimator.REVERSE);
+                                borderPulse.setRepeatCount(ValueAnimator.INFINITE);
+                                borderPulse.addUpdateListener(anim -> {
+                                    int alpha = (int) anim.getAnimatedValue();
+                                    // 전체 글로우 배경의 투명도 조절
+                                    glowBg.setAlpha(alpha);
+                                });
+                                borderPulse.start();
+
                                 mLastKeywordWithImages = lastWord;
                             }
                         }
