@@ -424,6 +424,21 @@ public final class InputLogic {
         // Stop the last recapitalization, if started.
         mRecapitalizeStatus.stop();
         mWordBeingCorrectedByCursor = null;
+
+        // 커서가 현재 조합 범위를 벗어나 있으면 조합을 끝낸다
+        if (mWordComposer.isComposingWord()
+                && !mWordComposer.moveCursorByAndReturnIfInsideComposingWord(0)) {
+            int keepCursor = newSelStart;           // ① 커서 위치 보존
+            mConnection.finishComposingText();      // ② 조합 끊기
+            mConnection.setSelection(keepCursor, keepCursor); // ③ 커서 복원
+
+            // ④ 캐시 싱크 : 꼭 넣어야 함!
+            mConnection.resetCachesUponCursorMoveAndReturnSuccess(
+                    keepCursor, keepCursor, /* shouldFinishComposition = */ false);
+
+            resetComposingState(false /* keep lastComposedWord */);
+        }
+
         return true;
     }
 
@@ -626,9 +641,22 @@ public final class InputLogic {
         // we evaluate both. With some combiners, it's possible than an event contains both
         // and we enter both of the following if clauses.
         final CharSequence textToCommit = event.getTextToCommit();
+
         if (!TextUtils.isEmpty(textToCommit)) {
             mConnection.commitText(textToCommit, 1);
             inputTransaction.setDidAffectContents();
+
+            // 완성된 한글 음절이면 composing span 을 끊는다
+            if (textToCommit.length() == 1 &&
+                    HangulUtils.isHangulSyllable(
+                            Character.codePointAt(textToCommit, 0))) {
+
+                // ① 조합 종료 – 밑줄 끊기
+                mConnection.finishComposingText();
+
+                // ② WordComposer 내부 상태도 초기화
+                mWordComposer.reset();
+            }
         }
         if (mWordComposer.isComposingWord()) {
             setComposingTextInternal(mWordComposer.getTypedWord(), 1);
@@ -734,7 +762,19 @@ public final class InputLogic {
                 // Note: Switching one-handed side is being
                 // handled in {@link KeyboardState#onEvent(Event,int)}.
             case Constants.CODE_OUTPUT_TEXT:
-                mWordComposer.applyProcessedEvent(event);
+                // ① 텍스트를 바로 넣고
+                CharSequence out = event.getTextToCommit();
+                if (!TextUtils.isEmpty(out)) {
+                    mConnection.commitText(out, 1);
+                    inputTransaction.setDidAffectContents();
+                }
+                // ② 조합/캐시 초기화
+                mConnection.finishComposingText();
+                mWordComposer.reset();
+
+                // ③ 다음 입력을 위해 상태 갱신
+                mSpaceState = SpaceState.NONE;
+                inputTransaction.requireShiftUpdate(InputTransaction.SHIFT_UPDATE_NOW);
                 break;
             default:
                 throw new RuntimeException("Unknown key code : " + event.getMKeyCode());
@@ -804,7 +844,8 @@ public final class InputLogic {
                 || Character.getType(codePoint) == Character.OTHER_SYMBOL) {
             handleSeparatorEvent(event, inputTransaction, handler);
         } else {
-            if (SpaceState.PHANTOM == inputTransaction.getMSpaceState()) {
+            if (SpaceState.PHANTOM == inputTransaction.getMSpaceState()
+                    && !cursorIsInsideHangulSyllable()) {
                 if (mWordComposer.isCursorFrontOrMiddleOfComposingWord()) {
                     // If we are in the middle of a recorrection, we need to commit the recorrection
                     // first so that we can insert the character at the current cursor position.
@@ -840,7 +881,8 @@ public final class InputLogic {
         // TODO: remove isWordConnector() and use isUsuallyFollowedBySpace() instead.
         // See onStartBatchInput() to see how to do it.
         if (SpaceState.PHANTOM == inputTransaction.getMSpaceState()
-                && !settingsValues.isWordConnector(codePoint)) {
+                && !settingsValues.isWordConnector(codePoint)
+                && !cursorIsInsideHangulSyllable()) {
             if (isComposingWord) {
                 // Sanity check
                 throw new RuntimeException("Should not be composing here");
@@ -925,13 +967,24 @@ public final class InputLogic {
                 && !settingsValues.mSpacingAndPunctuations.mCurrentLanguageHasSpaces
                 && wasComposingWord;
         if (mWordComposer.isCursorFrontOrMiddleOfComposingWord()) {
+            // ★ 단어를 끝까지 commit 하지 말고, 조합만 끊는다
+            int keepCursor = mConnection.getExpectedSelectionStart(); // ①
+            mConnection.finishComposingText();                       // ②
+            mConnection.setSelection(keepCursor, keepCursor);        // ③
+
+            // ④ 캐시 싱크 : 꼭 넣어야 함!
+            mConnection.resetCachesUponCursorMoveAndReturnSuccess(
+                    keepCursor, keepCursor, /* shouldFinishComposition = */ false);
+
+            resetComposingState(false /* keep lastComposedWord */);  // ④
+
             // If we are in the middle of a recorrection, we need to commit the recorrection
             // first so that we can insert the separator at the current cursor position.
             // We also need to unlearn the original word that is now being corrected.
-            unlearnWord(mWordComposer.getTypedWord(), inputTransaction.getMSettingsValues(),
-                    Constants.EVENT_BACKSPACE);
-            resetEntireInputState(mConnection.getExpectedSelectionStart(),
-                    mConnection.getExpectedSelectionEnd(), true /* clearSuggestionStrip */);
+//            unlearnWord(mWordComposer.getTypedWord(), inputTransaction.getMSettingsValues(),
+//                    Constants.EVENT_BACKSPACE);
+//            resetEntireInputState(mConnection.getExpectedSelectionStart(),
+//                    mConnection.getExpectedSelectionEnd(), true /* clearSuggestionStrip */);
         }
         // isComposingWord() may have changed since we stored wasComposing
         if (mWordComposer.isComposingWord()) {
@@ -993,7 +1046,8 @@ public final class InputLogic {
             }
         } else {
             if ((SpaceState.PHANTOM == inputTransaction.getMSpaceState()
-                    && settingsValues.isUsuallyFollowedBySpace(codePoint))
+                    && settingsValues.isUsuallyFollowedBySpace(codePoint)
+                    && !cursorIsInsideHangulSyllable())
                     || (Constants.CODE_DOUBLE_QUOTE == codePoint
                     && isInsideDoubleQuoteOrAfterDigit)) {
                 // If we are in phantom space state, and the user presses a separator, we want to
@@ -1197,8 +1251,12 @@ public final class InputLogic {
                         // TODO: Add a new StatsUtils method onBackspaceWhenNoText()
                         return;
                     }
-                    final int lengthToDelete =
-                            Character.isSupplementaryCodePoint(codePointBeforeCursor) ? 2 : 1;
+//                    final int lengthToDelete =
+//                            Character.isSupplementaryCodePoint(codePointBeforeCursor) ? 2 : 1;
+                    CharSequence before = mConnection.getTextBeforeCursor(30, 0);
+                    int lengthToDelete = HangulUtils.isHangulSyllable(codePointBeforeCursor)
+                            ? HangulUtils.syllableLength(before, before.length())
+                            : (Character.isSupplementaryCodePoint(codePointBeforeCursor) ? 2 : 1);
                     mConnection.deleteTextBeforeCursor(lengthToDelete);
                     int totalDeletedLength = lengthToDelete;
                     if (mDeleteCount > Constants.DELETE_ACCELERATE_AT) {
@@ -1210,8 +1268,11 @@ public final class InputLogic {
                         final int codePointBeforeCursorToDeleteAgain =
                                 mConnection.getCodePointBeforeCursor();
                         if (codePointBeforeCursorToDeleteAgain != Constants.NOT_A_CODE) {
-                            final int lengthToDeleteAgain = Character.isSupplementaryCodePoint(
-                                    codePointBeforeCursorToDeleteAgain) ? 2 : 1;
+//                            final int lengthToDeleteAgain = Character.isSupplementaryCodePoint(
+//                                    codePointBeforeCursorToDeleteAgain) ? 2 : 1;
+                            int lengthToDeleteAgain = HangulUtils.isHangulSyllable(codePointBeforeCursorToDeleteAgain)
+                                    ? HangulUtils.syllableLength(before, before.length())
+                                    : (Character.isSupplementaryCodePoint(codePointBeforeCursor) ? 2 : 1);
                             mConnection.deleteTextBeforeCursor(lengthToDeleteAgain);
                             totalDeletedLength += lengthToDeleteAgain;
                         }
@@ -1235,6 +1296,11 @@ public final class InputLogic {
                         false /* forStartInput */, currentKeyboardScriptId);
             }
         }
+    }
+
+    private boolean cursorIsInsideHangulSyllable(){
+        int cp = mConnection.getCodePointBeforeCursor();
+        return HangulUtils.isHangulSyllable(cp);
     }
 
     String getWordAtCursor(final SettingsValues settingsValues, final int currentKeyboardScriptId) {
@@ -1377,7 +1443,8 @@ public final class InputLogic {
         // not fulfilled, return false.
         if (!inputTransaction.getMSettingsValues().mUseDoubleSpacePeriod
                 || Constants.CODE_SPACE != event.getMCodePoint()
-                || !isDoubleSpacePeriodCountdownActive(inputTransaction)) {
+                || !isDoubleSpacePeriodCountdownActive(inputTransaction)
+                || cursorIsInsideHangulSyllable()) {
             return false;
         }
         // We only do this when we see one space and an accepted code point before the cursor.
@@ -2064,7 +2131,8 @@ public final class InputLogic {
     private void insertAutomaticSpaceIfOptionsAndTextAllow(final SettingsValues settingsValues) {
         if (settingsValues.shouldInsertSpacesAutomatically()
                 && settingsValues.mSpacingAndPunctuations.mCurrentLanguageHasSpaces
-                && !mConnection.textBeforeCursorLooksLikeURL()) {
+                && !mConnection.textBeforeCursorLooksLikeURL()
+                && !cursorIsInsideHangulSyllable()) {
             sendKeyCodePoint(settingsValues, Constants.CODE_SPACE);
         }
     }
