@@ -1121,9 +1121,10 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     void onFinishInputInternal() {
         super.onFinishInput();
 
-        // 전송(완료) 후에도, X 아이콘 상태가 아닐 때만 검색키 애니메이션 초기화
+        // 전송(완료) 후에도, ❌ 아이콘 상태도 아니고, 파랑 JSON 상태도 아닐 때만 애니메이션 초기화
         if (mSuggestionStripView != null
-                && !mSuggestionStripView.isCloseIconVisible()) {
+                && !mSuggestionStripView.isCloseIconVisible()
+                && !mSuggestionStripView.isPausedBlue()) {
             mSuggestionStripView.clearSearchKeyHighlight();
         }
 
