@@ -86,15 +86,6 @@
             android:backgroundTint="@color/edit_text_underline_tint"
             android:backgroundTintMode="src_in"
             />
-<!--        <org.dslul.openboard.inputmethod.latin.search.SpinnerUnderlineEditText-->
-<!--            android:id="@+id/etMessage"-->
-<!--            android:layout_width="0dp"-->
-<!--            android:layout_height="wrap_content"-->
-<!--            android:layout_weight="1"-->
-<!--            android:fontFamily="@font/samsung_one"-->
-<!--            android:hint="메시지를 입력하세요…"-->
-<!--            android:paddingLeft="14dp"-->
-<!--            android:paddingRight="14dp"/>-->
 
         <!-- 전송 버튼: 클릭 이펙트는 라이트 오버레이 경계형 -->
         <ImageButton
@@ -103,7 +94,7 @@
             android:layout_height="47dp"
             android:background="?android:attr/selectableItemBackgroundBorderless"
             android:contentDescription="Send"
-            android:src="@drawable/ic_send" />
+            android:src="@drawable/ic_search_basic" />
     </LinearLayout>
 
 </androidx.constraintlayout.widget.ConstraintLayout>
