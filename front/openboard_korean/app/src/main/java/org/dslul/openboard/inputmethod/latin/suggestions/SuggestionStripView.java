@@ -512,6 +512,16 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
     /* ▼ EventBus로 HangulCommitEvent 이벤트 구독 --------------------------------------------------- */
     @Subscribe(threadMode = ThreadMode.MAIN)
     public void onHangulCommitEvent(HangulCommitEvent event) {
+        // 검색키가 X 상태라면 무시
+        if (mSearchKey != null) {
+            // 1) ❌ 아이콘 상태
+            boolean isClose = isCloseIconVisible();
+            // 2) 파랑 JSON(pause된 상태) — 애니메이션이 멈춰있고, 로드된 애니메이션 이름이 "ic_search_blue.json" 일 때
+            boolean isPausedBlueJson = "ic_search_blue.json".equals(mSearchKey.getAnimation());
+            if (isClose || isPausedBlueJson) {
+                return;
+            }
+        }
         Log.d("KeywordSearch", "받은 HangulCommitEvent: type=" + event.type + ", text=" + event.text);
 
         // 실제 동작 예시
@@ -610,11 +620,6 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
 
             mKeyHighlighted = false;
             mLastKeywordWithImages = null;
-            // 애니메이션 JSON도 원래대로 돌려놓기
-            mSearchKey.clearAnimation();
-            mSearchKey.setAnimation("ic_search.json");
-            mSearchKey.setRepeatCount(0);
-            mSearchKey.setProgress(0f);
         }
     }
 
