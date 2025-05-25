@@ -145,6 +145,11 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
     private ImageButton mVoiceKey;       // 마이크
     private Button mSearchStatus;
     private boolean mInSearchMode = false;
+    private boolean mIsPausedBlue = false;
+    /** 파랑 JSON(pause된) 상태인지 알려주는 메서드 */
+    public boolean isPausedBlue() {
+        return mIsPausedBlue;
+    }
     private String mLastQuery;
     private LatinIME mImeService = null;
 
@@ -512,6 +517,16 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
     /* ▼ EventBus로 HangulCommitEvent 이벤트 구독 --------------------------------------------------- */
     @Subscribe(threadMode = ThreadMode.MAIN)
     public void onHangulCommitEvent(HangulCommitEvent event) {
+        // 검색키가 X 상태라면 무시
+        if (mSearchKey != null) {
+            // 1) ❌ 아이콘 상태
+            boolean isClose = isCloseIconVisible();
+            // 2) 파랑 JSON(pause된 상태) — 애니메이션이 멈춰있고, 로드된 애니메이션 이름이 "ic_search_blue.json" 일 때
+            boolean isPaused = mIsPausedBlue;
+            if (isClose || isPaused) {
+                return;
+            }
+        }
         Log.d("KeywordSearch", "받은 HangulCommitEvent: type=" + event.type + ", text=" + event.text);
 
         // 실제 동작 예시
@@ -610,11 +625,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
 
             mKeyHighlighted = false;
             mLastKeywordWithImages = null;
-            // 애니메이션 JSON도 원래대로 돌려놓기
-            mSearchKey.clearAnimation();
-            mSearchKey.setAnimation("ic_search.json");
-            mSearchKey.setRepeatCount(0);
-            mSearchKey.setProgress(0f);
+            mIsPausedBlue = false;
         }
     }
 
@@ -630,21 +641,6 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         mFetchClipboardKey.setVisibility(GONE);
         mSearchStatus.setVisibility(GONE);
         mSuggestionsStrip.setVisibility(GONE);
-
-        // 2) 뷰 높이를 애니메이션으로 늘리기 (PHOTO_ONLY 때처럼)
-//        int photoBarHeight = dpToPx(96) + dpToPx(6);
-//        final View strip = this;
-//        int startH = strip.getHeight();
-//        int endH = photoBarHeight;
-//        ValueAnimator expandAnim = ValueAnimator.ofInt(startH, endH);
-//        expandAnim.setDuration(500);
-//        expandAnim.setInterpolator(new FastOutSlowInInterpolator());
-//        expandAnim.addUpdateListener(anim -> {
-//            ViewGroup.LayoutParams lp = strip.getLayoutParams();
-//            lp.height = (int) anim.getAnimatedValue();
-//            strip.setLayoutParams(lp);
-//        });
-//        expandAnim.start();
 
         // 3) 로딩 스피너 보이기
         mLoadingSpinner.setScaleX(0.8f);
@@ -746,6 +742,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                             mSearchKey.setAnimation("ic_search_blue.json"); // 파랑 정지된 JSON
                             mSearchKey.setProgress(0f);
                             mKeyHighlighted = true;
+                            mIsPausedBlue = true;
 
                             // ── SuggestionStripView 높이 애니메이션으로 원복 ──
                             strip = SuggestionStripView.this;
@@ -1000,6 +997,8 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         }
         // 강조 플래그 해제
         mKeyHighlighted = false;
+
+        mIsPausedBlue = false;
     }
 
     public void updateVisibility(final boolean shouldBeVisible, final boolean isFullscreenMode) {
@@ -1385,6 +1384,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                                 mAnswerShown = false;
                                 mResponseType = null;
                                 mLastResponse = null;
+                                mIsPausedBlue = false;
                             });
                     mKeyHighlighted = false;
                 }, delay);
@@ -1428,6 +1428,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                 mKeyHighlighted = false;
                 mAnswerShown = false;
                 mInSearchMode = false;
+                mIsPausedBlue = false;
             }
             return;
         }
