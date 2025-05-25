@@ -158,9 +158,9 @@ public class BackupManager {
         onUploadStart.accept(total);
 
         // 2) 업로드 시작 토스트
-        new Handler(Looper.getMainLooper()).post(() ->
-                Toast.makeText(context, total + "개 이미지 업로드 시작", Toast.LENGTH_SHORT).show()
-        );
+//        new Handler(Looper.getMainLooper()).post(() ->
+//                Toast.makeText(context, total + "개 이미지 업로드 시작", Toast.LENGTH_SHORT).show()
+//        );
 
         // 3) 실제 업로드 단계로 분리
         uploadImages(context, newImages, progressListener, onComplete);

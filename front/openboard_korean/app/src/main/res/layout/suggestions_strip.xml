@@ -83,7 +83,7 @@
             android:layout_width="@dimen/icon_btn_size"
             android:layout_height="@dimen/icon_btn_size"
             android:contentDescription="@string/fetch_clipboard"
-            android:src="@drawable/history" />
+            android:src="@drawable/ic_smart_clipboard" />
 
         <!-- ① 사진 바: 기본적으로 GONE -->
         <HorizontalScrollView
