@@ -646,17 +646,9 @@ public final class InputLogic {
             mConnection.commitText(textToCommit, 1);
             inputTransaction.setDidAffectContents();
 
-            // 완성된 한글 음절이면 composing span 을 끊는다
-            if (textToCommit.length() == 1 &&
-                    HangulUtils.isHangulSyllable(
-                            Character.codePointAt(textToCommit, 0))) {
-
-                // ① 조합 종료 – 밑줄 끊기
-                mConnection.finishComposingText();
-
-                // ② WordComposer 내부 상태도 초기화
-                mWordComposer.reset();
-            }
+            // ↙︎ 글자 종류/길이에 관계없이 항상 끊는다
+            mConnection.finishComposingText();
+            mWordComposer.reset();
         }
         if (mWordComposer.isComposingWord()) {
             setComposingTextInternal(mWordComposer.getTypedWord(), 1);
@@ -1298,7 +1290,7 @@ public final class InputLogic {
         }
     }
 
-    private boolean cursorIsInsideHangulSyllable(){
+    private boolean cursorIsInsideHangulSyllable() {
         int cp = mConnection.getCodePointBeforeCursor();
         return HangulUtils.isHangulSyllable(cp);
     }
