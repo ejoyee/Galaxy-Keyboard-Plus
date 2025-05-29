@@ -41,6 +41,7 @@ async def startup_event():
     candidates = [
         {"name": "google", "url": os.getenv("GOOGLE_WEB_SEARCH_URL")},
         {"name": "brave", "url": os.getenv("WEB_SEARCH_URL")},
+        {"name": "google-maps", "url": os.getenv("GOOGLE_MAP_MCP_URL")},
         # ... 필요한 만큼 추가
     ]
 

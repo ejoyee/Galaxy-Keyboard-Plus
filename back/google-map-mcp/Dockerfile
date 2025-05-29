@@ -11,7 +11,7 @@ COPY proxy-server.js .
 RUN node -e "const p=require('./package.json');p.type='module';require('fs').writeFileSync('./package.json',JSON.stringify(p,null,2));"
 
 # ▶ 포트 변경
-EXPOSE 8160
+EXPOSE 8170
 
 HEALTHCHECK --interval=30s --timeout=3s \
   CMD curl -f http://localhost:8160/health || exit 1

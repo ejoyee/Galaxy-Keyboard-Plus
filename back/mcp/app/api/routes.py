@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api.endpoints import search  
+from app.api.endpoints import search, geo_assist
 
 api_router = APIRouter()
 
@@ -8,4 +8,11 @@ api_router.include_router(
     search.router, 
     prefix="/search",
     tags=["Search"]
+)
+
+
+api_router.include_router(
+    geo_assist.router, 
+    prefix="/geo-assist", 
+    tags=["Geo Assist"]
 )
