@@ -201,6 +201,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
     private final ImageButton mTaskKey;
     private boolean mTaskMatched = false;   // 이미 매칭돼 있으면 true
     private String  mMatchedTask = null;
+    private String mMatchedWord = null;
 
     /**
      * IME 서비스로부터 EditorInfo 를 전달받습니다
@@ -582,6 +583,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                     Log.e("KeywordSearch", "API 호출 에러: ", t);
                 }
             });
+            checkAndResetTaskButton(input);
             sendTaskMatch(lastWord);
         } else if (event.type == HangulCommitEvent.TYPE_END) {
             if (mSearchKey != null && mSearchKey.isAnimating()) {
@@ -619,12 +621,12 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                         if (task==null || task.isEmpty()) {
                             return;
                         }
-                        activateTaskButton(task);
+                        activateTaskButton(task, word);
                     }
                     @Override public void onFailure(Call<TaskMatchResponse> c, Throwable t) {}
                 });
     }
-    private void activateTaskButton(String task) {
+    private void activateTaskButton(String task, String triggerWord) {
         int resId;
         switch (task) {
             case "maps":
@@ -639,6 +641,19 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         mTaskKey.setImageResource(resId);
         mTaskMatched = true;
         mMatchedTask = task;
+        mMatchedWord   = triggerWord;
+    }
+
+    private void checkAndResetTaskButton(String currentText) {
+        if (!mTaskMatched) return;                // 이미 리셋이면 무시
+
+        boolean needReset =
+                currentText.isEmpty() ||          // ↳ 입력창이 비었거나
+                        currentText.contains("\n") ||     // ↳ 줄바꿈이 포함됐거나
+                        (mMatchedWord != null &&          // ↳ 트리거 단어가 더 이상 없으면
+                                !currentText.contains(mMatchedWord));
+
+        if (needReset) resetTaskButton();
     }
 
     private void resetTaskButton() {
@@ -658,6 +673,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         mClipboardKey.setVisibility(GONE);
         mFetchClipboardKey.setVisibility(GONE);
         mSuggestionsStrip.setVisibility(GONE);
+        mTaskKey.setVisibility(GONE);
 
         // 3) 로딩 스피너 보이기
         mLoadingSpinner.setScaleX(0.8f);
@@ -811,6 +827,8 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
 
                             mSearchAnswer.setVisibility(GONE);
 
+                            mTaskKey.setVisibility(GONE);
+
                             // photo bar 초기화 및 채우기
                             mPhotoBarContainer.removeAllViews();
                             int barSize = dpToPx(96);
@@ -948,7 +966,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                 post(() -> {
                     stopKeyboardAnimation();
                     // ① **스피너 숨기기**
-                    mLoadingSpinner.setVisibility(View.GONE);
+                    mLoadingSpinner.setVisibility(GONE);
 
                     // ② **높이 원복**
                     ViewGroup.LayoutParams lp = getLayoutParams();
@@ -957,10 +975,13 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
 
                     mSearchPanel.clearLoadingBubble();
                     // 에러 시에도 버튼 복원
-                    mSearchKey.setVisibility(View.VISIBLE);
+                    mSearchKey.setVisibility(VISIBLE);
                     mSearchKey.clearAnimation();
                     mKeyHighlighted = false;
                     mInSearchMode = false;
+
+                    mTaskKey.setVisibility(VISIBLE);
+
                     Toast.makeText(getContext(), "검색 요청에 실패했습니다", Toast.LENGTH_SHORT).show();
                 });
                 Log.e(TAG_NET, "❌ onFailure", t);
@@ -1385,6 +1406,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                                 mVoiceKey.setVisibility(VISIBLE);
                                 mClipboardKey.setVisibility(GONE);
                                 mFetchClipboardKey.setVisibility(VISIBLE);
+                                mTaskKey.setVisibility(VISIBLE);
 
                                 mSearchKey.clearAnimation();
                                 mSearchKey.setAnimation("ic_search.json");
@@ -1411,7 +1433,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                     return;
                 }
 
-                // 🎨 클릭 시 단발성 키보드 애니메이션 효과
+                // 클릭 시 단발성 키보드 애니메이션 효과
                 showKeyboardClickAnimation();
 
                 enterSearchMode();
@@ -1449,7 +1471,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                 Toast.makeText(getContext(),
                         "활성화된 기능이 없습니다.",
                         Toast.LENGTH_SHORT).show();
-                return;                 // 더 이상 처리하지 않음
+                return;
             }
             switch (mMatchedTask) {
                 case "maps":
