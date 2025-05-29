@@ -39,6 +39,7 @@ public final class ApiClient {
     private static ChatStorageApi chatStorageApi;
 
     private static KeywordApi keywordApi;
+    private static TaskMatchApi     taskMatchApi;
 
     /* ─────────────────────────── 업로드 전용 인스턴스 ─────────────────────────── */
     private static Retrofit        uploadRetrofit;
@@ -137,6 +138,7 @@ public final class ApiClient {
         chatStorageApi = retrofit.create(ChatStorageApi.class);
         clipboardService = retrofit.create(ClipboardService.class);
         keywordApi = retrofit.create(KeywordApi.class);
+        taskMatchApi     = retrofit.create(TaskMatchApi.class);
 
         Log.d("ApiClient", "★ Retrofit 초기화 완료");
     }
@@ -227,10 +229,9 @@ public final class ApiClient {
     public static ChatApiService getChatApiService() { return chatApiService; }
     public static ApiService   getApiService()      { return apiService;   }
 
-
     public static ClipboardService getClipboardService() {return clipboardService;}
-
     public static ChatStorageApi getChatStorageApi() { return chatStorageApi; }
 
     public static KeywordApi getKeywordApi() { return keywordApi; }
+    public static TaskMatchApi   getTaskMatchApi()   { return taskMatchApi; }
 }

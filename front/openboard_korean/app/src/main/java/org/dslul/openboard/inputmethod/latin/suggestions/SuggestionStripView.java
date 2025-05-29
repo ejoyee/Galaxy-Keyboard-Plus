@@ -35,15 +35,12 @@ import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
-import android.os.VibrationEffect;
-import android.os.Vibrator;
 import android.provider.MediaStore;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.util.TypedValue;
 import android.view.DragEvent;
 import android.view.GestureDetector;
-import android.view.HapticFeedbackConstants;
 import android.view.LayoutInflater;
 import android.view.MotionEvent;
 import android.view.View;
@@ -57,7 +54,6 @@ import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.ExtractedText;
 import android.view.inputmethod.ExtractedTextRequest;
 import android.view.inputmethod.InputConnection;
-import android.widget.Button;
 import android.widget.HorizontalScrollView;
 import android.widget.ImageButton;
 import android.widget.ImageView;
@@ -85,8 +81,8 @@ import org.dslul.openboard.inputmethod.latin.network.ClipBoardResponse;
 import org.dslul.openboard.inputmethod.latin.network.ClipboardService;
 import org.dslul.openboard.inputmethod.latin.network.KeywordApi;
 import org.dslul.openboard.inputmethod.latin.network.KeywordExistsResponse;
-import org.dslul.openboard.inputmethod.latin.network.KeywordImagesResponse;
 import org.dslul.openboard.inputmethod.latin.network.MessageResponse;
+import org.dslul.openboard.inputmethod.latin.network.TaskMatchResponse;
 import org.dslul.openboard.inputmethod.latin.search.SearchResultView;
 import org.dslul.openboard.inputmethod.latin.settings.Settings;
 import org.dslul.openboard.inputmethod.latin.settings.SettingsValues;
@@ -130,6 +126,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
     }
 
     /* ▼ 새로 추가할 필드들 --------------------------------------------------- */
+    private static final int DEFAULT_TASK_ICON = R.drawable.ic_plus;
     private static final Typeface STRIP_TYPEFACE = Typeface.create("samsung_one", Typeface.NORMAL); // 시스템 폰트명
     private static final float STRIP_TEXT_SCALE = 0.9f;     // 10% 확대
     private final ImageButton mFetchClipboardKey;
@@ -201,6 +198,9 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
     private final int mDropIconSize;
     private final int mPhotoBarSizePx;
     private final LinearLayout.LayoutParams mPhotoItemLp;
+    private final ImageButton mTaskKey;
+    private boolean mTaskMatched = false;   // 이미 매칭돼 있으면 true
+    private String  mMatchedTask = null;
 
     /**
      * IME 서비스로부터 EditorInfo 를 전달받습니다
@@ -279,6 +279,11 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         mVoiceKey = findViewById(R.id.suggestions_strip_voice_key);
         mClipboardKey = findViewById(R.id.suggestions_strip_clipboard_key);
         mStripVisibilityGroup = new StripVisibilityGroup(this, mSuggestionsStrip);
+
+        mTaskKey = findViewById(R.id.suggestions_strip_task_key);
+        mTaskKey.setImageResource(DEFAULT_TASK_ICON);
+        mTaskKey.setOnClickListener(this);
+        mTaskKey.setVisibility(VISIBLE);
 
         // blink 애니메이션 리소스 로드  ◀ 수정
         mKeyHighlighted = false;
@@ -514,8 +519,8 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
             String lastWord = tokens[tokens.length - 1];
             if (lastWord.isEmpty()) return;        // 마지막이 공백일 경우도 방지
 
-            // 3. (예시) user_id를 준비 (실제 값에 맞게)
-            String userId = DEFAULT_USER_ID; // 실제 구현에서는 세션 등에서 받아오기
+            // 3. user_id를 준비 (실제 값에 맞게)
+            String userId = DEFAULT_USER_ID; // AuthManager에서 받아오기
 
             // 4. exists API 호출 (Retrofit2 사용)
             KeywordApi api = ApiClient.getKeywordApi();
@@ -577,6 +582,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                     Log.e("KeywordSearch", "API 호출 에러: ", t);
                 }
             });
+            sendTaskMatch(lastWord);
         } else if (event.type == HangulCommitEvent.TYPE_END) {
             if (mSearchKey != null && mSearchKey.isAnimating()) {
                 mSearchKey.pauseAnimation();
@@ -591,10 +597,54 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                 mSearchKey.setLayerType(View.LAYER_TYPE_NONE, null);
             }
 
+            if (isSearchInputEmpty()) resetTaskButton();
+
             mKeyHighlighted = false;
             mLastKeywordWithImages = null;
             mIsPausedBlue = false;
         }
+    }
+    private void sendTaskMatch(String word) {
+        // 이미 매칭돼 있으면 더 이상 호출 X
+        if (mTaskMatched || word.isEmpty()) return;
+
+        ApiClient.getTaskMatchApi().match(word).enqueue(
+                new Callback<TaskMatchResponse>() {
+                    @Override public void onResponse(Call<TaskMatchResponse> c,
+                                                     Response<TaskMatchResponse> r) {
+                        if (!r.isSuccessful() || r.body()==null) {
+                            return;
+                        }
+                        String task = r.body().matchedTask;
+                        if (task==null || task.isEmpty()) {
+                            return;
+                        }
+                        activateTaskButton(task);
+                    }
+                    @Override public void onFailure(Call<TaskMatchResponse> c, Throwable t) {}
+                });
+    }
+    private void activateTaskButton(String task) {
+        int resId;
+        switch (task) {
+            case "maps":
+                resId = R.drawable.ic_search;   // 임시
+                break;
+            case "opencv":
+                resId = R.drawable.ic_send;     // 임시
+                break;
+            default:
+                return;           // 매칭 안 됨
+        }
+        mTaskKey.setImageResource(resId);
+        mTaskMatched = true;
+        mMatchedTask = task;
+    }
+
+    private void resetTaskButton() {
+        mTaskKey.setImageResource(DEFAULT_TASK_ICON);   // 기본 아이콘
+        mTaskMatched = false;
+        mMatchedTask = null;
     }
 
     // ========== Search Mode helpers ======================================
@@ -983,6 +1033,8 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
 //        mClipboardKey.setVisibility(currentSettingsValues.mShowsClipboardKey ? VISIBLE : (mVoiceKey.getVisibility() == GONE ? INVISIBLE : GONE));
 //        mOtherKey.setVisibility(currentSettingsValues.mIncognitoModeEnabled ? VISIBLE : INVISIBLE);
         mSearchKey.setVisibility(VISIBLE);   // 항상 노출
+
+        mTaskKey.setVisibility(VISIBLE);
     }
 
     public void setSuggestions(final SuggestedWords suggestedWords, final boolean isRtlLanguage) {
@@ -1389,6 +1441,25 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                 mInSearchMode = false;
                 mIsPausedBlue = false;
             }
+            return;
+        }
+
+        if (view == mTaskKey) {
+            if (!mTaskMatched || mMatchedTask == null) {
+                Toast.makeText(getContext(),
+                        "활성화된 기능이 없습니다.",
+                        Toast.LENGTH_SHORT).show();
+                return;                 // 더 이상 처리하지 않음
+            }
+            switch (mMatchedTask) {
+                case "maps":
+                    /* maps 작업 실행 */
+                    break;
+                case "opencv":
+                    /* opencv 작업 실행 */
+                    break;
+            }
+            resetTaskButton();   // 실행 후 항상 리셋
             return;
         }
 
