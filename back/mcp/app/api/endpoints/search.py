@@ -7,17 +7,18 @@ import time
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+
 @router.post(
     "/",
     response_model=SearchResponse,
     summary="검색",
     description="사용자 질문에 대해 검색을 수행합니다.",
-    response_description="검색 결과"
+    response_description="검색 결과",
 )
 async def search_endpoint(
-    request: Request,          # FastAPI Request 객체 (app, state, 등 접근)
-    body: SearchRequest        # 실제 요청 body는 body에!
-    ):
+    request: Request,  # FastAPI Request 객체 (app, state, 등 접근)
+    body: SearchRequest,  # 실제 요청 body는 body에!
+):
     # 시간 측정
     start = time.perf_counter()  # or time.time()
 
@@ -33,7 +34,6 @@ async def search_endpoint(
     # 어떤 mcp 툴을 사용할지 llm이 결정
     llm_response = await call_llm(query, tools_info)
     logger.info(f"[search_endpoint] call_llm 결과: {llm_response}")
-    
 
     # llm으로부터 바로 응답이 온 경우
     if llm_response.get("type") == "text":
@@ -57,9 +57,7 @@ async def search_endpoint(
 
         # MCP 서버 툴 호출
         mcp_result = await mcp_manager.call_tool(
-            llm_response["srvId"],
-            llm_response["method"],
-            params
+            llm_response["srvId"], llm_response["method"], params
         )
         logger.info(f"[search_endpoint] MCP 호출 결과: {str(mcp_result)[:200]}")
 
