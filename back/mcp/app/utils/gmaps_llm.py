@@ -135,7 +135,7 @@ async def to_html(
 
     rsp = await client.messages.create(
         model=HTML_MODEL,
-        max_tokens=2048,
+        max_tokens=1200,
         temperature=0.4,
         system=sys_prompt,
         messages=[
@@ -149,21 +149,10 @@ async def to_html(
         raise ValueError("Claude 응답이 비어있습니다 (rsp.content = []).")
 
     raw_html_str = rsp.content[0].text.strip()
-
-    # JSON으로 감싸져 있으면 디코딩
-    try:
+    if raw_html_str.startswith("{") and raw_html_str.endswith("}"):
         decoded = json.loads(raw_html_str)
-        if not isinstance(decoded, str):
-            raise ValueError("Claude 응답이 문자열이 아닌 JSON 객체입니다. 출력 포맷 확인 필요.")
-    except json.JSONDecodeError:
-        decoded = raw_html_str
+        raw_html_str = decoded if isinstance(decoded, str) else ""
 
-    compact_fragment = re.sub(r"\s+", " ", decoded)
-    full_page = f"{HTML_SHELL_HEAD}{decoded.strip()}{HTML_SHELL_TAIL}"
-    # return full_page
-    
-    # 2단계: html 엔티티(&lt; 등) 복원
-    final_html = html.unescape(full_page)
-    return final_html
+    return raw_html_str
 
 
