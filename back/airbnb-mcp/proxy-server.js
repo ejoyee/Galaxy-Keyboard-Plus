@@ -12,7 +12,7 @@ let isShuttingDown = false;
 function startMCPProcess() {
   childProcess = spawn(
     "npx",
-    ["-y", "@openbnb/mcp-server-airbnb"],
+    ["-y", "@openbnb/mcp-server-airbnb", "--ignore-robots-txt"],
     {
       cwd: "/app",
       env: {
