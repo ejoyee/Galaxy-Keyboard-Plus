@@ -46,16 +46,12 @@ async def geo_assist(request: Request, body: LocalSearchRequest):
 
     # 2) 파라미터 보정
     if tool_name == "maps_search_places":
-        # 1. ensure proper key names
-        loc_arg = arguments.get("location", {})
-        if "lat" in loc_arg or "lon" in loc_arg:
-            arguments["location"] = {"latitude": lat, "longitude": lon}
-        # 2. default radius & query
+        arguments.setdefault("location", {"latitude": lat, "longitude": lon})
         arguments.setdefault("radius", 1000)
-        if "keyword" in arguments:             # LLM sometimes sets keyword
+        if "keyword" in arguments:
             arguments["query"] = arguments.pop("keyword")
         html_kind = "places"
-    else:   # maps_directions
+    else:  # maps_directions
         arguments.setdefault("origin", f"{lat},{lon}")
         html_kind = "route"
 

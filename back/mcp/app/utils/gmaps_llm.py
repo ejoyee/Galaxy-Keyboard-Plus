@@ -94,21 +94,31 @@ HTML_SHELL_TAIL = "</body></html>"
 
 # ────────────────────────────── 1) tool 선택
 async def choose_tool(query: str, *, lat: float, lon: float) -> dict:
-    user_msg = f"[USER LOCATION] lat={lat}, lon={lon}\n{query}"
+    user_msg = (
+        f"사용자의 현재 위치는 위도 {lat}, 경도 {lon}입니다.\n"
+        f"이 위치를 참고해서 경로 또는 장소 정보를 알려주세요.\n"
+        f"사용자 요청: {query}"
+    )
+
     rsp = await client.messages.create(
-        model=ROUTER_MODEL,            # ⬅️ 여기
+        model=ROUTER_MODEL,
         max_tokens=512,
         temperature=0.2,
         system=ROUTER_PROMPT,
         messages=[{"role": "user", "content": user_msg}],
     )
+
     content = rsp.content[0].text.strip()
     log.debug("Router raw: %s", content)
+
     try:
         data = json.loads(content)
-        if "arguments" in data:              # 사후 안전장치
+        if "arguments" in data:
             data["arguments"].setdefault("language", "ko")
-            data["arguments"].setdefault("region",   "KR")
+            data["arguments"].setdefault("region", "KR")
+            # ✅ fallback: location 정보 추가
+            if "location" not in data["arguments"]:
+                data["arguments"]["location"] = {"latitude": lat, "longitude": lon}
         return data
     except Exception:
         return {"text": content}
