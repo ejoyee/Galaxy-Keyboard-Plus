@@ -131,7 +131,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
 
     /* ▼ 새로 추가할 필드들 --------------------------------------------------- */
     private static final Typeface STRIP_TYPEFACE = Typeface.create("samsung_one", Typeface.NORMAL); // 시스템 폰트명
-    private static final float STRIP_TEXT_SCALE = 0.9f;     // 10% 확대 (원하면 조정)
+    private static final float STRIP_TEXT_SCALE = 0.9f;     // 10% 확대
     private final ImageButton mFetchClipboardKey;
     private int mDefaultHeight = 0;
     private final HorizontalScrollView mPhotoBar;
@@ -158,7 +158,6 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
 
     // 기존 필드 바로 아래
     private final Drawable mIconClose;    // X 아이콘
-//    private ImageButton mCopyKey;
 
     private static final String TAG_NET = "SearchAPI";
     private static String DEFAULT_USER_ID;
@@ -169,16 +168,15 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
 
     private final ViewGroup mSuggestionsStrip;
     private final ImageButton mClipboardKey;
-    //    private final ImageButton mOtherKey;
     MainKeyboardView mMainKeyboardView;
 
-    // ── ① LONG_TEXT 상황 구분용
+    // 상황 구분용
     private enum ResponseType {LONG_TEXT, PHOTO_ONLY, SHORT_TEXT}
 
     private ResponseType mResponseType;
-    private MessageResponse mLastResponse;       // ◀ 수정
-    private boolean mKeyHighlighted = false; // 깜빡임→강조 상태 구분  ◀ 수정
-    private boolean mAnswerShown = false;    // 답변(말풍선) 이미 그렸는지  ◀ 수정
+    private MessageResponse mLastResponse;
+    private boolean mKeyHighlighted = false; // 깜빡임→강조 상태 구분
+    private boolean mAnswerShown = false;    // 답변(말풍선) 이미 그렸는지
 
     private final View mMoreSuggestionsContainer;
     private final MoreSuggestionsView mMoreSuggestionsView;
@@ -412,7 +410,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                     // 드롭 위치가 추가된 빈 공간 안인지 체크
                     float area = event.getY();
                     if (area < mDragExtra) {
-                        // ── 추가된 영역: 기존 로직 (commitContent or clipboard-paste) 실행
+                        // “추가된 빈 공간”으로 드롭
                         Uri uri = Uri.parse(event.getClipData().getItemAt(0).getText().toString());
                         InputConnection ic = mMainKeyboardView.getInputConnection();
                         boolean handled = false;
@@ -432,6 +430,23 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                             cm.setPrimaryClip(ClipData.newUri(
                                     getContext().getContentResolver(), "Image", uri));
                             ic.performContextMenuAction(android.R.id.paste);
+                        }
+
+                        if (ic != null) {
+                            // 컴포지션 확정
+                            ic.finishComposingText();
+                            // 최대한 많은 텍스트 요청
+                            ExtractedTextRequest req = new ExtractedTextRequest();
+                            req.hintMaxChars = Integer.MAX_VALUE;
+                            req.hintMaxLines = Integer.MAX_VALUE;
+                            ExtractedText et = ic.getExtractedText(req, 0);
+                            if (et != null && et.text != null) {
+                                int len = et.text.length();
+                                ic.beginBatchEdit();
+                                ic.setSelection(0, len);
+                                ic.commitText("", 1);
+                                ic.endBatchEdit();
+                            }
                         }
                     } else {
                         // ── 기존 썸네일 영역: 아무 작업 없이 드래그만 정리
@@ -756,9 +771,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                                     long id = Long.parseLong(idStr);
                                     Bitmap thumb = MediaStore.Images.Thumbnails.getThumbnail(getContext().getContentResolver(), id, MediaStore.Images.Thumbnails.MINI_KIND, null);
                                     ImageView iv = new ImageView(getContext());
-//                                    LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(barSize, barSize);
-//                                    lp.setMargins(dpToPx(4), 0, dpToPx(4), 0);
-//                                    iv.setLayoutParams(lp);
+
                                     iv.setLayoutParams(mPhotoItemLp);
                                     iv.setScaleType(ImageView.ScaleType.CENTER_CROP);
                                     iv.setImageBitmap(thumb);
