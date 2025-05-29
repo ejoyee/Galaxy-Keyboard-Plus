@@ -1,98 +1,131 @@
-"""
-Google Maps 전용 LLM 래퍼 (Claude 3 버전)
-1) 어떤 Maps-tool 을 쓸지 판단
-2) raw 결과를 HTML 로 변환
-"""
-
 import os, json, logging, asyncio
-from anthropic import AsyncAnthropic  # ⭐ Anthropic SDK
+import re
+from anthropic import AsyncAnthropic
 from dotenv import load_dotenv
-
+import html
 load_dotenv()
 log = logging.getLogger(__name__)
 
-# Claude 3 모델 이름: haiku·sonnet·opus 중 선택
-CLAUDE_MODEL = "claude-3-5-haiku-20241022"
+# ────────────────────────────── 모델 설정
+ROUTER_MODEL = "claude-3-5-haiku-20241022"
+HTML_MODEL   = "claude-3-5-sonnet-20241022"
 
 client = AsyncAnthropic(api_key=os.getenv("CLAUDE_API_KEY"))
 
 # ────────────────────────────── 공통 프롬프트
 ROUTER_PROMPT = """
 You are a router that maps user requests to **ONE** Google-Maps MCP tool call.
-
 • If user just wants to know the nearest place, choose maps_search_places.
 • If user wants a route, choose maps_directions.
 • If you need coordinates for a landmark, call maps_geocode first.
-Respond with JSON only: {"tool": "...", "arguments": { ... }}
 If no tool is needed, respond with {"text": "<reply>"}.
+Respond with JSON only: {"tool":"…","arguments":{…}}
+
+# 🇰🇷 반드시 아래 두 파라미터를 arguments 에 포함해라
+#    "language":"ko", "region":"KR"
 """
-
 HTML_ONLY_PROMPT = """
-You are an HTML-only designer.
+• 절대 JSON 문자열처럼 HTML을 주지 마. "\\n", "\\", "\"" 문자가 없어야 하고, 순수 HTML 코드 그 자체를 출력해.
+• 응답은 {"text": "<html>...</html>"} 같은 JSON 형태로 절대 반환하지 마.
+• HTML은 JSON 문자열로 감싸지 말고, 말 그대로 HTML 태그 그대로 출력해.
 
-Return a single HTML **fragment** (NO <html> or <body>) that looks like a
-modern mobile card UI.  MUST include:
+너는 HTML-only 디자이너야.
+반드시 **한글**로만 작성하고, 아래 예시 같은 모바일 카드 UI 전체 페이지를 반환해.
+(반드시 <!doctype html> ~ </html> 까지 포함)
 
-1. A colorful header with route title  (출발지 → 도착지 → 목적지명)
-2. A gradient “summary card” (총 소요시간 · 거리 · 환승횟수)
-3. Step cards with icons  🚶 / 🚇 / 🚌  + 소요시간
-4. 정차역 전체 리스트  (작은 박스)
-5. 노선 시각화 (도트·선, 시작/끝 색 구분)
-6. 근처 추천 식당 3-4개 카드 (이름·거리·영업시간)
+필수 요소
+1. 파스텔 그라디언트 헤더  ─ 제목(출발지 → 도착지 → 목적지)
+2. 그라디언트 요약 카드    ─ 총 소요시간 · 거리 · 환승횟수
+3. 단계 카드(🚶/🚇/🚌)      ─ 단계 제목 + 설명 + 소요시간
+4. 정차역 리스트            ─ 박스 내부에 작게
+5. 노선 시각화              ─ 점·선, 시작/끝 색 구분
+6. 근처 추천 식당 3~4곳     ─ 이름·거리·영업시간
 7. 요금·환승 뱃지
 
-스타일 가이드:
-• Pastel gradients (#ff6b6b, #74b9ff, etc.)
-• Rounded-corner cards, subtle box-shadow
-• Inline CSS so the fragment is self-contained
-• Keep markup < 40 KB
-• ABSOLUTELY NO explanatory text outside the fragment.
+스타일 가이드
+• 예시 HTML과 비슷한 컬러 팔레트 사용 ( #ff6b6b, #ee5a24, #00b894, #74b9ff 등 )
+• ‘Malgun Gothic’를 기본 글꼴로 지정
+• 카드·배지·아이콘 등은 둥근 모서리 + box-shadow
+• 전체 마크업 40 KB 이하
+• 해설·주석 X, 오직 완전한 HTML만 출력
 """
-
 PLACES_PROMPT = """
-You are an HTML-only designer.
+• 절대 JSON 문자열처럼 HTML을 주지 마. "\\n", "\\", "\"" 문자가 없어야 하고, 순수 HTML 코드 그 자체를 출력해.
+• 응답은 {"text": "<html>...</html>"} 같은 JSON 형태로 절대 반환하지 마.
+• HTML은 JSON 문자열로 감싸지 말고, 말 그대로 HTML 태그 그대로 출력해.
+너는 HTML-only 디자이너야. 아래의 장소 정보를 참고해서 아름답고 직관적인 모바일 UI를 만들어줘.
 
-Create a neat, card-style list of the top places returned by the tool:
-• Each card shows 🏦/🍽 icon, 이름, 거리, 주소, 평점
-• Flexbox grid, soft drop-shadow, 650 px max-width
-• Use pastel gradient header (#00b894→#55efc4) and rounded corners
-• Inline CSS; no <html>/<body> wrapper; no explanations.
+[디자인 요구]
+• 전체 HTML을 반환해 (반드시 <!DOCTYPE html>부터 </html>까지 포함)
+• 모바일 기준, 전체 폭 650px 이하로
+• 상단에 파스텔 그라디언트 배경을 가진 헤더 카드 포함 (예: #667eea → #764ba2)
+• 각각의 장소 정보를 카드로 나열
+• 각 카드 구성:
+  - 🍽 이름 (크게, 굵게)
+  - 📍 위치 요약 (예: '성수동, 서울숲역 도보 5분')
+  - 🏠 주소 (조금 작게)
+  - ⭐ 평점 (노란색 강조)
+
+[스타일 가이드]
+• `Malgun Gothic` 폰트 사용
+• 전체 배경은 부드러운 그라디언트 (#667eea → #764ba2)
+• 각 카드 배경은 white, 그림자 + 라운드 처리
+• 카드 간 간격은 충분히 줘 (margin/gap)
+• 색상은 파스텔 톤으로만 (노란색, 보라색, 하늘색 등)
+• 절대 설명이나 주석은 넣지 말고, 완전한 HTML만 출력해
 """
+
+HTML_SHELL_HEAD = """<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+  <style>
+    /* 기본 리셋 + 글꼴 + 배경 */
+    *{margin:0;padding:0;box-sizing:border-box}
+    html,body{height:100%;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);
+      font-family:'Malgun Gothic',Arial,sans-serif;}
+  </style>
+</head><body>
+"""
+HTML_SHELL_TAIL = "</body></html>"
+
 
 # ────────────────────────────── 1) tool 선택
 async def choose_tool(query: str, *, lat: float, lon: float) -> dict:
     user_msg = f"[USER LOCATION] lat={lat}, lon={lon}\n{query}"
-
     rsp = await client.messages.create(
-        model=CLAUDE_MODEL,
+        model=ROUTER_MODEL,            # ⬅️ 여기
         max_tokens=512,
         temperature=0.2,
         system=ROUTER_PROMPT,
-        messages=[
-            {"role": "user", "content": user_msg},
-        ],
+        messages=[{"role": "user", "content": user_msg}],
     )
-
     content = rsp.content[0].text.strip()
     log.debug("Router raw: %s", content)
     try:
-        return json.loads(content)
+        data = json.loads(content)
+        if "arguments" in data:              # 사후 안전장치
+            data["arguments"].setdefault("language", "ko")
+            data["arguments"].setdefault("region",   "KR")
+        return data
     except Exception:
         return {"text": content}
+
 
 # ────────────────────────────── 2) HTML 생성
 async def to_html(
     rpc_result: dict,
     original_query: str,
-    *,
-    kind: str = "route",
+    *, kind: str = "route",
 ) -> str:
     sys_prompt = PLACES_PROMPT if kind == "places" else HTML_ONLY_PROMPT
     tool_output = json.dumps(rpc_result, ensure_ascii=False, indent=2)
 
     rsp = await client.messages.create(
-        model=CLAUDE_MODEL,
-        max_tokens=1024,
+        model=HTML_MODEL,
+        max_tokens=2048,
         temperature=0.4,
         system=sys_prompt,
         messages=[
@@ -101,6 +134,26 @@ async def to_html(
         ],
     )
 
-    html = rsp.content[0].text.strip()
-    # 줄바꿈·중복 공백 제거 → 한 줄 fragment
-    return " ".join(html.split())
+    # ✅ 안전하게 content 접근
+    if not rsp.content or len(rsp.content) == 0:
+        raise ValueError("Claude 응답이 비어있습니다 (rsp.content = []).")
+
+    raw_html_str = rsp.content[0].text.strip()
+
+    # JSON으로 감싸져 있으면 디코딩
+    try:
+        decoded = json.loads(raw_html_str)
+        if not isinstance(decoded, str):
+            raise ValueError("Claude 응답이 문자열이 아닌 JSON 객체입니다. 출력 포맷 확인 필요.")
+    except json.JSONDecodeError:
+        decoded = raw_html_str
+
+    compact_fragment = re.sub(r"\s+", " ", decoded)
+    full_page = f"{HTML_SHELL_HEAD}{decoded.strip()}{HTML_SHELL_TAIL}"
+    # return full_page
+    
+    # 2단계: html 엔티티(&lt; 등) 복원
+    final_html = html.unescape(full_page)
+    return final_html
+
+

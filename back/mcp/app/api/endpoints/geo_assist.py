@@ -3,6 +3,7 @@ from fastapi import APIRouter, Request, HTTPException
 from app.models.schemas import LocalSearchRequest, LocalSearchResponse
 from app.utils import gmaps_llm as glm                      # ←★ 변경
 import logging, time
+from fastapi.responses import HTMLResponse
 
 router = APIRouter()
 log = logging.getLogger(__name__)
@@ -63,4 +64,4 @@ async def geo_assist(request: Request, body: LocalSearchRequest):
 
     # 4) HTML 변환
     html = await glm.to_html(raw, query, kind=html_kind)
-    return LocalSearchResponse(answer=html)
+    return HTMLResponse(content=html)
