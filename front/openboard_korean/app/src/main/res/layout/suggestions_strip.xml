@@ -53,7 +53,8 @@
             android:contentDescription="@string/keyword_button"
             app:lottie_autoPlay="false"
             app:lottie_fileName="keyword_highlight.json"
-            app:lottie_loop="true" />
+            app:lottie_loop="true"
+            android:visibility="gone"/>
 
         <!-- ImageButton(search_key) 아래나 옆에 -->
         <Button
@@ -75,7 +76,8 @@
             android:id="@+id/suggestions_strip_clipboard_key"
             style="@style/SuggestionIconStyle"
             android:layout_width="@dimen/icon_btn_size"
-            android:layout_height="@dimen/icon_btn_size" />
+            android:layout_height="@dimen/icon_btn_size"
+            android:visibility="gone"/>
 
         <ImageButton
             android:id="@+id/suggestions_strip_fetch_clipboard"
@@ -83,7 +85,7 @@
             android:layout_width="@dimen/icon_btn_size"
             android:layout_height="@dimen/icon_btn_size"
             android:contentDescription="@string/fetch_clipboard"
-            android:src="@drawable/history" />
+            android:src="@drawable/ic_smart_clipboard" />
 
         <!-- ① 사진 바: 기본적으로 GONE -->
         <HorizontalScrollView
@@ -108,7 +110,8 @@
             android:hapticFeedbackEnabled="false"
             android:maxWidth="100dp"
             android:orientation="horizontal"
-            android:soundEffectsEnabled="false" />
+            android:soundEffectsEnabled="false"
+            android:visibility="gone"/>
     </LinearLayout>
     <!-- 기존 RelativeLayout 맨 아래쪽에 추가 -->
     <TextView
