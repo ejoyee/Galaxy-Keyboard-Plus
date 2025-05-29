@@ -1,16 +1,20 @@
 """
-OpenAI 프롬프트를 Google Maps 용도로만 단순화한 래퍼
+Google Maps 전용 LLM 래퍼 (Claude 3 버전)
 1) 어떤 Maps-tool 을 쓸지 판단
-2) raw 결과를 HTML / 텍스트로 요약
+2) raw 결과를 HTML 로 변환
 """
 
-import os, json, logging
-from openai import AsyncOpenAI
+import os, json, logging, asyncio
+from anthropic import AsyncAnthropic  # ⭐ Anthropic SDK
 from dotenv import load_dotenv
 
 load_dotenv()
 log = logging.getLogger(__name__)
-client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+# Claude 3 모델 이름: haiku·sonnet·opus 중 선택
+CLAUDE_MODEL = "claude-3-5-haiku-20241022"
+
+client = AsyncAnthropic(api_key=os.getenv("CLAUDE_API_KEY"))
 
 # ────────────────────────────── 공통 프롬프트
 ROUTER_PROMPT = """
@@ -22,8 +26,6 @@ You are a router that maps user requests to **ONE** Google-Maps MCP tool call.
 Respond with JSON only: {"tool": "...", "arguments": { ... }}
 If no tool is needed, respond with {"text": "<reply>"}.
 """
-
-
 
 HTML_ONLY_PROMPT = """
 You are an HTML-only designer.
@@ -40,14 +42,13 @@ modern mobile card UI.  MUST include:
 7. 요금·환승 뱃지
 
 스타일 가이드:
-• Google-like pastel gradients (#ff6b6b, #74b9ff, etc.)
+• Pastel gradients (#ff6b6b, #74b9ff, etc.)
 • Rounded-corner cards, subtle box-shadow
-• Use inline CSS so the fragment is self-contained
+• Inline CSS so the fragment is self-contained
 • Keep markup < 40 KB
 • ABSOLUTELY NO explanatory text outside the fragment.
 """
 
-# ───── 장소 리스트용 ─────────────────────────────────────
 PLACES_PROMPT = """
 You are an HTML-only designer.
 
@@ -58,46 +59,48 @@ Create a neat, card-style list of the top places returned by the tool:
 • Inline CSS; no <html>/<body> wrapper; no explanations.
 """
 
-
-
 # ────────────────────────────── 1) tool 선택
 async def choose_tool(query: str, *, lat: float, lon: float) -> dict:
-    user = f"[USER LOCATION] lat={lat}, lon={lon}\n{query}"
-    rsp = await client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": ROUTER_PROMPT},
-            {"role": "user", "content": user},
-        ],
-        max_tokens=512,
-    )
-    msg = rsp.choices[0].message.content.strip()
-    log.debug("Router raw: %s", msg)
-    try:
-        return json.loads(msg)
-    except Exception:
-        return {"text": msg}
+    user_msg = f"[USER LOCATION] lat={lat}, lon={lon}\n{query}"
 
-# ────────────────────────────── 2) 요약
+    rsp = await client.messages.create(
+        model=CLAUDE_MODEL,
+        max_tokens=512,
+        temperature=0.2,
+        system=ROUTER_PROMPT,
+        messages=[
+            {"role": "user", "content": user_msg},
+        ],
+    )
+
+    content = rsp.content[0].text.strip()
+    log.debug("Router raw: %s", content)
+    try:
+        return json.loads(content)
+    except Exception:
+        return {"text": content}
+
+# ────────────────────────────── 2) HTML 생성
 async def to_html(
     rpc_result: dict,
     original_query: str,
     *,
     kind: str = "route",
 ) -> str:
-    if kind == "places":
-        sys_prompt = PLACES_PROMPT
-    else:  # route
-        sys_prompt = HTML_ONLY_PROMPT
-    txt = json.dumps(rpc_result, ensure_ascii=False, indent=2)
-    rsp = await client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": sys_prompt},
-            {"role": "user", "content": original_query},
-            {"role": "assistant", "content": txt},
-        ],
+    sys_prompt = PLACES_PROMPT if kind == "places" else HTML_ONLY_PROMPT
+    tool_output = json.dumps(rpc_result, ensure_ascii=False, indent=2)
+
+    rsp = await client.messages.create(
+        model=CLAUDE_MODEL,
         max_tokens=1024,
         temperature=0.4,
+        system=sys_prompt,
+        messages=[
+            {"role": "user", "content": original_query},
+            {"role": "assistant", "content": tool_output},
+        ],
     )
-    return " ".join(rsp.choices[0].message.content.strip().split())
+
+    html = rsp.content[0].text.strip()
+    # 줄바꿈·중복 공백 제거 → 한 줄 fragment
+    return " ".join(html.split())

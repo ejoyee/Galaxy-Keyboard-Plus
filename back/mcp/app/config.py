@@ -6,6 +6,7 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str
     WEB_SEARCH_URL: str
     GOOGLE_MAP_MCP_URL: str
+    CLAUDE_API_KEY : str
 
     class Config:
         env_file = ".env"
