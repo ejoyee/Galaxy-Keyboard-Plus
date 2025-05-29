@@ -41,6 +41,7 @@ import android.util.Log;
 import android.util.TypedValue;
 import android.view.DragEvent;
 import android.view.GestureDetector;
+import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.MotionEvent;
 import android.view.View;
@@ -202,6 +203,9 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
     private boolean mTaskMatched = false;   // 이미 매칭돼 있으면 true
     private String  mMatchedTask = null;
     private String mMatchedWord = null;
+    private TextView mTaskLabel;               // 등장할 문구
+    private static final long TASK_ANIM_DURATION = 400; // ms
+    private static final int   TASK_GAP_DP       = 6;     // 버튼-라벨 간격
 
     /**
      * IME 서비스로부터 EditorInfo 를 전달받습니다
@@ -285,6 +289,24 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         mTaskKey.setImageResource(DEFAULT_TASK_ICON);
         mTaskKey.setOnClickListener(this);
         mTaskKey.setVisibility(VISIBLE);
+
+        LinearLayout wrapper = findViewById(R.id.suggestions_strip_wrapper);
+        wrapper.setGravity(Gravity.CENTER_VERTICAL); // 자식들을 세로 중앙정렬
+
+        LinearLayout.LayoutParams lpLabel =
+                new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT);
+        lpLabel.gravity = Gravity.CENTER_VERTICAL;
+        lpLabel.setMarginStart(0);   // 실제 레이아웃 간격
+
+        mTaskLabel = new TextView(context);
+        mTaskLabel.setVisibility(GONE);
+
+        mTaskLabel.setLayoutParams(lpLabel);
+
+        mTaskLabel.setTypeface(STRIP_TYPEFACE, Typeface.BOLD);
+        mTaskLabel.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);   // 글씨 조금 키움
+        wrapper.addView(mTaskLabel);
 
         // blink 애니메이션 리소스 로드  ◀ 수정
         mKeyHighlighted = false;
@@ -583,9 +605,13 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                     Log.e("KeywordSearch", "API 호출 에러: ", t);
                 }
             });
-            checkAndResetTaskButton(input);
-            sendTaskMatch(lastWord);
+            updateTaskButtonState();   // ← 항상 먼저 현재 상태 정리
+            sendTaskMatch(lastWord);   // ← 아직 매칭 안 돼 있으면 활성화 시도
         } else if (event.type == HangulCommitEvent.TYPE_END) {
+
+            // ① 키워드가 사라졌는지 먼저 확인
+            updateTaskButtonState();
+
             if (mSearchKey != null && mSearchKey.isAnimating()) {
                 mSearchKey.pauseAnimation();
                 mSearchKey.setProgress(0f);
@@ -642,25 +668,109 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         mTaskMatched = true;
         mMatchedTask = task;
         mMatchedWord   = triggerWord;
-    }
-
-    private void checkAndResetTaskButton(String currentText) {
-        if (!mTaskMatched) return;                // 이미 리셋이면 무시
-
-        boolean needReset =
-                currentText.isEmpty() ||          // ↳ 입력창이 비었거나
-                        currentText.contains("\n") ||     // ↳ 줄바꿈이 포함됐거나
-                        (mMatchedWord != null &&          // ↳ 트리거 단어가 더 이상 없으면
-                                !currentText.contains(mMatchedWord));
-
-        if (needReset) resetTaskButton();
+        showTaskActivatedMessage("테스트입니다.");
     }
 
     private void resetTaskButton() {
+        hideTaskActivatedMessage();
+
         mTaskKey.setImageResource(DEFAULT_TASK_ICON);   // 기본 아이콘
+
+        mTaskKey.setTranslationX(0f);        // ← 추가
+        if (mTaskLabel != null) {            // ← 추가
+            mTaskLabel.setVisibility(GONE);
+            mTaskLabel.setTranslationX(0f);
+        }
+
         mTaskMatched = false;
         mMatchedTask = null;
     }
+
+    /** 현재 활성 입력창의 전체 문자열(빈 문자열 가능) */
+    private String getCurrentInputText() {
+        if (mMainKeyboardView == null) return "";
+        InputConnection ic = mMainKeyboardView.getInputConnection();
+        if (ic == null) return "";
+        ExtractedText et = ic.getExtractedText(new ExtractedTextRequest(), 0);
+        return (et != null && et.text != null) ? et.text.toString() : "";
+    }
+
+    /** 입력창에 활성 키워드가 ‘단어 경계’로 남아 있으면 true */
+    private boolean isKeywordAlive(String text) {
+        if (!mTaskMatched || mMatchedWord == null || mMatchedWord.isEmpty()) return false;
+
+        int idx = text.lastIndexOf(mMatchedWord);
+        if (idx == -1) return false;                       // 아예 사라짐
+
+        int end = idx + mMatchedWord.length();
+        // 키워드 앞·뒤가 공백·줄바꿈·문자열 끝이면 ‘단어 경계’라고 간주
+        boolean beforeOK = idx == 0 || Character.isWhitespace(text.charAt(idx - 1));
+        boolean afterOK  = end == text.length() || Character.isWhitespace(text.charAt(end));
+
+        return beforeOK && afterOK;
+    }
+
+    /** 호출될 때마다 “키워드가 사라졌는지” 확인하고 필요하면 리셋 */
+    private void updateTaskButtonState() {
+        if (mTaskMatched && !isKeywordAlive(getCurrentInputText())) {
+            resetTaskButton();            // 아이콘·플래그 전부 원상복구
+        }
+    }
+
+    // 등장 애니메이션
+    private void showTaskActivatedMessage(String text) {
+        if (mTaskLabel == null) return;
+
+        mTaskLabel.setText(text);
+        mTaskLabel.setAlpha(0f);
+        mTaskLabel.setVisibility(VISIBLE);
+
+        // ① 폭 측정
+        mTaskLabel.measure(MeasureSpec.UNSPECIFIED, MeasureSpec.UNSPECIFIED);
+        int labelW = mTaskLabel.getMeasuredWidth();
+        int gapPx = dpToPx(TASK_GAP_DP);
+
+        // ② 시작 위치 : 라벨은 오른쪽 밖, 버튼은 제자리
+        mTaskLabel.setTranslationX(labelW + gapPx);
+        mTaskKey.setTranslationX(0f);
+
+        // ③ 동시 애니메이션
+        mTaskKey.animate()
+                .translationX(-(labelW + gapPx))               // 왼쪽으로 밀림
+                .setDuration(TASK_ANIM_DURATION)
+                .setInterpolator(new FastOutSlowInInterpolator())
+                .start();
+
+        mTaskLabel.animate()
+                .translationX(0f)                   // 제자리 도착
+                .alpha(1f)
+                .setDuration(TASK_ANIM_DURATION)
+                .setInterpolator(new FastOutSlowInInterpolator())
+                .start();
+    }
+
+    // 리셋 애니메이션
+    private void hideTaskActivatedMessage() {
+        if (mTaskLabel == null || mTaskLabel.getVisibility() != VISIBLE) return;
+
+        int labelW = mTaskLabel.getWidth();
+        int gapPx = dpToPx(TASK_GAP_DP);
+
+        mTaskKey.animate()
+                .translationX(0f)                     // 원위치
+                .setDuration(TASK_ANIM_DURATION)
+                .setInterpolator(new FastOutSlowInInterpolator())
+                .start();
+
+        mTaskLabel.animate()
+                .translationX(labelW + gapPx)       // 오른쪽으로 밀려나감
+                .alpha(0f)
+                .setDuration(TASK_ANIM_DURATION)
+                .withEndAction(() -> mTaskLabel.setVisibility(GONE))
+                .setInterpolator(new FastOutSlowInInterpolator())
+                .start();
+    }
+
 
     // ========== Search Mode helpers ======================================
     private void enterSearchMode() {
@@ -776,19 +886,6 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                             mKeyHighlighted = true;
                             mIsPausedBlue = true;
 
-                            // ── SuggestionStripView 높이 애니메이션으로 원복 ──
-                            strip = SuggestionStripView.this;
-                            startH = strip.getHeight();
-                            endH = mDefaultHeight;  // 생성 시 저장해 둔 기본 높이
-                            ValueAnimator collapseAnim = ValueAnimator.ofInt(startH, endH);
-                            collapseAnim.setDuration(500);
-                            collapseAnim.setInterpolator(new FastOutSlowInInterpolator());
-                            collapseAnim.addUpdateListener(anim -> {
-                                strip.getLayoutParams().height = (int) anim.getAnimatedValue();
-                                strip.requestLayout();
-                            });
-                            collapseAnim.start();
-
                             if (mBorderPulseAnimator != null) {
                                 mBorderPulseAnimator.cancel();
                                 mBorderPulseAnimator = null;
@@ -800,11 +897,12 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
 
                             mVoiceKey.setVisibility(VISIBLE);
                             mFetchClipboardKey.setVisibility(VISIBLE);
+                            mTaskKey.setVisibility(VISIBLE);
 
                             // ★ 키보드 웨이브 애니메이션 중지
                             stopKeyboardAnimation();
-
                             break;
+
                         case PHOTO_ONLY:
                             SuggestionStripView.this.setLayerType(View.LAYER_TYPE_HARDWARE, null);
 
