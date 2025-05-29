@@ -165,14 +165,14 @@ services:
     networks:
       - internal
 
-    airbnb-mcp:
-      container_name: airbnb-mcp
-      build: ./back/airbnb-mcp
-      ports:
-        - "0.0.0.0:8180:8180"
-      restart: always
-      networks:
-        - internal
+  airbnb-mcp:
+    container_name: airbnb-mcp
+    build: ./back/airbnb-mcp
+    ports:
+      - "0.0.0.0:8180:8180"
+    restart: always
+    networks:
+      - internal
 
 
   # Redis 서비스 (Rate Limiter 전용)
