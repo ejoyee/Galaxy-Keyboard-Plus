@@ -61,6 +61,7 @@ class QAQueryResponse(BaseModel):
     success: bool = Field(..., description="조회 성공 여부")
     total_found: int = Field(..., description="찾은 결과 총 개수")
     results: List[QAResult] = Field(..., description="검색 결과 목록")
+    rag_response: str = Field(..., description="RAG 기반 생성된 답변")
     message: str = Field(..., description="결과 메시지")
     
     class Config:
@@ -77,6 +78,7 @@ class QAQueryResponse(BaseModel):
                         "created_at": "2025-05-30T10:30:00"
                     }
                 ],
+                "rag_response": "FastAPI에서 비동기 처리를 구현하려면 async/await 키워드를 사용합니다. 예를 들어: async def get_data(): return await database.fetch_all()과 같이 작성할 수 있습니다.",
                 "message": "2개의 관련 답변을 찾았습니다."
             }
         }

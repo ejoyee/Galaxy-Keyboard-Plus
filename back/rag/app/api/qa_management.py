@@ -55,6 +55,75 @@ def generate_embedding(text: str) -> List[float]:
         logging.error(f"임베딩 생성 실패: {str(e)}")
         raise HTTPException(status_code=500, detail="임베딩 생성에 실패했습니다.")
 
+def generate_rag_response(user_question: str, search_results: List[QAResult]) -> str:
+    """
+    RAG를 활용하여 검색 결과를 바탕으로 사용자 질문에 맞는 응답 생성
+    """
+    try:
+        if not search_results:
+            # 검색 결과가 없을 때도 일반적인 응답 제공
+            prompt = f"""
+당신은 도움이 되는 AI 어시스턴트입니다. 사용자의 질문에 대해 정확하고 유용한 답변을 제공해주세요.
+
+질문: {user_question}
+
+답변: 죄송하지만 정확히 일치하는 정보를 찾지 못했습니다. 하지만 다음과 같이 도움을 드릴 수 있습니다:
+
+1. 질문을 좀 더 구체적으로 다시 작성해 보시기 바랍니다.
+2. 키워드를 바꿔서 다시 검색해 보세요.
+3. 관련된 다른 질문이 있으시면 언제든 문의해 주세요.
+
+더 자세한 정보가 필요하시면 추가로 질문해 주시기 바랍니다.
+"""
+        else:
+            # 검색 결과가 있을 때 RAG 응답 생성
+            context_info = ""
+            for i, result in enumerate(search_results, 1):
+                context_info += f"""
+참고 정보 {i} (유사도: {result.similarity_score}):
+질문: {result.question}
+답변: {result.answer}
+
+"""
+            
+            prompt = f"""
+당신은 전문적이고 도움이 되는 AI 어시스턴트입니다. 아래 제공된 참고 정보를 바탕으로 사용자의 질문에 대해 정확하고 이해하기 쉽이 답변하세요.
+
+=== 참고 정보 ===
+{context_info}
+=== 사용자 질문 ===
+{user_question}
+
+=== 답변 지침 ===
+1. 참고 정보를 기반으로 사용자 질문에 직접적이고 유용한 답변을 제공하세요.
+2. 여러 참고 정보가 있다면 종합하여 완전하고 일관된 답변을 만드세요.
+3. 기술적 내용이라면 구체적인 예시나 코드를 포함하세요.
+4. 단계별 설명이 필요한 경우 순서대로 나열하세요.
+5. 참고 정보만으로 완전한 답변이 어려우면, 가능한 범위에서 최선의 답변을 제공하고 추가 정보가 필요함을 안내하세요.
+6. 답변은 명확하고 정확하며 실용적이어야 합니다.
+7. 한국어로 자연스럽게 답변하세요.
+
+답변:
+"""
+        
+        # OpenAI GPT를 사용하여 응답 생성
+        response = openai_client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "당신은 도움이 되는 AI 어시스턴트입니다. 제공된 정보를 바탕으로 정확하고 유용한 답변을 제공합니다."},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=1000,
+            temperature=0.3
+        )
+        
+        return response.choices[0].message.content.strip()
+        
+    except Exception as e:
+        logging.error(f"RAG 응답 생성 실패: {str(e)}")
+        # 오류 발생 시 기본 응답 제공
+        return f"죄송합니다. 답변 생성 중 오류가 발생했습니다. 질문 '{user_question}'에 대해 다시 시도해 주시거나, 질문을 다르게 표현해 보시기 바랍니다."
+
 def generate_qa_id() -> str:
     """고유한 QA ID 생성"""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -111,9 +180,13 @@ async def store_qa(request: QAStoreRequest):
 @router.post("/qa/query", response_model=QAQueryResponse)
 async def query_qa(request: QAQueryRequest):
     """
-    질문에 대한 유사한 답변을 검색합니다.
+    질문에 대한 유사한 답변을 검색하고 RAG 기반 응답을 생성합니다.
     
     - **question**: 검색할 질문 (1-1000자)
+    
+    **반환 내용:**
+    - 검색된 관련 QA 목록
+    - RAG를 활용한 사용자 질문에 맞춤 생성 답변
     """
     try:
         # 질문 임베딩 생성 (질문에 가중치 부여)
@@ -194,10 +267,15 @@ async def query_qa(request: QAQueryRequest):
         if results:
             logging.info(f"최고 유사도: {results[0].similarity_score}")
         
+        # RAG 응답 생성
+        rag_response = generate_rag_response(request.question, results)
+        logging.info(f"RAG 응답 생성 완료: {len(rag_response)} 문자")
+        
         return QAQueryResponse(
             success=True,
             total_found=len(results),
             results=results,
+            rag_response=rag_response,
             message=message
         )
         
