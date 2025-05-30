@@ -157,7 +157,7 @@ services:
     container_name: google-web-search
     build: ./back/google-web-search
     ports:
-      - "0.0.0.0:8150:8150"
+      - "0.0.0.0:8170:8170"
     environment:
       - GOOGLE_SEARCH_API_KEY=${GOOGLE_SEARCH_API_KEY}
       - GOOGLE_SEARCH_ENGINE_ID=${GOOGLE_SEARCH_ENGINE_ID}
