@@ -1,14 +1,22 @@
 import os
 from pydantic import BaseSettings
 
+
 class Settings(BaseSettings):
     """애플리케이션 설정"""
+
     OPENAI_API_KEY: str
     WEB_SEARCH_URL: str
+
     GOOGLE_MAP_MCP_URL: str
     CLAUDE_API_KEY : str
 
+    GOOGLE_WEB_SEARCH_URL: str
+    AIRBNB_MCP_URL: str
+
+
     class Config:
         env_file = ".env"
+
 
 settings = Settings()
