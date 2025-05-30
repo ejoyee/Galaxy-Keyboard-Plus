@@ -13,3 +13,15 @@ class SearchRequest(BaseModel):
 
 class SearchResponse(BaseModel):
     answer: str = Field(..., description="최종 답변")
+class Location(BaseModel):
+    latitude: float
+    longitude: float
+
+# ── 위치 기반 요청/응답 ───────────────────────────
+class LocalSearchRequest(BaseModel):
+    query: str
+    location: Location
+
+class LocalSearchResponse(BaseModel):
+    answer: str
+
