@@ -165,28 +165,6 @@ services:
     networks:
       - internal
 
-
-google-maps-mcp  :
-    container_name: google-maps-mcp
-    build: ./back/google-map-mcp
-    ports:
-      - "0.0.0.0:8170:8170"
-    environment:
-      - GOOGLE_MAPS_API_KEY=${GOOGLE_MAPS_API_KEY}
-    restart: always
-    networks:
-      - internal
-
-  airbnb-mcp:
-    container_name: airbnb-mcp
-    build: ./back/airbnb-mcp
-    ports:
-      - "0.0.0.0:8180:8180"
-    restart: always
-    networks:
-      - internal
-
-
   # Redis 서비스 (Rate Limiter 전용)
   redis-ratelimiter:
     container_name: moca-redis-ratelimiter
