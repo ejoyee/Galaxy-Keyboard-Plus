@@ -16,6 +16,9 @@
 
 package org.dslul.openboard.inputmethod.latin.suggestions;
 
+import android.animation.Animator;
+import android.animation.AnimatorSet;
+import android.animation.ObjectAnimator;
 import android.animation.ValueAnimator;
 import android.content.ClipData;
 import android.content.ClipDescription;
@@ -28,6 +31,7 @@ import android.content.res.TypedArray;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.Outline;
 import android.graphics.Paint;
 import android.graphics.Point;
 import android.graphics.PorterDuff;
@@ -48,6 +52,7 @@ import android.view.View;
 import android.view.View.OnClickListener;
 import android.view.View.OnLongClickListener;
 import android.view.ViewGroup;
+import android.view.ViewOutlineProvider;
 import android.view.ViewParent;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.animation.OvershootInterpolator;
@@ -92,6 +97,7 @@ import org.dslul.openboard.inputmethod.latin.suggestions.MoreSuggestionsView.Mor
 import java.util.ArrayList;
 import java.util.List;
 
+import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.core.content.ContextCompat;
 import androidx.core.view.ViewCompat;
@@ -204,8 +210,15 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
     private boolean mTaskMatched = false;   // 이미 매칭돼 있으면 true
     private String  mMatchedTask = null;
     private String mMatchedWord = null;
-    private TextView mTaskLabel;               // 등장할 문구
+    private final TextView mTaskLabel;               // 등장할 문구
     private static final long TASK_ANIM_DURATION = 400; // ms
+
+    private boolean mPhotoOnlyLocked = false;
+
+    // 한 곳에서 쓰기 편하도록
+    private boolean isPhotoOnlyLocked() {
+        return mPhotoOnlyLocked && mResponseType == ResponseType.PHOTO_ONLY;
+    }
 
     /**
      * IME 서비스로부터 EditorInfo 를 전달받습니다
@@ -253,7 +266,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         super(context, attrs, defStyle);
 
         // 1) dp → px 변환을 미리 해두기
-        mPhotoBarSizePx = dpToPx(96);
+        mPhotoBarSizePx = dpToPx(88);
         int photoItemMargin = dpToPx(4);
 
         // 2) LayoutParams도 한 번만 생성
@@ -656,9 +669,27 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         switch (task) {
             case "maps":
                 resId = R.drawable.ic_search;   // 임시
+                showTaskActivatedMessage("maps 버튼 활성화(test)");
                 break;
             case "opencv":
                 resId = R.drawable.ic_send;     // 임시
+                showTaskActivatedMessage("opencv 버튼 활성화(test)");
+                break;
+            case "airbnb":
+                resId = R.drawable.ic_send;     // 임시
+                showTaskActivatedMessage("airbnb 버튼 활성화(test)");
+                break;
+            case "web":
+                resId = R.drawable.ic_send;     // 임시
+                showTaskActivatedMessage("web 버튼 활성화(test)");
+                break;
+            case "gmail":
+                resId = R.drawable.ic_send;     // 임시
+                showTaskActivatedMessage("gmail 버튼 활성화(test)");
+                break;
+            case "calendar":
+                resId = R.drawable.ic_send;     // 임시
+                showTaskActivatedMessage("calendar 버튼 활성화(test)");
                 break;
             default:
                 return;           // 매칭 안 됨
@@ -667,7 +698,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         mTaskMatched = true;
         mMatchedTask = task;
         mMatchedWord   = triggerWord;
-        showTaskActivatedMessage("테스트입니다.");
+
     }
 
     public void resetTaskButton() {
@@ -771,6 +802,20 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
     private void enterSearchMode() {
         if (mInSearchMode) return;
         mInSearchMode = true;
+
+        stopBreathing(mSearchKey);
+        stopBreathing(mVoiceKey);
+        stopBreathing(mClipboardKey);
+        stopBreathing(mFetchClipboardKey);
+        stopBreathing(mTaskKey);
+
+        hideTaskActivatedMessage(() -> {
+            mTaskKey.setImageResource(DEFAULT_TASK_ICON);
+            mTaskMatched = false;
+            mMatchedTask = null;
+        });   // 라벨 & 버튼 애니메이션 원위치
+        mTaskLabel.setVisibility(GONE);   // 안전망
+        mTaskKey.setTranslationX(0f);
 
         // 1) 모든 키/버튼 숨기기
         mSearchKey.setVisibility(GONE);
@@ -936,6 +981,18 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                                     iv.setLayoutParams(mPhotoItemLp);
                                     iv.setScaleType(ImageView.ScaleType.CENTER_CROP);
                                     iv.setImageBitmap(thumb);
+
+                                    // ① 썸네일용 ImageView 생성부 바로 아래에 추가
+                                    iv.setClipToOutline(true);                   // 모서리 잘라내기
+                                    ViewCompat.setElevation(iv, 0);      // 그림자 깊이
+                                    iv.setOutlineProvider(new ViewOutlineProvider() {   // 모서리 8dp 둥글게
+                                        @Override
+                                        public void getOutline(View v, Outline o) {
+                                            int r = dpToPx(8);                    // 둥근 모서리 반경
+                                            o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), r);
+                                        }
+                                    });
+
                                     // 클릭 시 클립보드 복사
                                     Uri uri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id);
                                     iv.setOnClickListener(v -> {
@@ -1042,6 +1099,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                             mSearchKey.clearAnimation();
                             mSearchKey.setRepeatCount(0);
                             mSearchKey.setImageDrawable(mIconClose);
+                            mPhotoOnlyLocked = true;
                             mKeyHighlighted = true;  // X 버튼 상태이므로 glow 금지
 
                             mAnswerShown = true;
@@ -1104,6 +1162,9 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
 
     /** 검색키 애니메이션과 JSON 활성화 상태만 해제합니다. */
     public void clearSearchKeyHighlight() {
+        // 사진-모드에서는 ❌ 유지
+        if (isPhotoOnlyLocked()) return;
+
         // Lottie 애니메이션 멈춤
         if (mSearchKey.isAnimating()) {
             mSearchKey.pauseAnimation();
@@ -1111,8 +1172,9 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         // JSON 리셋
         mSearchKey.clearAnimation();
         mSearchKey.setAnimation("ic_search.json");
-        mSearchKey.setProgress(0f);
-        mSearchKey.setRepeatCount(0);
+        mSearchKey.playAnimation();
+//        mSearchKey.setProgress(0f);
+//        mSearchKey.setRepeatCount(0);
         // 배경 원복
         mSearchKey.setBackground(mOriginalSearchKeyBg);
         mSearchKey.setLayerType(View.LAYER_TYPE_NONE, null);
@@ -1137,18 +1199,28 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
             mClipboardKey.setVisibility(GONE);
             mFetchClipboardKey.setVisibility(GONE);
             // 검색 키(X)는 그대로 두고, strip도 이미 GONE 상태
-            return;                       // ← 더 이상 처리하지 않고 종료
+            return;
         }
 
         final SettingsValues currentSettingsValues = Settings.getInstance().getCurrent();
-//        mVoiceKey.setVisibility(currentSettingsValues.mShowsVoiceInputKey ? VISIBLE : GONE);
         mVoiceKey.setVisibility(VISIBLE);
         mClipboardKey.setVisibility(GONE);
-//        mClipboardKey.setVisibility(currentSettingsValues.mShowsClipboardKey ? VISIBLE : (mVoiceKey.getVisibility() == GONE ? INVISIBLE : GONE));
-//        mOtherKey.setVisibility(currentSettingsValues.mIncognitoModeEnabled ? VISIBLE : INVISIBLE);
         mSearchKey.setVisibility(VISIBLE);   // 항상 노출
 
         mTaskKey.setVisibility(VISIBLE);
+
+        for (View btn : new View[]{ mSearchKey, mVoiceKey, mClipboardKey,
+                mFetchClipboardKey, mTaskKey }) {
+
+            // PHOTO_ONLY 모드에서는 검색키는 호흡 애니메이션도 건들지 않음
+            if (btn == mSearchKey && isPhotoOnlyLocked()) continue;
+
+            if (btn.getVisibility() == VISIBLE) {
+                startBreathing(btn, 0.8f, 1.1f, 1800);   // 1.8 초 주기로 커졌다가 원위치
+            } else {
+                stopBreathing(btn);
+            }
+        }
     }
 
     public void setSuggestions(final SuggestedWords suggestedWords, final boolean isRtlLanguage) {
@@ -1501,8 +1573,13 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                                 mFetchClipboardKey.setVisibility(VISIBLE);
                                 mTaskKey.setVisibility(VISIBLE);
 
+                                startBreathing(mSearchKey, 0.8f, 1.1f, 1800);
+                                startBreathing(mVoiceKey,   0.8f, 1.1f, 1800);
+                                startBreathing(mFetchClipboardKey, 0.8f, 1.1f, 1800);
+                                startBreathing(mTaskKey,    0.8f, 1.1f, 1800);
+
                                 mSearchKey.clearAnimation();
-                                mSearchKey.setAnimation("ic_search.json");
+                                mSearchKey.setAnimation("ic_search_backup.json");
                                 mSearchKey.setProgress(0f);
                                 mSearchKey.setRepeatCount(0);
 
@@ -1511,8 +1588,12 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                                 mResponseType = null;
                                 mLastResponse = null;
                                 mIsPausedBlue = false;
+
+                                hideTaskActivatedMessage(null);     // 라벨·버튼 위치 복귀
+                                mTaskKey.setTranslationX(0f);
                             });
                     mKeyHighlighted = false;
+                    mPhotoOnlyLocked = false;
                 }, delay);
 
                 SuggestionStripView.this.setLayerType(View.LAYER_TYPE_NONE, null);
@@ -1547,9 +1628,10 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                 // 세 번째 클릭(❌): 패널 닫고 키보드 복귀
                 mSearchPanel.dismissMoreKeysPanel();
 
-                mSearchKey.setAnimation("ic_search.json");  // 흑 정지된 JSON
-                mSearchKey.setRepeatCount(0);
-                mSearchKey.setProgress(0f);
+                mSearchKey.setAnimation("ic_search_backup.json");  // 흑 정지된 JSON
+                mSearchKey.playAnimation();
+//                mSearchKey.setRepeatCount(0);
+//                mSearchKey.setProgress(0f);
 
                 mKeyHighlighted = false;
                 mAnswerShown = false;
@@ -1572,6 +1654,18 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                     break;
                 case "opencv":
                     /* opencv 작업 실행 */
+                    break;
+                case "gmail":
+                    /* gmail 작업 실행 */
+                    break;
+                case "calendar":
+                    /* calendar 작업 실행 */
+                    break;
+                case "airbnb":
+                    /* airbnb 작업 실행 */
+                    break;
+                case "web":
+                    /* web 작업 실행 */
                     break;
             }
             resetTaskButton();   // 실행 후 항상 리셋
@@ -1880,4 +1974,37 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                 (int) (bA + (bB - bA) * progress)
         );
     }
+
+    // SuggestionStripView 클래스 안, 아무 메서드 밑에 위치만 맞춰 추가
+    private static void startBreathing(@NonNull View v, float scaleFrom, float scaleTo, long durationMs) {
+        // 이미 실행 중이면 중복 실행 방지
+        if (v.getTag(R.id.tag_breathing_anim) != null) return;
+
+        ObjectAnimator sx = ObjectAnimator.ofFloat(v, View.SCALE_X, scaleFrom, scaleTo);
+        ObjectAnimator sy = ObjectAnimator.ofFloat(v, View.SCALE_Y, scaleFrom, scaleTo);
+
+        // 반복·반전 설정은 개별 애니메이터에!
+        for (ObjectAnimator oa : new ObjectAnimator[]{sx, sy}) {
+            oa.setDuration(durationMs);
+            oa.setRepeatMode(ValueAnimator.REVERSE);
+            oa.setRepeatCount(ValueAnimator.INFINITE);
+            oa.setInterpolator(new FastOutSlowInInterpolator());
+        }
+
+        AnimatorSet set = new AnimatorSet();
+        set.playTogether(sx, sy);
+        set.start();
+
+        // 뷰에 애니메이터를 태그로 보관(나중에 중지용)
+        v.setTag(R.id.tag_breathing_anim, set);
+    }
+
+    private static void stopBreathing(@NonNull View v) {
+        Object tag = v.getTag(R.id.tag_breathing_anim);
+        if (tag instanceof Animator) {
+            ((Animator) tag).cancel();
+            v.setTag(R.id.tag_breathing_anim, null);
+        }
+    }
+
 }
