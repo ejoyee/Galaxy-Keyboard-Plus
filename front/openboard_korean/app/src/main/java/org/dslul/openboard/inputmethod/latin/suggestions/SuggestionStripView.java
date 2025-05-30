@@ -1446,9 +1446,9 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
 
         int sz = dpToPx(32);
         LayoutParams lp = new LayoutParams(sz, sz);
-        lp.addRule(CENTER_HORIZONTAL);
-        lp.addRule(ALIGN_PARENT_BOTTOM);
-        lp.bottomMargin = dpToPx(12);
+        lp.addRule(ALIGN_PARENT_END);
+        lp.addRule(CENTER_VERTICAL);
+        lp.setMarginEnd(dpToPx(12));
         addView(tip, lp);
 
         // ▶ PhotoBar 위에 떠 있도록
