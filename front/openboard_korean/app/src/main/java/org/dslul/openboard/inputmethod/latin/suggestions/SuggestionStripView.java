@@ -17,6 +17,7 @@
 package org.dslul.openboard.inputmethod.latin.suggestions;
 
 import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
 import android.animation.AnimatorSet;
 import android.animation.Keyframe;
 import android.animation.ObjectAnimator;
@@ -223,6 +224,8 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
     private static final long TASK_ANIM_DURATION = 400; // ms
 
     private boolean mPhotoOnlyLocked = false;
+    private boolean mScrollTipShown = false;   // 스크롤 툴팁 이미 보여줬는지
+    private boolean mDragTipShown = false;      // 드래그 툴팁 이미 보여줬는지
 
     // 한 곳에서 쓰기 편하도록
     private boolean isPhotoOnlyLocked() {
@@ -447,6 +450,10 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                         if (mImeService != null) mImeService.setDragging(true);
 
                         expandDragArea();
+
+                        // 드래그 툴팁
+                        showDragTip();
+
                         return true;
                     }
                     return false;
@@ -1103,6 +1110,9 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
 
                             mPhotoBar.setVisibility(VISIBLE);
 
+                            // 스크롤 툴팁
+                            showScrollTip();
+
                             // PHOTO_ONLY 모드에서 카드 뷰에 연쇄 버운스 애니메이션 추가
                             post(() -> {
                                 Handler handler = new Handler(Looper.getMainLooper());
@@ -1415,6 +1425,104 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
             mWordViews.get(i).setPressed(false);
         }
         return true;
+    }
+
+    /** PHOTO_ONLY 최초 진입 시 짧게 나타나는 스크롤 가능 툴팁 */
+    private void showScrollTip() {
+        if (mScrollTipShown) return;
+//        mScrollTipShown = true;     // 최초 한 번만 보여주기
+
+        ImageView tip = new ImageView(getContext());
+        tip.setImageResource(R.drawable.ic_scroll_tip);
+
+        int sz = dpToPx(56);
+        LayoutParams lp = new LayoutParams(sz, sz);
+        lp.addRule(CENTER_HORIZONTAL);
+        lp.addRule(CENTER_VERTICAL);
+        addView(tip, lp);
+
+        // ▶ PhotoBar 위에 떠 있도록
+        tip.bringToFront();
+        tip.setElevation(dpToPx(8));
+
+        long appear = 250, bounce = 280, disappear = 250;
+
+        // ① 페이드-인 + 위치 정렬
+        tip.setAlpha(0f);
+        tip.setTranslationY(dpToPx(10));
+        tip.animate()
+                .alpha(1f).translationY(0f)
+                .setDuration(appear)
+                .withEndAction(() -> {
+                    // ② ObjectAnimator 로 4회 바운스
+                    ObjectAnimator bounceAnim =
+                            ObjectAnimator.ofFloat(tip, "translationX", 0f, dpToPx(6));
+                    bounceAnim.setDuration(bounce);
+                    bounceAnim.setInterpolator(new FastOutSlowInInterpolator());
+                    bounceAnim.setRepeatMode(ValueAnimator.REVERSE);
+                    bounceAnim.setRepeatCount(7);      // 왕복 → 4회 바운스
+                    bounceAnim.addListener(new AnimatorListenerAdapter() {
+                        @Override public void onAnimationEnd(Animator animation) {
+                            // ③ 페이드-아웃 후 제거
+                            tip.animate()
+                                    .alpha(0f)
+                                    .setDuration(disappear)
+                                    .withEndAction(() -> removeView(tip))
+                                    .start();
+                        }
+                    });
+                    bounceAnim.start();
+                })
+                .start();
+    }
+
+    // 2) showDragTip() 메서드 추가 (클래스 맨 아래쪽)
+    private void showDragTip() {
+        if (mDragTipShown) return;
+//        mDragTipShown = true;     // 최초 한 번만 보여주기
+
+        ImageView tip = new ImageView(getContext());
+        tip.setImageResource(R.drawable.ic_arrow_up);   // 위쪽 화살표 리소스
+
+        int size = dpToPx(56);
+        RelativeLayout.LayoutParams lp = new RelativeLayout.LayoutParams(size, size);
+        lp.addRule(RelativeLayout.CENTER_HORIZONTAL);
+        lp.addRule(RelativeLayout.ALIGN_PARENT_TOP);
+        lp.topMargin = dpToPx(8);  // 최상단에서 살짝 띄워서 표시
+        addView(tip, lp);
+
+        tip.bringToFront();
+        tip.setElevation(dpToPx(8));
+
+        long appear = 200, bounce = 200, disappear = 200;
+        tip.setAlpha(0f);
+        tip.setTranslationY(-dpToPx(10));  // 위에서 내려오는 모션
+
+        // ① 페이드인 + 자리잡기
+        tip.animate()
+                .alpha(1f).translationY(0f)
+                .setDuration(appear)
+                .withEndAction(() -> {
+                    // ② 위아래 바운스(4회)
+                    ObjectAnimator bounceAnim =
+                            ObjectAnimator.ofFloat(tip, "translationY", 0f, -dpToPx(6));
+                    bounceAnim.setDuration(bounce);
+                    bounceAnim.setInterpolator(new FastOutSlowInInterpolator());
+                    bounceAnim.setRepeatMode(ValueAnimator.REVERSE);
+                    bounceAnim.setRepeatCount(7);
+                    bounceAnim.addListener(new AnimatorListenerAdapter() {
+                        @Override public void onAnimationEnd(Animator animation) {
+                            // ③ 페이드아웃 후 제거
+                            tip.animate()
+                                    .alpha(0f)
+                                    .setDuration(disappear)
+                                    .withEndAction(() -> removeView(tip))
+                                    .start();
+                        }
+                    });
+                    bounceAnim.start();
+                })
+                .start();
     }
 
     // Working variables for {@link onInterceptTouchEvent(MotionEvent)} and
