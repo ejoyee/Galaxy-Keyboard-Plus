@@ -9,7 +9,6 @@ from app.api.get_image import router as get_image_router
 from app.api.keyword_exists import router as keyword_exists_router
 from app.api.keyword_images import router as keyword_images_router
 from app.api.clipboard_latest import router as clipboard_latest_router
-from app.api.mcp_match import router as mcp_match_router
 import logging
 
 app = FastAPI()
@@ -43,7 +42,6 @@ app.include_router(get_image_router, prefix="/search")
 app.include_router(keyword_exists_router, prefix="/search")
 app.include_router(keyword_images_router, prefix="/search")
 app.include_router(clipboard_latest_router, prefix="/search")
-app.include_router(mcp_match_router, prefix="/search")
 app.include_router(search_endpoints_router)
 
 
