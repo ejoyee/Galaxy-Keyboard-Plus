@@ -92,6 +92,7 @@ import org.dslul.openboard.inputmethod.latin.suggestions.MoreSuggestionsView.Mor
 import java.util.ArrayList;
 import java.util.List;
 
+import androidx.annotation.Nullable;
 import androidx.core.content.ContextCompat;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.inputmethod.EditorInfoCompat;
@@ -205,7 +206,6 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
     private String mMatchedWord = null;
     private TextView mTaskLabel;               // 등장할 문구
     private static final long TASK_ANIM_DURATION = 400; // ms
-    private static final int   TASK_GAP_DP       = 6;     // 버튼-라벨 간격
 
     /**
      * IME 서비스로부터 EditorInfo 를 전달받습니다
@@ -608,7 +608,6 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
             updateTaskButtonState();   // ← 항상 먼저 현재 상태 정리
             sendTaskMatch(lastWord);   // ← 아직 매칭 안 돼 있으면 활성화 시도
         } else if (event.type == HangulCommitEvent.TYPE_END) {
-
             // ① 키워드가 사라졌는지 먼저 확인
             updateTaskButtonState();
 
@@ -671,19 +670,12 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         showTaskActivatedMessage("테스트입니다.");
     }
 
-    private void resetTaskButton() {
-        hideTaskActivatedMessage();
-
-        mTaskKey.setImageResource(DEFAULT_TASK_ICON);   // 기본 아이콘
-
-        mTaskKey.setTranslationX(0f);        // ← 추가
-        if (mTaskLabel != null) {            // ← 추가
-            mTaskLabel.setVisibility(GONE);
-            mTaskLabel.setTranslationX(0f);
-        }
-
-        mTaskMatched = false;
-        mMatchedTask = null;
+    public void resetTaskButton() {
+        hideTaskActivatedMessage(() -> {
+            mTaskKey.setImageResource(DEFAULT_TASK_ICON);
+            mTaskMatched = false;
+            mMatchedTask = null;
+        });
     }
 
     /** 현재 활성 입력창의 전체 문자열(빈 문자열 가능) */
@@ -728,15 +720,14 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         // ① 폭 측정
         mTaskLabel.measure(MeasureSpec.UNSPECIFIED, MeasureSpec.UNSPECIFIED);
         int labelW = mTaskLabel.getMeasuredWidth();
-        int gapPx = dpToPx(TASK_GAP_DP);
 
         // ② 시작 위치 : 라벨은 오른쪽 밖, 버튼은 제자리
-        mTaskLabel.setTranslationX(labelW + gapPx);
-        mTaskKey.setTranslationX(0f);
+        mTaskLabel.setTranslationX(labelW);
+        mTaskKey.setTranslationX(labelW);
 
         // ③ 동시 애니메이션
         mTaskKey.animate()
-                .translationX(-(labelW + gapPx))               // 왼쪽으로 밀림
+                .translationX(0f)               // 왼쪽으로 밀림
                 .setDuration(TASK_ANIM_DURATION)
                 .setInterpolator(new FastOutSlowInInterpolator())
                 .start();
@@ -750,23 +741,27 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
     }
 
     // 리셋 애니메이션
-    private void hideTaskActivatedMessage() {
+    private void hideTaskActivatedMessage(@Nullable Runnable endAction) {
         if (mTaskLabel == null || mTaskLabel.getVisibility() != VISIBLE) return;
 
         int labelW = mTaskLabel.getWidth();
-        int gapPx = dpToPx(TASK_GAP_DP);
 
+        // 버튼도 함께 원위치
         mTaskKey.animate()
-                .translationX(0f)                     // 원위치
+                .translationX(labelW)                 // ➜ 오른쪽으로
                 .setDuration(TASK_ANIM_DURATION)
                 .setInterpolator(new FastOutSlowInInterpolator())
                 .start();
 
         mTaskLabel.animate()
-                .translationX(labelW + gapPx)       // 오른쪽으로 밀려나감
+                .translationX(labelW)
                 .alpha(0f)
                 .setDuration(TASK_ANIM_DURATION)
-                .withEndAction(() -> mTaskLabel.setVisibility(GONE))
+                .withEndAction(() -> {
+                    mTaskLabel.setVisibility(GONE);
+                    mTaskKey.setTranslationX(0f);     // 애니 완료 후 원복
+                    if (endAction != null) endAction.run();
+                })
                 .setInterpolator(new FastOutSlowInInterpolator())
                 .start();
     }

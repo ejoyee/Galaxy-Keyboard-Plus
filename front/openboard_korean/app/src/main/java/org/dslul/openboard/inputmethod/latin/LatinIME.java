@@ -936,6 +936,15 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     void onStartInputViewInternal(final EditorInfo editorInfo, final boolean restarting) {
         super.onStartInputView(editorInfo, restarting);
 
+        if (mSuggestionStripView != null) {
+            // 입력창이 비어 있다면 → Task 버튼 강제 초기화
+            if (editorInfo.initialSelStart == 0 && editorInfo.initialSelEnd == 0) {
+                mSuggestionStripView.resetTaskButton();   // ← 여기서 호출
+            }
+            // 필요하면 키워드 JSON도 리셋
+            mSuggestionStripView.clearSearchKeyHighlight();
+        }
+
         mDictionaryFacilitator.onStartInput();
         // Switch to the null consumer to handle cases leading to early exit below, for which we
         // also wouldn't be consuming gesture data.
@@ -1126,6 +1135,11 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
                 && !mSuggestionStripView.isCloseIconVisible()
                 && !mSuggestionStripView.isPausedBlue()) {
             mSuggestionStripView.clearSearchKeyHighlight();
+        }
+
+        // ② 이전 필드 벗어날 때도 안전하게 초기화
+        if (mSuggestionStripView != null) {
+            mSuggestionStripView.resetTaskButton();
         }
 
         mDictionaryFacilitator.onFinishInput(this);
@@ -1931,6 +1945,7 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
                     || actionId == EditorInfo.IME_ACTION_DONE) {
                 if (mSuggestionStripView != null) {
                     mSuggestionStripView.clearSearchKeyHighlight();
+                    mSuggestionStripView.resetTaskButton();
                 }
             }
         }
