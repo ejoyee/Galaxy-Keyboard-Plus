@@ -51,6 +51,7 @@ pipeline {
           string(credentialsId: 'BRAVE_API_KEY',                variable: 'BRAVE_API_KEY'),
           string(credentialsId: 'GOOGLE_SEARCH_API_KEY',               variable: 'GOOGLE_SEARCH_API_KEY'),
           string(credentialsId: 'GOOGLE_SEARCH_ENGINE_ID',                variable: 'GOOGLE_SEARCH_ENGINE_ID')
+          string(credentialsId: 'GOOGLE_MAPS_API_KEY',                variable: 'GOOGLE_MAPS_API_KEY')
         ]) {
           sh '''
             cp "$GCP_KEY_FILE" gcp-key.json
