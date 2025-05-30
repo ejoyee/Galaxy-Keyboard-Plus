@@ -18,7 +18,7 @@ app = FastAPI(
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
-    openapi_url="/openapi.json"
+    openapi_url="/openapi.json",
 )
 
 # CORS 설정
@@ -33,6 +33,7 @@ app.add_middleware(
 # API 라우터 등록
 app.include_router(api_router, prefix="/api")
 
+
 # 애플리케이션 시작 이벤트 핸들러
 @app.on_event("startup")
 async def startup_event():
@@ -41,6 +42,9 @@ async def startup_event():
     candidates = [
         {"name": "google", "url": os.getenv("GOOGLE_WEB_SEARCH_URL")},
         {"name": "brave", "url": os.getenv("WEB_SEARCH_URL")},
+        {"name": "google-maps", "url": os.getenv("GOOGLE_MAP_MCP_URL")},
+        {"name": "airbnb", "url": os.getenv("AIRBNB_MCP_URL")},
+
         # ... 필요한 만큼 추가
     ]
 
@@ -53,7 +57,7 @@ async def startup_event():
             logger.info(f"{conf['name']} MCP 연결 성공")
         else:
             logger.warning(f"{conf['name']} MCP 연결 실패")
-            await client.close() 
+            await client.close()
 
     # 정상 클라이언트만 매니저에 등록해서 싱글턴처럼 보관
     app.state.mcp_manager = MCPManager(valid_clients)
@@ -69,6 +73,7 @@ async def shutdown_event():
     if mcp_manager:
         await mcp_manager.close()
 
+
 # 오류 핸들러
 @app.exception_handler(500)
 async def internal_error_handler(request, exc):
@@ -77,6 +82,8 @@ async def internal_error_handler(request, exc):
         content={"detail": str(exc)},
     )
 
+
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run("app.main:app", host="0.0.0.0", port=8050, reload=True)
