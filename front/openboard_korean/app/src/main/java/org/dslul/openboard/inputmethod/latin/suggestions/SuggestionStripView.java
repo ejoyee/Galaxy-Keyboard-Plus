@@ -34,13 +34,22 @@ import android.content.res.TypedArray;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.ColorFilter;
+import android.graphics.Matrix;
 import android.graphics.Outline;
 import android.graphics.Paint;
+import android.graphics.PixelFormat;
 import android.graphics.Point;
 import android.graphics.PorterDuff;
+import android.graphics.RadialGradient;
+import android.graphics.Shader;
+import android.graphics.SweepGradient;
 import android.graphics.Typeface;
+import android.graphics.drawable.BitmapDrawable;
+import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.LayerDrawable;
 import android.net.Uri;
 import android.os.Handler;
 import android.os.Looper;
@@ -229,6 +238,12 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
     private ImageView mDragTipView;
     private final Handler mTipHandler = new Handler(Looper.getMainLooper());
     private Runnable mDragTipRunnable;
+
+    // 키보드 웨이브 관련
+    private ValueAnimator mRadarAnimator;
+    private boolean       mIsRadarRunning = false;
+    private ValueAnimator mScanAnimator;
+    private ScanWaveDrawable mScanWaveDrawable;
 
     // 한 곳에서 쓰기 편하도록
     private boolean isPhotoOnlyLocked() {
@@ -1248,6 +1263,8 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
     public void setListener(final Listener listener, final View inputView) {
         mListener = listener;
         mMainKeyboardView = inputView.findViewById(R.id.keyboard_view);
+
+        mMainKeyboardView.post(this::startScanWave);
     }
 
     /** 검색키 애니메이션과 JSON 활성화 상태만 해제합니다. */
@@ -1935,6 +1952,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
 
     @Override
     protected void onDetachedFromWindow() {
+        stopScanWave();
         super.onDetachedFromWindow();
         hideDragTipLoop();
         if (EventBus.getDefault().isRegistered(this)) {
@@ -1947,6 +1965,17 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
     protected void onSizeChanged(final int w, final int h, final int oldw, final int oldh) {
         // Called by the framework when the size is known. Show the important notice if applicable.
         // This may be overriden by showing suggestions later, if applicable.
+
+        super.onSizeChanged(w, h, oldw, oldh);
+        // 크기가 바뀌어 0이 아니게 되면 레이더 시작
+        if (w > 0 && h > 0) {
+            // 기존 애니메이터가 있으면 중지
+            if (mScanAnimator != null) {
+                mScanAnimator.cancel();
+                mScanAnimator = null;
+            }
+            post(this::startScanWave);
+        }
     }
 
     // SuggestionStripView 내부
@@ -2243,4 +2272,101 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         }
     }
 
+    private void startScanWave() {
+        if (mMainKeyboardView == null || mScanAnimator != null) return;
+
+        // 키보드 뷰 크기 기준 최대 반지름
+        int w = mMainKeyboardView.getWidth();
+        int h = mMainKeyboardView.getHeight();
+
+        // 아직 사이즈가 없으면 한 프레임 뒤에 재시도
+        if (w == 0 || h == 0) {
+            mMainKeyboardView.post(this::startScanWave);
+            return;
+        }
+
+        int maxR = Math.max(w,h) / 2;
+
+        // 배경으로 ScanWaveDrawable 추가
+        mScanWaveDrawable = new ScanWaveDrawable(maxR);
+        LayerDrawable layer = new LayerDrawable(new Drawable[]{
+                mOriginalKeyboardBackground != null ? mOriginalKeyboardBackground : new ColorDrawable(Color.TRANSPARENT),
+                mScanWaveDrawable
+        });
+        mMainKeyboardView.setBackground(layer);
+
+        // 0 → maxR, alpha 120 → 0 반복
+        mScanAnimator = ValueAnimator.ofFloat(0f, 1f);
+        mScanAnimator.setDuration(3000);
+        mScanAnimator.setRepeatCount(ValueAnimator.INFINITE);
+        mScanAnimator.setInterpolator(new LinearInterpolator());
+        mScanAnimator.addUpdateListener(anim -> {
+            float t = (float) anim.getAnimatedValue();
+            float r = t * maxR;
+            int   a = (int) ((1 - t) * 120);  // 120 → 0 투명도
+            mScanWaveDrawable.setWave(r, a);
+        });
+        mScanAnimator.start();
+    }
+
+    private void stopScanWave() {
+        if (mScanAnimator != null) {
+            mScanAnimator.cancel();
+            mScanAnimator = null;
+        }
+        // 배경 복원
+        if (mMainKeyboardView != null && mOriginalKeyboardBackground != null) {
+            mMainKeyboardView.setBackground(mOriginalKeyboardBackground);
+        }
+    }
+
+    private static class ScanWaveDrawable extends Drawable {
+        private final Paint mPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private float radius;     // 현재 파동 반지름
+        private int alpha;        // 현재 투명도
+        private final int maxRadius;
+
+        public ScanWaveDrawable(int maxRadius) {
+            this.maxRadius = maxRadius;
+            mPaint.setStyle(Paint.Style.FILL);
+        }
+
+        public void setWave(float r, int a) {
+            this.radius = r;
+            this.alpha  = a;
+            invalidateSelf();
+        }
+
+        @Override
+        public void draw(Canvas canvas) {
+            if (radius <= 1f) return;
+
+            mPaint.setAlpha(alpha);
+
+            float cx = canvas.getWidth() * 0.5f;
+            float cy = canvas.getHeight() * 0.90f;
+
+            // 실제 그릴 반경: 원래 radius 의 5배
+            float drawR = radius * 5f;
+
+            int innerColor = Color.argb(Math.min(alpha * 2, 255),   0, 120, 255);
+            int outerColor = Color.argb(0, 0, 120, 255);
+
+            Shader shader = new RadialGradient(
+                    cx, cy, drawR,
+                    innerColor,
+                    outerColor,
+                    Shader.TileMode.CLAMP
+            );
+            mPaint.setShader(shader);
+            canvas.drawCircle(cx, cy, drawR, mPaint);
+            mPaint.setShader(null);
+        }
+
+        @Override public void setAlpha(int a)    { }
+        @Override public void setColorFilter(ColorFilter cf) { }
+        @Override public int  getOpacity()        { return PixelFormat.TRANSLUCENT; }
+        @Override public int  getIntrinsicWidth()  { return maxRadius*2; }
+        @Override public int  getIntrinsicHeight() { return maxRadius*2; }
+    }
 }
