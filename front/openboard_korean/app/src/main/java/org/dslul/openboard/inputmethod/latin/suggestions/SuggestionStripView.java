@@ -18,7 +18,9 @@ package org.dslul.openboard.inputmethod.latin.suggestions;
 
 import android.animation.Animator;
 import android.animation.AnimatorSet;
+import android.animation.Keyframe;
 import android.animation.ObjectAnimator;
+import android.animation.PropertyValuesHolder;
 import android.animation.ValueAnimator;
 import android.content.ClipData;
 import android.content.ClipDescription;
@@ -60,6 +62,7 @@ import android.view.accessibility.AccessibilityEvent;
 import android.view.animation.AccelerateInterpolator;
 import android.view.animation.DecelerateInterpolator;
 import android.view.animation.Interpolator;
+import android.view.animation.LinearInterpolator;
 import android.view.animation.OvershootInterpolator;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.ExtractedText;
@@ -1284,7 +1287,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
             if (btn == mSearchKey && isPhotoOnlyLocked()) continue;
 
             if (btn.getVisibility() == VISIBLE) {
-                startBreathing(btn, 0.8f, 1.1f, 1800);   // 1.8 초 주기로 커졌다가 원위치
+                startBreathing(btn);
             } else {
                 stopBreathing(btn);
             }
@@ -1641,10 +1644,10 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                                 mFetchClipboardKey.setVisibility(VISIBLE);
                                 mTaskKey.setVisibility(VISIBLE);
 
-                                startBreathing(mSearchKey, 0.8f, 1.1f, 1800);
-                                startBreathing(mVoiceKey,   0.8f, 1.1f, 1800);
-                                startBreathing(mFetchClipboardKey, 0.8f, 1.1f, 1800);
-                                startBreathing(mTaskKey,    0.8f, 1.1f, 1800);
+                                startBreathing(mSearchKey);
+                                startBreathing(mVoiceKey);
+                                startBreathing(mFetchClipboardKey);
+                                startBreathing(mTaskKey);
 
                                 mSearchKey.clearAnimation();
                                 mSearchKey.setAnimation("ic_search_backup.json");
@@ -2044,27 +2047,35 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
     }
 
     // SuggestionStripView 클래스 안, 아무 메서드 밑에 위치만 맞춰 추가
-    private static void startBreathing(@NonNull View v, float scaleFrom, float scaleTo, long durationMs) {
-        // 이미 실행 중이면 중복 실행 방지
+    private static void startBreathing(@NonNull View v) {
+        // 이미 실행 중이면 중복 방지
         if (v.getTag(R.id.tag_breathing_anim) != null) return;
 
-        ObjectAnimator sx = ObjectAnimator.ofFloat(v, View.SCALE_X, scaleFrom, scaleTo);
-        ObjectAnimator sy = ObjectAnimator.ofFloat(v, View.SCALE_Y, scaleFrom, scaleTo);
+        // 구간별 시간(ms)
+        long upDuration   = 300;
+        long downDuration = 300;
+        long idleDuration = 2000;
+        long total        = upDuration + downDuration + idleDuration;
 
-        // 반복·반전 설정은 개별 애니메이터에!
-        for (ObjectAnimator oa : new ObjectAnimator[]{sx, sy}) {
-            oa.setDuration(durationMs);
-            oa.setRepeatMode(ValueAnimator.REVERSE);
-            oa.setRepeatCount(ValueAnimator.INFINITE);
-            oa.setInterpolator(new FastOutSlowInInterpolator());
-        }
+        // Keyframe 생성 (fraction, value)
+        Keyframe kf0 = Keyframe.ofFloat(0f,                             1f);   // 시작
+        Keyframe kf1 = Keyframe.ofFloat(upDuration   / (float) total,  1.1f); // 300ms 시점
+        Keyframe kf2 = Keyframe.ofFloat((upDuration + downDuration) / (float) total, 1f); // 600ms 시점
+        Keyframe kf3 = Keyframe.ofFloat(1f,                             1f);   // 100%
 
-        AnimatorSet set = new AnimatorSet();
-        set.playTogether(sx, sy);
-        set.start();
+        // 스케일 X/Y PropertyValuesHolder
+        PropertyValuesHolder pvhX = PropertyValuesHolder.ofKeyframe("scaleX", kf0, kf1, kf2, kf3);
+        PropertyValuesHolder pvhY = PropertyValuesHolder.ofKeyframe("scaleY", kf0, kf1, kf2, kf3);
 
-        // 뷰에 애니메이터를 태그로 보관(나중에 중지용)
-        v.setTag(R.id.tag_breathing_anim, set);
+        // ObjectAnimator 로 View 프로퍼티 직접 애니
+        ObjectAnimator animator = ObjectAnimator.ofPropertyValuesHolder(v, pvhX, pvhY);
+        animator.setDuration(total);
+        animator.setInterpolator(new LinearInterpolator());
+        animator.setRepeatCount(ValueAnimator.INFINITE);
+        animator.start();
+
+        // 나중에 cancel 용으로 태그에 저장
+        v.setTag(R.id.tag_breathing_anim, animator);
     }
 
     private static void stopBreathing(@NonNull View v) {
