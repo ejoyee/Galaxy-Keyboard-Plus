@@ -166,11 +166,11 @@ services:
       - internal
 
 
-  google-maps-mcp:
+google-maps-mcp  :
     container_name: google-maps-mcp
     build: ./back/google-map-mcp
     ports:
-      - "0.0.0.0:8150:8150"
+      - "0.0.0.0:8170:8170"
     environment:
       - GOOGLE_MAPS_API_KEY=${GOOGLE_MAPS_API_KEY}
     restart: always
