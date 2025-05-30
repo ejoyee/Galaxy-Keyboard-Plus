@@ -116,6 +116,7 @@ ENV=prod
                               else if (p.startsWith('back/search/'))    return 'search-service'  // search 디렉토리는 search-service로 매핑
                               else if (p.startsWith('back/mcp/'))       return 'mcp'  // mcp 디렉토리는 mcp 서비스로 매핑
                               else if (p.startsWith('back/brave-search/')) return 'web-search'  // brave-search 디렉토리는 web-search 서비스로 매핑
+                              else if (p.startsWith('back/google-map-mcp/'))        return 'google-maps-mcp'
                               else if (p.startsWith('back/google-web-search/')) return 'google-web-search'  // web-search 디렉토리는 web-search 서비스로 매핑
                               else if (p.startsWith('back/airbnb-mcp/')) return 'airbnb-mcp' 
                               else /* back/... */                       return p.tokenize('/')[1]
@@ -191,8 +192,10 @@ ENV=prod
               containerName = 'search-service'
             } else if (svc == 'mcp') {
               containerName = 'mcp-api'
-            } else if (svc == 'web-search') {
-              containerName = 'web-search'
+            } else if (svc == 'google-maps-mcp') {
+              containerName = 'google-maps-mcp'
+            } else if (svc == 'airbnb-mcp') {
+              containerName = 'airbnb-mcp' 
             } else if (svc == 'airbnb-mcp') {
               containerName = 'airbnb-mcp' 
             } else if (svc != 'nginx' && svc != 'redis-ratelimiter' && !svc.startsWith('postgres_')) {
