@@ -226,6 +226,9 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
     private boolean mPhotoOnlyLocked = false;
     private boolean mScrollTipShown = false;   // 스크롤 툴팁 이미 보여줬는지
     private boolean mDragTipShown = false;      // 드래그 툴팁 이미 보여줬는지
+    private ImageView mDragTipView;
+    private final Handler mTipHandler = new Handler(Looper.getMainLooper());
+    private Runnable mDragTipRunnable;
 
     // 한 곳에서 쓰기 편하도록
     private boolean isPhotoOnlyLocked() {
@@ -448,11 +451,12 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                     if (event.getClipDescription().hasMimeType(ClipDescription.MIMETYPE_TEXT_URILIST)) {
                         // 1) IME Insets Freeze ON
                         if (mImeService != null) mImeService.setDragging(true);
+                        if (mDragTipRunnable != null) mTipHandler.removeCallbacks(mDragTipRunnable);
 
                         expandDragArea();
 
                         // 드래그 툴팁
-                        showDragTip();
+//                        showDragTip();
 
                         return true;
                     }
@@ -530,6 +534,8 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
 
                     // 크기 원복
                     collapseDragArea();
+
+                    hideDragTipLoop();
                     return true;
 
                 default:
@@ -1113,6 +1119,9 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                             // 스크롤 툴팁
                             showScrollTip();
 
+                            // 드래그 툴팁 예약
+                            scheduleDragTipLoop();
+
                             // PHOTO_ONLY 모드에서 카드 뷰에 연쇄 버운스 애니메이션 추가
                             post(() -> {
                                 Handler handler = new Handler(Looper.getMainLooper());
@@ -1435,10 +1444,11 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         ImageView tip = new ImageView(getContext());
         tip.setImageResource(R.drawable.ic_scroll_tip);
 
-        int sz = dpToPx(56);
+        int sz = dpToPx(32);
         LayoutParams lp = new LayoutParams(sz, sz);
         lp.addRule(CENTER_HORIZONTAL);
-        lp.addRule(CENTER_VERTICAL);
+        lp.addRule(ALIGN_PARENT_BOTTOM);
+        lp.bottomMargin = dpToPx(12);
         addView(tip, lp);
 
         // ▶ PhotoBar 위에 떠 있도록
@@ -1494,6 +1504,8 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         tip.bringToFront();
         tip.setElevation(dpToPx(8));
 
+        mDragTipView = tip;
+
         long appear = 200, bounce = 200, disappear = 200;
         tip.setAlpha(0f);
         tip.setTranslationY(-dpToPx(10));  // 위에서 내려오는 모션
@@ -1523,6 +1535,38 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                     bounceAnim.start();
                 })
                 .start();
+    }
+
+    // 클래스 맨 아래쪽에
+    private void scheduleDragTipLoop() {
+        hideDragTipLoop();
+        mDragTipRunnable = new Runnable() {
+            @Override public void run() {
+                // 실제 드래깅 전이라면
+                if (!mIsDragging) {
+                    showDragTip();
+                    // 3초 후 다시
+                    mTipHandler.postDelayed(this, 3000);
+                }
+            }
+        };
+        // 3초 뒤부터 시작
+        mTipHandler.postDelayed(mDragTipRunnable, 3000);
+    }
+
+    // ③ 숨기기 유틸
+    private void hideDragTipLoop() {
+        // 예약된 콜백 제거
+        if (mDragTipRunnable != null) {
+            mTipHandler.removeCallbacks(mDragTipRunnable);
+            mDragTipRunnable = null;
+        }
+        // 이미 떠있는 팁 뷰 제거
+        if (mDragTipView != null) {
+            removeView(mDragTipView);
+            mDragTipView = null;
+        }
+        mDragTipShown = false;
     }
 
     // Working variables for {@link onInterceptTouchEvent(MotionEvent)} and
@@ -1773,6 +1817,8 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                             });
                     mKeyHighlighted = false;
                     mPhotoOnlyLocked = false;
+
+                    hideDragTipLoop();
                 }, delay);
 
                 SuggestionStripView.this.setLayerType(View.LAYER_TYPE_NONE, null);
@@ -1890,6 +1936,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
     @Override
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
+        hideDragTipLoop();
         if (EventBus.getDefault().isRegistered(this)) {
             EventBus.getDefault().unregister(this);
         }
@@ -1987,6 +2034,8 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         setLayoutParams(lp);
 
         invalidate();
+
+        hideDragTipLoop();
     }
 
     @Override
