@@ -17,74 +17,72 @@ client = AsyncAnthropic(api_key=os.getenv("CLAUDE_API_KEY"))
 ROUTER_PROMPT = """
 You are a router that maps user requests to **ONE** Google-Maps MCP tool call.
 
-✔️ You may freely choose **any** Google-Maps MCP tool available, such as
-maps_search_places, maps_directions, maps_geocode, maps_place_details,
-maps_nearby_search, maps_distance_matrix, etc.
-Pick the single tool that best satisfies the user's request.
+🗣️ 자연어 경로 요청 패턴 인식:
+다음과 같은 모든 패턴을 경로 요청으로 인식하세요:
+- "A에서 B로/까지 가는 방법"
+- "A에서 B 가는법" 
+- "B로/에 가는 방법" (출발지 미지정)
+- "B 어떻게 가나요/가나" 
+- "B 가는 길"
+- "B 경로 알려줘"
+- "B 교통편"
+- "A부터 B까지"
+- "A 출발해서 B"
+- 기타 이동/교통 관련 모든 표현
 
-🏷️ Location handling rules for directions/routes:
-• If the user requests directions/routes and does NOT specify an origin,
-  use the provided current_address as the origin (this is already converted from coordinates).
-• If the user specifies a different starting point, use that instead.
-• Always ensure the full route is captured by using complete address information.
+🎯 경로 요청 처리 규칙:
+1. 위 패턴 중 하나라도 해당되면 → maps_directions 사용
+2. 출발지 명시 없으면 → current_address를 origin으로 사용
+3. 출발지 명시 있으면 → 해당 장소를 origin으로 사용
+4. 반드시 mode는 "transit"으로 설정 (대중교통)
 
-🏷️ Location handling rules for search/places:
-• If the request mentions any city, district, station, or landmark, 
-  rely on that textual location only.
-• Use the caller's coordinates only when no location clue exists at all.
+✔️ 기타 도구 사용 경우:
+- 장소 검색: "근처 맛집", "주변 카페", "A 찾아줘" 등
+- 주소 변환: "여기가 어디야", "이 위치 주소" 등
 
-If no tool is needed, reply with {"text": "<reply>"}.
+🏷️ 매개변수 설정:
+- language: "ko"
+- region: "KR" 
+- mode: "transit" (경로 요청 시)
 
-Return **JSON only** as
-{"tool":"<tool_name>","arguments":{…}}  — no extra keys, no commentary.
+Return **JSON only**: {"tool":"<tool_name>","arguments":{…}}
 
-🇰🇷 반드시 아래 두 파라미터를 arguments 에 포함해라
-"language":"ko", "region":"KR"
-
-중요: 경로/길찾기 요청의 경우 전체 경로가 표시되도록 완전한 주소 정보를 사용하세요.
+중요: 한국어 자연어의 다양한 경로 표현을 모두 인식하여 정확한 길찾기를 제공하세요.
 """
 
 HTML_ONLY_PROMPT = """
-- 절대 JSON 문자열처럼 HTML을 주지 마. "\\n", "\\", "\"" 문자가 없어야 하고, 순수 HTML 코드 그 자체를 출력해.
-- 응답은 {"text": "<html>...</html>"} 같은 JSON 형태로 절대 반환하지 마.
+- 절대 JSON 문자열처럼 HTML을 주지 마. 순수 HTML 코드 그 자체를 출력해.
 
-너는 안드로이드 웹뷰 전용 HTML 디자이너야.
-반드시 **한글**로만 작성하고, 모바일 최적화된 대중교통 경로 UI를 만들어줘.
+안드로이드 웹뷰 전용 대중교통 경로 UI 디자이너야.
 
-🚨 안드로이드 웹뷰 최적화 요구사항:
-- viewport: width=device-width, initial-scale=1.0, user-scalable=no
-- 터치 친화적: 최소 44px 터치 영역, 충분한 간격
-- 스크롤 최적화: -webkit-overflow-scrolling: touch
-- 폰트: system-ui, -apple-system, 'Malgun Gothic' fallback
-- 다크모드 대응: @media (prefers-color-scheme: dark)
+🎨 필수 색상 대비 규칙:
+- 배경색과 글자색 대비비 최소 4.5:1 이상 보장
+- 기본 배경: #F8F9FA (연한 회색)
+- 기본 글자: #212529 (진한 검정)
+- 카드 배경: #FFFFFF (순백)
+- 헤더 배경: linear-gradient(135deg, #667eea 0%, #764ba2 100%)
+- 헤더 글자: #FFFFFF (순백) - 그라디언트 위에서만
 
-🎨 디자인 시스템:
-- 컬러: Material Design 3 기반 (Primary: #1976D2, Surface: #F5F5F5)
-- 그림자: box-shadow 대신 border + background로 성능 최적화
-- 애니메이션: transform 사용, 60fps 보장
-- 아이콘: 유니코드 이모지 활용 (🚇🚌🚶‍♀️⏰📍)
+⚠️ 색상 안전 규칙:
+- 절대 같은 계열 색상을 배경-글자로 사용 금지
+- 회색 배경에는 반드시 검은색 계열 글자
+- 어두운 배경에는 반드시 밝은색 글자
+- 투명도 사용 시 최종 대비비 계산 후 적용
 
-📱 레이아웃 구조:
-1. 고정 헤더 (sticky) - 출발지→도착지, 총 시간/거리
-2. 스크롤 가능한 메인 영역:
-   - 요약 카드 (시간, 거리, 요금, 환승)
-   - 단계별 카드들 (아이콘 + 설명 + 시간)
-   - 상세 정보 (정차역, 노선도)
-3. 하단 여백 (safe-area-inset-bottom 대응)
+🎯 명확한 색상 시스템:
+- Primary: #1976D2 (파랑) / 흰 배경에서만
+- Success: #4CAF50 (초록) / 흰 배경에서만  
+- Warning: #FF9800 (주황) / 흰 배경에서만
+- Error: #F44336 (빨강) / 흰 배경에서만
+- 모든 컬러 배경에는 white 또는 #FFFFFF 글자만
 
-🚀 성능 최적화:
-- CSS는 <style> 태그 내부에 inline으로
-- 외부 리소스 로딩 금지
-- 이미지 대신 CSS 그라디언트/도형 활용
-- 복잡한 CSS 선택자 지양
+📱 레이아웃 필수사항:
+1. 전체 배경: #F8F9FA
+2. 카드들: 흰색 배경 + 검은색 글자
+3. 헤더만: 그라디언트 + 흰색 글자
+4. 버튼: 컬러 배경 + 흰색 글자
 
-🎯 UX 최적화:
-- 로딩 없이 즉시 표시
-- 중요 정보 우선 배치 (소요시간, 환승횟수)
-- 색상으로 노선 구분 (지하철 1호선=파랑, 2호선=초록 등)
-- 단계별 진행 표시기
-
-⚠️ 절대 경로를 압축하지 말고 모든 구간의 모든 단계를 표시하세요.
+🚨 절대 경로를 압축하지 말고 모든 구간의 모든 단계를 표시하세요.
 """
 
 PLACES_PROMPT = """
@@ -107,18 +105,23 @@ PLACES_PROMPT = """
 🏪 장소 카드 구성:
 - 헤더: 이름 + 평점 + 영업상태
 - 본문: 주소 + 카테고리 + 거리
-- 액션: 전화걸기, 길찾기, 네이버지도 버튼
-- 아이콘: 📍🌟📞🗺️⏰
+- 액션: 네이버지도 링크 버튼만 제공
+- 아이콘: 📍🌟🗺️⏰
 
 🔗 링크 처리:
-- tel: 링크로 전화 연결
-- 네이버지도: nmap://place?lat=&lng= 형식
-- 구글지도: geo: 링크 활용
+- 네이버지도: https://map.naver.com/v5/search/장소명 형식으로 링크
+- 장소명에 특수문자가 있으면 URL 인코딩 적용
+- 버튼 텍스트: "네이버지도에서 보기" 또는 "지도보기"
 
 💡 안드로이드 웹뷰 특화:
 - JavaScript 최소화
 - CSS transform으로 부드러운 애니메이션
 - touch-action: manipulation으로 300ms 지연 제거
+
+⚠️ 제외 요소:
+- 전화번호 링크 및 전화 관련 기능 제거
+- 📞 아이콘 사용하지 않음
+- tel: 링크 사용하지 않음
 """
 
 
@@ -158,13 +161,23 @@ async def choose_tool(query: str, *, lat: float, lon: float, current_address: st
     
     user_msg = "\n".join(user_msg_parts)
 
-    rsp = await client.messages.create(
-        model=ROUTER_MODEL,
-        max_tokens=1024,
-        temperature=0.2,
-        system=ROUTER_PROMPT,
-        messages=[{"role": "user", "content": user_msg}],
-    )
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            rsp = await client.messages.create(
+                model=ROUTER_MODEL,
+                max_tokens=1024,
+                temperature=0.2,
+                system=ROUTER_PROMPT,
+                messages=[{"role": "user", "content": user_msg}],
+            )
+            break
+        except Exception as e:
+            log.warning(f"Claude API 호출 시도 {attempt + 1} 실패: {e}")
+            if attempt == max_retries - 1:
+                # fallback 응답
+                return {"text": "서비스가 일시적으로 불안정합니다. 잠시 후 다시 시도해주세요."}
+            await asyncio.sleep(2 ** attempt)
 
     content = rsp.content[0].text.strip()
     log.debug("Router raw: %s", content)
