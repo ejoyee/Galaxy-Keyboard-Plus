@@ -39,6 +39,8 @@ import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
+import android.os.Handler;
+import android.os.Looper;
 import android.provider.MediaStore;
 import android.util.AttributeSet;
 import android.util.Log;
@@ -55,6 +57,9 @@ import android.view.ViewGroup;
 import android.view.ViewOutlineProvider;
 import android.view.ViewParent;
 import android.view.accessibility.AccessibilityEvent;
+import android.view.animation.AccelerateInterpolator;
+import android.view.animation.DecelerateInterpolator;
+import android.view.animation.Interpolator;
 import android.view.animation.OvershootInterpolator;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.ExtractedText;
@@ -99,6 +104,7 @@ import java.util.List;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.cardview.widget.CardView;
 import androidx.core.content.ContextCompat;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.inputmethod.EditorInfoCompat;
@@ -393,6 +399,11 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         mPhotoBar = findViewById(R.id.suggestions_strip_photo_bar);
         mPhotoBarContainer = findViewById(R.id.photo_bar_container);
         mSearchAnswer = findViewById(R.id.search_answer);
+
+        mPhotoBar.setClipToPadding(false);
+        mPhotoBar.setClipChildren(false);
+        mPhotoBarContainer.setClipToPadding(false);
+        mPhotoBarContainer.setClipChildren(false);
 
         post(() -> {
             if (mDefaultHeight == 0) {
@@ -976,22 +987,26 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                                 try {
                                     long id = Long.parseLong(idStr);
                                     Bitmap thumb = MediaStore.Images.Thumbnails.getThumbnail(getContext().getContentResolver(), id, MediaStore.Images.Thumbnails.MINI_KIND, null);
-                                    ImageView iv = new ImageView(getContext());
+                                    // ① CardView 준비
+                                    CardView card = new CardView(getContext());
+                                    card.setLayoutParams(mPhotoItemLp);
+                                    card.setRadius(dpToPx(8));            // 둥근 모서리
+                                    card.setOutlineSpotShadowColor(Color.BLUE);
+                                    card.setOutlineAmbientShadowColor(Color.BLUE);
+                                    card.setCardElevation(dpToPx(6));     // 그림자 깊이
+                                    card.setUseCompatPadding(true);       // Pre-Lollipop 보정
+                                    card.setPreventCornerOverlap(false);  // 내부 이미지를 완전히 클립하지 않음
 
-                                    iv.setLayoutParams(mPhotoItemLp);
+                                    // ② 실제 이미지뷰
+                                    ImageView iv = new ImageView(getContext());
+                                    iv.setLayoutParams(new ViewGroup.LayoutParams(
+                                            ViewGroup.LayoutParams.MATCH_PARENT,
+                                            ViewGroup.LayoutParams.MATCH_PARENT));
                                     iv.setScaleType(ImageView.ScaleType.CENTER_CROP);
                                     iv.setImageBitmap(thumb);
 
-                                    // ① 썸네일용 ImageView 생성부 바로 아래에 추가
-                                    iv.setClipToOutline(true);                   // 모서리 잘라내기
-                                    ViewCompat.setElevation(iv, 0);      // 그림자 깊이
-                                    iv.setOutlineProvider(new ViewOutlineProvider() {   // 모서리 8dp 둥글게
-                                        @Override
-                                        public void getOutline(View v, Outline o) {
-                                            int r = dpToPx(8);                    // 둥근 모서리 반경
-                                            o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), r);
-                                        }
-                                    });
+                                    // ③ CardView 안에 넣기
+                                    card.addView(iv);
 
                                     // 클릭 시 클립보드 복사
                                     Uri uri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id);
@@ -1046,14 +1061,14 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                                     });
 
                                     // ① 추가: 뷰를 0배율에서 시작
-                                    iv.setScaleX(0f);
-                                    iv.setScaleY(0f);
+                                    card.setScaleX(0f);
+                                    card.setScaleY(0f);
 
                                     // ② 컨테이너에 뷰 추가
-                                    mPhotoBarContainer.addView(iv);
+                                    mPhotoBarContainer.addView(card);
 
                                     // ③ 순차적 스케일 애니메이션 (0 → 1.1 → 1.0)
-                                    iv.animate()
+                                    card.animate()
                                             .scaleX(1f)
                                             .scaleY(1f)
                                             .setStartDelay(i * 100L)                // 각 아이템마다 100ms씩 딜레이
@@ -1084,6 +1099,59 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                             requestLayout();
 
                             mPhotoBar.setVisibility(VISIBLE);
+
+                            // PHOTO_ONLY 모드에서 카드 뷰에 연쇄 버운스 애니메이션 추가
+                            post(() -> {
+                                Handler handler = new Handler(Looper.getMainLooper());
+                                int count = mPhotoBarContainer.getChildCount();
+                                if (count == 0) return;
+
+                                long activeDuration = 1000L;   // 1초 동안만 애니
+                                long upDuration     = 300L;    // ↑ 300ms
+                                long downDuration   = 300L;    // ↓ 300ms
+                                long interDelay     = count > 1
+                                        ? (activeDuration - upDuration - downDuration) / (count - 1)
+                                        : 0L;
+                                long cycleInterval  = 3000L;   // 3초마다 반복
+
+                                // 부드러운 감속/가속용 인터폴레이터
+                                Interpolator upInterp   = new DecelerateInterpolator();
+                                Interpolator downInterp = new AccelerateInterpolator();
+
+                                // 카드별 애니 Runnable 생성
+                                Runnable[] anims = new Runnable[count];
+                                for (int i = 0; i < count; i++) {
+                                    final View card = mPhotoBarContainer.getChildAt(i);
+                                    anims[i] = () -> {
+                                        card.animate()
+                                                .translationY(-dpToPx(4))
+                                                .setDuration(upDuration)
+                                                .setInterpolator(upInterp)
+                                                .withEndAction(() -> card.animate()
+                                                        .translationY(0)
+                                                        .setDuration(downDuration)
+                                                        .setInterpolator(downInterp)
+                                                        .start()
+                                                )
+                                                .start();
+                                    };
+                                }
+
+                                // 마스터 사이클 Runnable
+                                Runnable cycle = new Runnable() {
+                                    @Override
+                                    public void run() {
+                                        for (int i = 0; i < count; i++) {
+                                            handler.postDelayed(anims[i], interDelay * i);
+                                        }
+                                        handler.postDelayed(this, cycleInterval);
+                                    }
+                                };
+
+                                // 최초 실행
+                                handler.postDelayed(cycle, 2000L);
+                            });
+
 
                             // ⬇️ “❌” 아이콘으로 바뀔 때 글로우 애니메이션 정리
                             if (mBorderPulseAnimator != null) {
