@@ -1,7 +1,7 @@
 ## RAG 관련 진입점
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
-from app.api.pinecone_test import router as pinecone_test_router
+
 from app.api.image_classify import router as image_classify_router
 from app.api.embedding_api import router as embedding_api_router
 from app.api.text_extractor_api import router as text_extractor_api_router
@@ -10,9 +10,10 @@ from app.api.schedule_api import router as schedule_api_router
 from app.api.save_text import router as save_text_router
 from app.api.image_upload import router as image_upload_router
 from app.api.search_image_info import router as search_image_info_router
-from app.api.test_image_upload import router as test_image_upload_router
-from app.api.db_connection_test import router as db_connection_test_router
+
+
 from app.api.image_upload_keyword import router as image_upload_keyword_router
+from app.api.qa_management import router as qa_management_router
 import logging
 
 app = FastAPI()
@@ -27,7 +28,6 @@ logging.basicConfig(
 logging.info("✅ FastAPI 애플리케이션 시작 전 로깅 설정 완료")
 
 # API 라우터 등록
-app.include_router(pinecone_test_router, prefix="/rag")
 app.include_router(image_classify_router, prefix="/rag")
 app.include_router(embedding_api_router, prefix="/rag")
 app.include_router(text_extractor_api_router, prefix="/rag")
@@ -36,9 +36,8 @@ app.include_router(schedule_api_router, prefix="/rag")
 app.include_router(save_text_router, prefix="/rag")
 app.include_router(image_upload_router, prefix="/rag")
 app.include_router(search_image_info_router, prefix="/rag")
-app.include_router(test_image_upload_router, prefix="/test")
-app.include_router(db_connection_test_router, prefix="/rag")
 app.include_router(image_upload_keyword_router, prefix="/rag")
+app.include_router(qa_management_router, prefix="/rag")
 
 if __name__ == "__main__":
     import uvicorn
