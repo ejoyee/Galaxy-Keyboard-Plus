@@ -50,7 +50,8 @@ pipeline {
           string(credentialsId: 'GOOGLE_API_KEY',               variable: 'GOOGLE_API_KEY'),
           string(credentialsId: 'BRAVE_API_KEY',                variable: 'BRAVE_API_KEY'),
           string(credentialsId: 'GOOGLE_SEARCH_API_KEY',               variable: 'GOOGLE_SEARCH_API_KEY'),
-          string(credentialsId: 'GOOGLE_SEARCH_ENGINE_ID',                variable: 'GOOGLE_SEARCH_ENGINE_ID')
+          string(credentialsId: 'GOOGLE_SEARCH_ENGINE_ID',                variable: 'GOOGLE_SEARCH_ENGINE_ID'),
+          string(credentialsId: 'GOOGLE_MAPS_API_KEY',                variable: 'GOOGLE_MAPS_API_KEY')
         ]) {
           sh '''
             cp "$GCP_KEY_FILE" gcp-key.json
@@ -89,7 +90,7 @@ BRAVE_API_KEY=${BRAVE_API_KEY}
 
 GOOGLE_SEARCH_API_KEY=${GOOGLE_SEARCH_API_KEY}
 GOOGLE_SEARCH_ENGINE_ID=${GOOGLE_SEARCH_ENGINE_ID}
-
+GOOGLE_MAPS_API_KEY=${GOOGLE_MAPS_API_KEY}
 ENV=prod
 """.trim()
         }
@@ -116,6 +117,7 @@ ENV=prod
                               else if (p.startsWith('back/mcp/'))       return 'mcp'  // mcp 디렉토리는 mcp 서비스로 매핑
                               else if (p.startsWith('back/brave-search/')) return 'web-search'  // brave-search 디렉토리는 web-search 서비스로 매핑
                               else if (p.startsWith('back/google-web-search/')) return 'google-web-search'  // web-search 디렉토리는 web-search 서비스로 매핑
+                              else if (p.startsWith('back/airbnb-mcp/')) return 'airbnb-mcp' 
                               else /* back/... */                       return p.tokenize('/')[1]
                             }
                             .unique()
@@ -191,6 +193,8 @@ ENV=prod
               containerName = 'mcp-api'
             } else if (svc == 'web-search') {
               containerName = 'web-search'
+            } else if (svc == 'airbnb-mcp') {
+              containerName = 'airbnb-mcp' 
             } else if (svc != 'nginx' && svc != 'redis-ratelimiter' && !svc.startsWith('postgres_')) {
               containerName = "${svc}-service"
             } else {
