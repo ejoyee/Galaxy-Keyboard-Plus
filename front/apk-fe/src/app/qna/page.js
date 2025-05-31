@@ -43,7 +43,7 @@ export default function QnaPage() {
     setDisplayedText('');
     
     try {
-      const response = await fetch('https://k12e201.p.ssafy.io/rag/qa/query', {
+      const response = await fetch('https://k12e201.p.ssafy.io/search/qa/query', {
   method: 'POST',
   headers: {
     'accept': 'application/json',
