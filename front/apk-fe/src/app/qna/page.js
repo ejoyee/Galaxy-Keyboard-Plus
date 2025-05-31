@@ -163,11 +163,11 @@ export default function QnaPage() {
       </div>
 
       <div className="relative z-10 min-h-screen flex flex-col">
-        {/* Main Content - centered vertically */}
-        <div className="flex-1 flex flex-col items-center justify-center p-4 pb-16">
+        {/* Main Content - centered vertically with top padding */}
+        <div className="flex-1 flex flex-col items-center justify-center p-4 pt-16 pb-16">
           <div className="w-full max-w-4xl xl:max-w-5xl">
-            {/* Header - 완전 중앙 정렬 */}
-            <div className="text-center mb-6 sm:mb-8">
+            {/* Header - 상단 여백 추가 */}
+            <div className="text-center mb-6 sm:mb-8 mt-8 sm:mt-12 md:mt-16">
               <div className="mb-3 sm:mb-4">
                 <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl xl:text-6xl font-bold bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-600 bg-clip-text text-transparent mb-2 sm:mb-3 leading-tight">
                   Galaxy Keyboard Plus
@@ -269,8 +269,8 @@ export default function QnaPage() {
           </div>
         </div>
 
-        {/* Minimalist Footer */}
-        <footer className="relative z-20 bg-black/30 backdrop-blur-sm border-t border-white/5">
+        {/* Minimalist Footer - Always Visible */}
+        <footer className="relative z-20 bg-black/40 backdrop-blur-sm border-t border-white/10 flex-shrink-0">
           <div className="max-w-6xl mx-auto px-4 py-3">
             <div className="flex flex-wrap items-center justify-center gap-4 sm:gap-6 text-xs sm:text-sm text-gray-400">
               <span className="font-medium text-white">Galaxy Keyboard Plus</span>
