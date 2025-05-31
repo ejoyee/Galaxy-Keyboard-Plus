@@ -1,37 +1,99 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 export default function QnaPage() {
   const [question, setQuestion] = useState('');
   const [submittedQuestions, setSubmittedQuestions] = useState([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [ragResponse, setRagResponse] = useState('');
+  const [isTyping, setIsTyping] = useState(false);
+  const [displayedText, setDisplayedText] = useState('');
+  const [showResponse, setShowResponse] = useState(false);
+
+  // 타이핑 애니메이션 효과
+  useEffect(() => {
+    if (ragResponse && isTyping) {
+      let index = 0;
+      setDisplayedText('');
+      const timer = setInterval(() => {
+        if (index < ragResponse.length) {
+          setDisplayedText(prev => prev + ragResponse[index]);
+          index++;
+        } else {
+          clearInterval(timer);
+          setIsTyping(false);
+        }
+      }, 50); // 50ms마다 한 글자씩 타이핑
+
+      return () => clearInterval(timer);
+    }
+  }, [ragResponse, isTyping]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!question.trim()) return;
 
     setIsSubmitting(true);
+    setShowResponse(false);
+    setRagResponse('');
+    setDisplayedText('');
     
-    // 질문을 목록에 추가
-    const newQuestion = {
-      id: Date.now(),
-      text: question.trim(),
-      timestamp: new Date().toLocaleTimeString('ko-KR', {
-        hour: '2-digit',
-        minute: '2-digit'
-      })
-    };
-    
-    setTimeout(() => {
-      setSubmittedQuestions(prev => [newQuestion, ...prev]);
-      setQuestion('');
+    try {
+      const response = await fetch('http://k12e201.p.ssafy.io:8090/rag/qa/query', {
+        method: 'POST',
+        headers: {
+          'accept': 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          question: question.trim()
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        
+        // 질문을 목록에 추가
+        const newQuestion = {
+          id: Date.now(),
+          text: question.trim(),
+          timestamp: new Date().toLocaleTimeString('ko-KR', {
+            hour: '2-digit',
+            minute: '2-digit'
+          }),
+          response: data.rag_response
+        };
+        
+        setSubmittedQuestions(prev => [newQuestion, ...prev]);
+        
+        // RAG 응답 표시 및 타이핑 애니메이션 시작
+        setRagResponse(data.rag_response);
+        setShowResponse(true);
+        setIsTyping(true);
+        
+        setQuestion('');
+      } else {
+        console.error('API 요청 실패:', response.status);
+        alert('질문 처리 중 오류가 발생했습니다.');
+      }
+    } catch (error) {
+      console.error('API 요청 오류:', error);
+      alert('네트워크 오류가 발생했습니다.');
+    } finally {
       setIsSubmitting(false);
-    }, 500);
+    }
   };
 
   const handleQuestionChange = (e) => {
     setQuestion(e.target.value);
+  };
+
+  const closeResponse = () => {
+    setShowResponse(false);
+    setRagResponse('');
+    setDisplayedText('');
+    setIsTyping(false);
   };
 
   return (
@@ -106,10 +168,10 @@ export default function QnaPage() {
                     {isSubmitting ? (
                       <>
                         <div className="animate-spin rounded-full h-7 w-7 border-b-3 border-white"></div>
-                        전송 중...
+                        AI가 답변 중...
                       </>
                     ) : (
-                      '질문 제출'
+                      '질문하기'
                     )}
                   </span>
                 </button>
@@ -121,7 +183,7 @@ export default function QnaPage() {
           {submittedQuestions.length > 0 && (
             <div className="max-w-5xl mx-auto">
               <h3 className="text-2xl md:text-3xl lg:text-4xl font-bold text-white mb-10 text-center">
-                제출된 질문들
+                질문 기록
               </h3>
               <div className="space-y-6 max-h-[500px] overflow-y-auto pr-4">
                 {submittedQuestions.map((q, index) => (
@@ -140,7 +202,13 @@ export default function QnaPage() {
                         {q.timestamp}
                       </span>
                     </div>
-                    <p className="text-white text-base md:text-lg lg:text-xl leading-relaxed font-medium">{q.text}</p>
+                    <p className="text-white text-base md:text-lg lg:text-xl leading-relaxed font-medium mb-4">{q.text}</p>
+                    {q.response && (
+                      <div className="mt-4 p-4 bg-gradient-to-r from-cyan-500/10 to-blue-500/10 rounded-xl border border-cyan-400/20">
+                        <p className="text-cyan-300 text-sm font-bold mb-2">AI 답변:</p>
+                        <p className="text-white text-sm md:text-base leading-relaxed">{q.response}</p>
+                      </div>
+                    )}
                     <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/5 to-blue-500/5 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"></div>
                   </div>
                 ))}
@@ -148,6 +216,53 @@ export default function QnaPage() {
             </div>
           )}
         </div>
+
+        {/* Full Screen RAG Response Modal */}
+        {showResponse && (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-xl z-50 flex items-center justify-center p-4">
+            <div className="w-full max-w-4xl">
+              {/* Close Button */}
+              <div className="flex justify-end mb-6">
+                <button
+                  onClick={closeResponse}
+                  className="text-white/60 hover:text-white text-2xl transition-colors duration-200"
+                >
+                  ✕
+                </button>
+              </div>
+              
+              {/* Response Content */}
+              <div className="text-center">
+                <div className="mb-8">
+                  <h2 className="text-2xl md:text-3xl lg:text-4xl font-bold bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent mb-4">
+                    AI 답변
+                  </h2>
+                  <div className="w-20 h-1 bg-gradient-to-r from-cyan-500 to-blue-500 mx-auto rounded-full"></div>
+                </div>
+                
+                <div className="bg-white/5 backdrop-blur-xl border-2 border-white/20 rounded-3xl p-8 md:p-12">
+                  <p className="text-white text-xl md:text-2xl lg:text-3xl leading-relaxed font-medium text-left">
+                    {displayedText}
+                    {isTyping && (
+                      <span className="inline-block w-0.5 h-6 md:h-8 bg-cyan-400 ml-1 animate-pulse"></span>
+                    )}
+                  </p>
+                </div>
+                
+                {!isTyping && (
+                  <div className="mt-8">
+                    <button
+                      onClick={closeResponse}
+                      className="px-8 py-3 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold rounded-xl transition-all duration-300 transform hover:scale-105"
+                    >
+                      확인
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
