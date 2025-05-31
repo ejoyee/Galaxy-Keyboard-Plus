@@ -9,7 +9,12 @@ module.exports = {
       },
       fontFamily: {
         sans: ["var(--font-pretendard)"],
+        pretendard: ['Pretendard', 'sans-serif'], // Pretendard 폰트 추가
       },
+      fontWeight: {
+        'medium': '500',
+        'bold': '700',
+      }
     },
   },
   plugins: [],
