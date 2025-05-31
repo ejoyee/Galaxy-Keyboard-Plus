@@ -2235,6 +2235,15 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         // 5) 속성을 다시 설정
         window.setAttributes(lp);
 
+        // 3) FrameLayout(root) 생성: WebView+버튼을 담을 컨테이너
+        FrameLayout container = new FrameLayout(getContext());
+        container.setLayoutParams(
+                new FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT
+                )
+        );
+
         // 6) WebView 생성 및 설정
         WebView webView = new WebView(getContext());
         webView.getSettings().setJavaScriptEnabled(true);
@@ -2301,8 +2310,36 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                 null
         );
 
+        // 5) “뒤로가기 버튼” 생성 (ImageButton 예시)
+        ImageButton backBtn = new ImageButton(getContext());
+        backBtn.setImageResource(android.R.drawable.ic_media_previous); // 원하는 아이콘으로 교체
+        backBtn.setBackgroundColor(Color.TRANSPARENT);                // 투명 배경
+        // 클릭 시 WebView 뒤로가기 혹은 다이얼로그 닫기
+        backBtn.setOnClickListener(v -> {
+            if (webView.canGoBack()) {
+                webView.goBack();
+            } else {
+                dialog.dismiss();
+            }
+        });
+
+        // 6) 버튼 위치 조정 (예: 상단 좌측, margin 16dp)
+        int marginDp = 16;
+        int marginPx = Math.round(marginDp * getResources().getDisplayMetrics().density);
+        FrameLayout.LayoutParams btnLp = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        );
+        btnLp.gravity = Gravity.START | Gravity.TOP;
+        btnLp.setMargins(marginPx, marginPx, marginPx, marginPx);
+        backBtn.setLayoutParams(btnLp);
+
+        // 7) 컨테이너에 WebView와 버튼을 추가
+        container.addView(webView);
+        container.addView(backBtn);
+
         // 7) Dialog에 WebView 붙이고 우선 show() 호출
-        dialog.setContentView(webView);
+        dialog.setContentView(container);
         dialog.show();
 
         // 8) “키보드 높이”만큼 다이얼로그가 올라오도록 사이즈를 조정
@@ -2328,7 +2365,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                 }
             });
         }
-
+        mDialogWebView = webView;
         // 10) 백 키를 다이얼로그가 우선 처리하도록 OnKeyListener를 등록
         dialog.setOnKeyListener(new DialogInterface.OnKeyListener() {
             @Override
