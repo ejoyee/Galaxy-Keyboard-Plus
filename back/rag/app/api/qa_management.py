@@ -56,28 +56,25 @@ def generate_rag_response(user_question: str, search_results: List[QAResult]) ->
         if not search_results:
             return "죄송합니다. 해당 질문에 대한 정보를 찾을 수 없습니다."
 
-        context_info = ""
-        for i, result in enumerate(search_results, 1):
-            context_info += f"""
-참고 정보 {i} (유사도: {result.similarity_score}):
-질문: {result.question}
-답변: {result.answer}
-"""
+        context_info = "\n".join(
+            f"참고 {i}. 질문: {r.question}\n답변: {r.answer}"
+            for i, r in enumerate(search_results, 1)
+        )
 
         prompt = f"""
-당신은 제한된 지식을 가진 AI 어시스턴트입니다. 아래 참고 정보만을 기반으로 사용자의 질문에 답변해야 하며, 참고 정보에 없는 내용은 추론하거나 임의로 생성하지 마세요.
+당신은 AI 어시스턴트입니다. 아래 제공된 참고 정보만 바탕으로 사용자 질문에 응답하세요.
+참고 정보 외에 추측하거나 새로운 내용을 생성하지 마세요.
 
-=== 참고 정보 ===
+[참고 정보]
 {context_info}
 
-=== 사용자 질문 ===
+[사용자 질문]
 {user_question}
 
-=== 답변 지침 ===
-1. 참고 정보에 기반한 내용만 답변에 사용하세요.
-2. 참고 정보가 없다면 "해당 질문에 대한 정보를 찾을 수 없습니다"라고 답변하세요.
-3. 참고 정보 간 모순이 있으면, 가장 일관성 있는 정보를 기반으로 작성하세요.
-4. 한국어로 자연스럽고 명확하게 답변하세요.
+[답변 규칙]
+1. 반드시 참고 정보에 기반해 답변하세요.
+2. 참고 정보가 부족하면 "해당 질문에 대한 정보를 찾을 수 없습니다."라고 답변하세요.
+3. 문장은 자연스럽고 명확한 한국어로 작성하세요.
 """
 
         response = openai_client.chat.completions.create(
@@ -85,12 +82,16 @@ def generate_rag_response(user_question: str, search_results: List[QAResult]) ->
             messages=[
                 {
                     "role": "system",
-                    "content": "당신은 제한된 지식을 가진 AI입니다. 참고 정보에 기반한 사실만 답변해야 하며, 창작하거나 모호하게 답해서는 안 됩니다.",
+                    "content": (
+                        "당신은 정보 보존에 엄격한 AI 어시스턴트입니다. "
+                        "제공된 참고 정보 외에는 어떤 내용도 추론하거나 생성하지 않습니다. "
+                        "참고 정보가 부족하면 '해당 질문에 대한 정보를 찾을 수 없습니다'라고 응답해야 합니다."
+                    ),
                 },
                 {"role": "user", "content": prompt},
             ],
-            max_tokens=800,
             temperature=0.0,
+            max_tokens=800,
         )
 
         return response.choices[0].message.content.strip()
