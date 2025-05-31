@@ -11,20 +11,23 @@ export default function QnaPage() {
   const [displayedText, setDisplayedText] = useState('');
   const [showResponse, setShowResponse] = useState(false);
 
-  // 타이핑 애니메이션 효과
+  // 타이핑 애니메이션 효과 (한글 호환)
   useEffect(() => {
     if (ragResponse && isTyping) {
+      // 응답 텍스트를 기본 문자열로 처리
+      const responseText = String(ragResponse);
       let index = 0;
       setDisplayedText('');
+      
       const timer = setInterval(() => {
-        if (index < ragResponse.length) {
-          setDisplayedText(prev => prev + ragResponse[index]);
+        if (index < responseText.length) {
+          setDisplayedText(responseText.substring(0, index + 1));
           index++;
         } else {
           clearInterval(timer);
           setIsTyping(false);
         }
-      }, 50); // 50ms마다 한 글자씩 타이핑
+      }, 60); // 60ms로 속도 조정
 
       return () => clearInterval(timer);
     }
@@ -54,6 +57,38 @@ export default function QnaPage() {
       if (response.ok) {
         const data = await response.json();
         
+        // 디버깅을 위한 로그
+        console.log('API 응답 데이터:', data);
+        console.log('rag_response:', data.rag_response);
+        
+        // RAG 응답 데이터 정리 (undefined 제거)
+        let cleanResponse = data.rag_response;
+        
+        // null, undefined, 빈 문자열 처리
+        if (!cleanResponse || cleanResponse === null || cleanResponse === undefined || cleanResponse === 'undefined') {
+          cleanResponse = '응답을 받을 수 없습니다.';
+        } else {
+          // 문자열로 변환 후 청리
+          cleanResponse = String(cleanResponse);
+          
+          // undefined 및 null 관련 제거 (더 강력하게)
+          cleanResponse = cleanResponse
+            .replace(/undefined/gi, '')
+            .replace(/null/gi, '')
+            .replace(/NaN/gi, '')
+            .replace(/\s+undefined\s*/gi, '')
+            .replace(/undefined\s*/gi, '')
+            .replace(/\s*undefined/gi, '')
+            .trim();
+          
+          // 정리 후 빈 문자열인 경우
+          if (cleanResponse.length === 0) {
+            cleanResponse = '해당 질문에 대한 정보를 찾을 수 없습니다.';
+          }
+        }
+        
+        console.log('정리된 응답:', cleanResponse);
+        
         // 질문을 목록에 추가
         const newQuestion = {
           id: Date.now(),
@@ -62,13 +97,13 @@ export default function QnaPage() {
             hour: '2-digit',
             minute: '2-digit'
           }),
-          response: data.rag_response
+          response: cleanResponse
         };
         
         setSubmittedQuestions(prev => [newQuestion, ...prev]);
         
         // RAG 응답 표시 및 타이핑 애니메이션 시작
-        setRagResponse(data.rag_response);
+        setRagResponse(cleanResponse);
         setShowResponse(true);
         setIsTyping(true);
         
@@ -206,7 +241,18 @@ export default function QnaPage() {
                     {q.response && (
                       <div className="mt-4 p-4 bg-gradient-to-r from-cyan-500/10 to-blue-500/10 rounded-xl border border-cyan-400/20">
                         <p className="text-cyan-300 text-sm font-bold mb-2">AI 답변:</p>
-                        <p className="text-white text-sm md:text-base leading-relaxed">{q.response}</p>
+                        <div className="text-white text-sm md:text-base leading-relaxed whitespace-pre-line">
+                          {q.response.split('. ').map((sentence, idx) => (
+                            <span key={idx}>
+                              {sentence.trim()}
+                              {idx < q.response.split('. ').length - 1 && (
+                                <>
+                                  .<br /><br />
+                                </>
+                              )}
+                            </span>
+                          ))}
+                        </div>
                       </div>
                     )}
                     <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/5 to-blue-500/5 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"></div>
@@ -241,12 +287,21 @@ export default function QnaPage() {
                 </div>
                 
                 <div className="bg-white/5 backdrop-blur-xl border-2 border-white/20 rounded-3xl p-8 md:p-12">
-                  <p className="text-white text-xl md:text-2xl lg:text-3xl leading-relaxed font-medium text-left">
-                    {displayedText}
+                  <div className="text-white text-lg md:text-xl lg:text-2xl leading-relaxed font-medium text-left whitespace-pre-line">
+                    {displayedText.split('. ').map((sentence, index) => (
+                      <span key={index}>
+                        {sentence.trim()}
+                        {index < displayedText.split('. ').length - 1 && (
+                          <>
+                            .<br /><br />
+                          </>
+                        )}
+                      </span>
+                    ))}
                     {isTyping && (
                       <span className="inline-block w-0.5 h-6 md:h-8 bg-cyan-400 ml-1 animate-pulse"></span>
                     )}
-                  </p>
+                  </div>
                 </div>
                 
                 {!isTyping && (
