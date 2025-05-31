@@ -16,6 +16,7 @@
 
 package org.dslul.openboard.inputmethod.latin.suggestions;
 
+import android.Manifest;
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.AnimatorSet;
@@ -23,34 +24,35 @@ import android.animation.Keyframe;
 import android.animation.ObjectAnimator;
 import android.animation.PropertyValuesHolder;
 import android.animation.ValueAnimator;
+import android.app.Dialog;
 import android.content.ClipData;
 import android.content.ClipDescription;
 import android.content.ClipboardManager;
 import android.content.ContentUris;
 import android.content.Context;
 import android.content.ContextWrapper;
+import android.content.DialogInterface;
+import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.content.res.Resources;
 import android.content.res.TypedArray;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.ColorFilter;
-import android.graphics.Matrix;
-import android.graphics.Outline;
 import android.graphics.Paint;
 import android.graphics.PixelFormat;
 import android.graphics.Point;
 import android.graphics.PorterDuff;
 import android.graphics.RadialGradient;
 import android.graphics.Shader;
-import android.graphics.SweepGradient;
 import android.graphics.Typeface;
-import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.LayerDrawable;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.MediaStore;
@@ -60,14 +62,16 @@ import android.util.TypedValue;
 import android.view.DragEvent;
 import android.view.GestureDetector;
 import android.view.Gravity;
+import android.view.KeyEvent;
 import android.view.LayoutInflater;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.View.OnClickListener;
 import android.view.View.OnLongClickListener;
 import android.view.ViewGroup;
-import android.view.ViewOutlineProvider;
 import android.view.ViewParent;
+import android.view.Window;
+import android.view.WindowManager;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.animation.AccelerateInterpolator;
 import android.view.animation.DecelerateInterpolator;
@@ -78,6 +82,9 @@ import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.ExtractedText;
 import android.view.inputmethod.ExtractedTextRequest;
 import android.view.inputmethod.InputConnection;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
 import android.widget.ImageButton;
@@ -104,6 +111,7 @@ import org.dslul.openboard.inputmethod.latin.network.ApiClient;
 import org.dslul.openboard.inputmethod.latin.network.ChatSaveService;
 import org.dslul.openboard.inputmethod.latin.network.ClipBoardResponse;
 import org.dslul.openboard.inputmethod.latin.network.ClipboardService;
+import org.dslul.openboard.inputmethod.latin.network.GeoAssistReq;
 import org.dslul.openboard.inputmethod.latin.network.KeywordApi;
 import org.dslul.openboard.inputmethod.latin.network.KeywordExistsResponse;
 import org.dslul.openboard.inputmethod.latin.network.MessageResponse;
@@ -113,6 +121,8 @@ import org.dslul.openboard.inputmethod.latin.settings.Settings;
 import org.dslul.openboard.inputmethod.latin.settings.SettingsValues;
 import org.dslul.openboard.inputmethod.latin.suggestions.MoreSuggestionsView.MoreSuggestionsListener;
 
+import java.io.IOException;
+import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -131,8 +141,12 @@ import com.airbnb.lottie.LottieDrawable;
 import com.bumptech.glide.Glide;
 import com.bumptech.glide.load.engine.DiskCacheStrategy;
 import com.bumptech.glide.load.resource.drawable.DrawableTransitionOptions;
+import com.google.android.gms.location.FusedLocationProviderClient;
+import com.google.android.gms.location.LocationServices;
+import com.google.android.gms.location.Priority;
 import com.google.gson.Gson;
 
+import okhttp3.ResponseBody;
 import retrofit2.Call;
 import retrofit2.Callback;
 import retrofit2.Response;
@@ -168,10 +182,14 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
     private final ImageButton mVoiceKey;       // 마이크
     private boolean mInSearchMode = false;
     private boolean mIsPausedBlue = false;
-    /** 파랑 JSON(pause된) 상태인지 알려주는 메서드 */
+
+    /**
+     * 파랑 JSON(pause된) 상태인지 알려주는 메서드
+     */
     public boolean isPausedBlue() {
         return mIsPausedBlue;
     }
+
     private String mLastQuery;
     private LatinIME mImeService = null;
 
@@ -228,7 +246,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
     private final LinearLayout.LayoutParams mPhotoItemLp;
     private final ImageButton mTaskKey;
     private boolean mTaskMatched = false;   // 이미 매칭돼 있으면 true
-    private String  mMatchedTask = null;
+    private String mMatchedTask = null;
     private String mMatchedWord = null;
     private final TextView mTaskLabel;               // 등장할 문구
     private static final long TASK_ANIM_DURATION = 400; // ms
@@ -241,10 +259,13 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
     private Runnable mDragTipRunnable;
 
     // 키보드 웨이브 관련
-    private ValueAnimator mRadarAnimator;
-    private boolean       mIsRadarRunning = false;
     private ValueAnimator mScanAnimator;
     private ScanWaveDrawable mScanWaveDrawable;
+
+    private String mGeoAssistHtml;   // 응답 HTML 저장
+    private boolean mGeoAssistReady = false;
+
+    private final FusedLocationProviderClient mFusedLocationClient;
 
     // 한 곳에서 쓰기 편하도록
     private boolean isPhotoOnlyLocked() {
@@ -570,6 +591,8 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         mOverlayPaintHover = new Paint();
         mOverlayPaint.setColor(Color.parseColor("#15000000"));
         mOverlayPaintHover.setColor(Color.parseColor("#40000000"));
+
+        mFusedLocationClient = LocationServices.getFusedLocationProviderClient(context);
     }
 
     /* ▼ EventBus로 HangulCommitEvent 이벤트 구독 --------------------------------------------------- */
@@ -693,26 +716,32 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
             mIsPausedBlue = false;
         }
     }
+
     private void sendTaskMatch(String word) {
         // 이미 매칭돼 있으면 더 이상 호출 X
         if (mTaskMatched || word.isEmpty()) return;
 
         ApiClient.getTaskMatchApi().match(word).enqueue(
                 new Callback<TaskMatchResponse>() {
-                    @Override public void onResponse(Call<TaskMatchResponse> c,
-                                                     Response<TaskMatchResponse> r) {
-                        if (!r.isSuccessful() || r.body()==null) {
+                    @Override
+                    public void onResponse(Call<TaskMatchResponse> c,
+                                           Response<TaskMatchResponse> r) {
+                        if (!r.isSuccessful() || r.body() == null) {
                             return;
                         }
                         String task = r.body().matchedTask;
-                        if (task==null || task.isEmpty()) {
+                        if (task == null || task.isEmpty()) {
                             return;
                         }
                         activateTaskButton(task, word);
                     }
-                    @Override public void onFailure(Call<TaskMatchResponse> c, Throwable t) {}
+
+                    @Override
+                    public void onFailure(Call<TaskMatchResponse> c, Throwable t) {
+                    }
                 });
     }
+
     private void activateTaskButton(String task, String triggerWord) {
         int resId;
         switch (task) {
@@ -746,7 +775,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         mTaskKey.setImageResource(resId);
         mTaskMatched = true;
         mMatchedTask = task;
-        mMatchedWord   = triggerWord;
+        mMatchedWord = triggerWord;
 
     }
 
@@ -758,7 +787,9 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         });
     }
 
-    /** 현재 활성 입력창의 전체 문자열(빈 문자열 가능) */
+    /**
+     * 현재 활성 입력창의 전체 문자열(빈 문자열 가능)
+     */
     private String getCurrentInputText() {
         if (mMainKeyboardView == null) return "";
         InputConnection ic = mMainKeyboardView.getInputConnection();
@@ -767,7 +798,9 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         return (et != null && et.text != null) ? et.text.toString() : "";
     }
 
-    /** 입력창에 활성 키워드가 ‘단어 경계’로 남아 있으면 true */
+    /**
+     * 입력창에 활성 키워드가 ‘단어 경계’로 남아 있으면 true
+     */
     private boolean isKeywordAlive(String text) {
         if (!mTaskMatched || mMatchedWord == null || mMatchedWord.isEmpty()) return false;
 
@@ -777,12 +810,14 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         int end = idx + mMatchedWord.length();
         // 키워드 앞·뒤가 공백·줄바꿈·문자열 끝이면 ‘단어 경계’라고 간주
         boolean beforeOK = idx == 0 || Character.isWhitespace(text.charAt(idx - 1));
-        boolean afterOK  = end == text.length() || Character.isWhitespace(text.charAt(end));
+        boolean afterOK = end == text.length() || Character.isWhitespace(text.charAt(end));
 
         return beforeOK && afterOK;
     }
 
-    /** 호출될 때마다 “키워드가 사라졌는지” 확인하고 필요하면 리셋 */
+    /**
+     * 호출될 때마다 “키워드가 사라졌는지” 확인하고 필요하면 리셋
+     */
     private void updateTaskButtonState() {
         if (mTaskMatched && !isKeywordAlive(getCurrentInputText())) {
             resetTaskButton();            // 아이콘·플래그 전부 원상복구
@@ -1150,18 +1185,18 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                                 int count = mPhotoBarContainer.getChildCount();
                                 if (count == 0) return;
 
-                                long upDuration     = 300L;    // ↑ 300ms
-                                long downDuration   = 300L;    // ↓ 300ms
-                                long interDelay     = 10L;    // 카드 간 고정 지연(10ms)
+                                long upDuration = 300L;    // ↑ 300ms
+                                long downDuration = 300L;    // ↓ 300ms
+                                long interDelay = 10L;    // 카드 간 고정 지연(10ms)
                                 // 한 사이클 전체 길이 계산: (카드 수 - 1) * interDelay + upDuration + downDuration
-                                long waveSpan       = (count - 1) * interDelay + upDuration + downDuration;
+                                long waveSpan = (count - 1) * interDelay + upDuration + downDuration;
                                 // 원래 주기(2초)보다 waveSpan이 길어질 수 있으므로,
                                 // 충분한 휴지(2000ms)를 더해준다.
-                                long cycleInterval  = waveSpan + 1500L;
+                                long cycleInterval = waveSpan + 1500L;
                                 // ────────────────────
 
                                 // 부드러운 감속/가속용 인터폴레이터
-                                Interpolator upInterp   = new DecelerateInterpolator();
+                                Interpolator upInterp = new DecelerateInterpolator();
                                 Interpolator downInterp = new AccelerateInterpolator();
 
                                 // 카드별 애니 Runnable 생성
@@ -1276,7 +1311,9 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         mMainKeyboardView.post(this::startScanWave);
     }
 
-    /** 검색키 애니메이션과 JSON 활성화 상태만 해제합니다. */
+    /**
+     * 검색키 애니메이션과 JSON 활성화 상태만 해제합니다.
+     */
     public void clearSearchKeyHighlight() {
         // 사진-모드에서는 ❌ 유지
         if (isPhotoOnlyLocked()) return;
@@ -1325,8 +1362,8 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
 
         mTaskKey.setVisibility(VISIBLE);
 
-        for (View btn : new View[]{ mSearchKey, mVoiceKey, mClipboardKey,
-                mFetchClipboardKey, mTaskKey }) {
+        for (View btn : new View[]{mSearchKey, mVoiceKey, mClipboardKey,
+                mFetchClipboardKey, mTaskKey}) {
 
             // PHOTO_ONLY 모드에서는 검색키는 호흡 애니메이션도 건들지 않음
             if (btn == mSearchKey && isPhotoOnlyLocked()) continue;
@@ -1462,7 +1499,9 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         return true;
     }
 
-    /** PHOTO_ONLY 최초 진입 시 짧게 나타나는 스크롤 가능 툴팁 */
+    /**
+     * PHOTO_ONLY 최초 진입 시 짧게 나타나는 스크롤 가능 툴팁
+     */
     private void showScrollTip() {
         if (mScrollTipShown) return;
 //        mScrollTipShown = true;     // 최초 한 번만 보여주기
@@ -1498,7 +1537,8 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                     bounceAnim.setRepeatMode(ValueAnimator.REVERSE);
                     bounceAnim.setRepeatCount(7);      // 왕복 → 4회 바운스
                     bounceAnim.addListener(new AnimatorListenerAdapter() {
-                        @Override public void onAnimationEnd(Animator animation) {
+                        @Override
+                        public void onAnimationEnd(Animator animation) {
                             // ③ 페이드-아웃 후 제거
                             tip.animate()
                                     .alpha(0f)
@@ -1541,7 +1581,9 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         /* ■ Ripple View -------------------------------------------------------- */
         View ripple = new View(getContext());
         ripple.setBackground(createRippleDrawable());
-        ripple.setScaleX(0f); ripple.setScaleY(0f); ripple.setAlpha(0f);
+        ripple.setScaleX(0f);
+        ripple.setScaleY(0f);
+        ripple.setAlpha(0f);
         box.addView(ripple,
                 new FrameLayout.LayoutParams(
                         size * 2,
@@ -1560,22 +1602,23 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         mDragTipView = box;           // << 컨테이너 전체를 보관
 
         /* ■ 애니메이션 --------------------------------------------------------- */
-        long fade  = 200, hold = 1000, move = 400;
-        float travelY = -getHeight()/2f + dpToPx(24);
+        long fade = 200, hold = 1000, move = 400;
+        float travelY = -getHeight() / 2f + dpToPx(24);
 
         // ─ 화살표 순차 애니
         ObjectAnimator fadeIn = ObjectAnimator.ofFloat(arrow, View.ALPHA, 0f, 1f);
         fadeIn.setDuration(fade);
 
-        ObjectAnimator stay   = ObjectAnimator.ofFloat(arrow, View.ALPHA, 1f, 1f);
+        ObjectAnimator stay = ObjectAnimator.ofFloat(arrow, View.ALPHA, 1f, 1f);
         stay.setDuration(hold);
 
-        ObjectAnimator up     = ObjectAnimator.ofFloat(arrow,
+        ObjectAnimator up = ObjectAnimator.ofFloat(arrow,
                 View.TRANSLATION_Y, 0f, travelY);
         up.setDuration(move);
         up.setInterpolator(new FastOutSlowInInterpolator());
         up.addListener(new AnimatorListenerAdapter() {
-            @Override public void onAnimationEnd(Animator a) {
+            @Override
+            public void onAnimationEnd(Animator a) {
                 arrow.setTranslationY(0f);
             }
         });
@@ -1583,16 +1626,19 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         // ─ Ripple 애니 (hold 구간마다 발생)
         ObjectAnimator rX = ObjectAnimator.ofFloat(ripple, View.SCALE_X, 0f, 3f);
         ObjectAnimator rY = ObjectAnimator.ofFloat(ripple, View.SCALE_Y, 0f, 3f);
-        ObjectAnimator rA = ObjectAnimator.ofFloat(ripple, View.ALPHA , 0.8f, 0f);
+        ObjectAnimator rA = ObjectAnimator.ofFloat(ripple, View.ALPHA, 0.8f, 0f);
 
         AnimatorSet rippleSet = new AnimatorSet();
         rippleSet.playTogether(rX, rY, rA);
         rippleSet.setDuration(hold);
         rippleSet.setInterpolator(new LinearInterpolator());
         rippleSet.addListener(new AnimatorListenerAdapter() {
-            @Override public void onAnimationEnd(Animator a) {
+            @Override
+            public void onAnimationEnd(Animator a) {
                 // 다음 싸이클을 위해 원복
-                ripple.setScaleX(0f); ripple.setScaleY(0f); ripple.setAlpha(0f);
+                ripple.setScaleX(0f);
+                ripple.setScaleY(0f);
+                ripple.setAlpha(0f);
             }
         });
 
@@ -1601,13 +1647,15 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         cycle.playSequentially(fadeIn, stay, up);
 
         stay.addListener(new AnimatorListenerAdapter() {
-            @Override public void onAnimationStart(Animator a) {
+            @Override
+            public void onAnimationStart(Animator a) {
                 rippleSet.start();     // hold 시작과 동시에 파동
             }
         });
 
         cycle.addListener(new AnimatorListenerAdapter() {
-            @Override public void onAnimationEnd(Animator a) {
+            @Override
+            public void onAnimationEnd(Animator a) {
                 cycle.start();         // 무한 반복
             }
         });
@@ -1621,7 +1669,8 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
     private void scheduleDragTipLoop() {
         hideDragTipLoop();
         mDragTipRunnable = new Runnable() {
-            @Override public void run() {
+            @Override
+            public void run() {
                 // 실제 드래깅 전이라면
                 if (!mIsDragging && mDragTipView == null) {
                     showDragTip();
@@ -1958,8 +2007,133 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
             }
             switch (mMatchedTask) {
                 case "maps":
-                    /* maps 작업 실행 */
-                    break;
+                    // 1) 만약 아직 서버 응답(mGeoAssistReady)이 안 왔다면 → “첫 번째 클릭” 플로우
+                    if (!mGeoAssistReady) {
+                        // (1) UI: 로딩 스피너 보여주기, 나머지 버튼 숨기기
+                        mLoadingSpinner.setVisibility(VISIBLE);
+                        mLoadingSpinner.bringToFront();
+
+                        mVoiceKey.setVisibility(GONE);
+                        mSearchKey.setVisibility(GONE);
+                        mTaskKey.setVisibility(GONE);
+                        mTaskLabel.setVisibility(GONE);
+                        mFetchClipboardKey.setVisibility(GONE);
+
+                        // (2) 위치 가져오기 (권한은 이미 SetupWizard에서 받았다고 가정)
+                        //     위치 획득이 실패할 수도 있으니 예외 처리
+                        if (ContextCompat.checkSelfPermission(getContext(),
+                                Manifest.permission.ACCESS_FINE_LOCATION)
+                                != PackageManager.PERMISSION_GRANTED) {
+                            Toast.makeText(getContext(), "위치 권한이 필요합니다.", Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+                        mFusedLocationClient
+                                .getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, null)
+                                .addOnSuccessListener(loc -> {
+                                    if (loc == null) {
+                                        // 위치 못 가져왔을 때
+                                        Toast.makeText(getContext(),
+                                                "위치 정보를 가져오지 못했습니다.",
+                                                Toast.LENGTH_SHORT).show();
+                                        // UI 복원
+                                        mLoadingSpinner.setVisibility(GONE);
+                                        restoreButtonsAfterLoading();
+                                        return;
+                                    }
+
+                                    // (3) 현재 입력창 텍스트 가져오기
+                                    String q = getCurrentInputText();
+
+                                    // (4) 요청 바디 구성
+                                    GeoAssistReq body = new GeoAssistReq();
+                                    body.query = q;
+                                    body.location.latitude  = loc.getLatitude();
+                                    body.location.longitude = loc.getLongitude();
+
+                                    // ▶ 요청 직전 JSON 형태를 로그로 출력
+                                    String jsonBody = new Gson().toJson(body);
+                                    Log.d("GEO API 호출", "요청 JSON: " + jsonBody);
+
+                                    // (5) Retrofit으로 서버 호출
+                                    ApiClient.getGeoAssistApi().geoAssist(body)
+                                            .enqueue(new Callback<ResponseBody>() {
+                                                @Override
+                                                public void onResponse(Call<ResponseBody> call,
+                                                                       Response<ResponseBody> response) {
+                                                    // (6) 서버 응답이 왔을 때
+                                                    mLoadingSpinner.setVisibility(GONE);      // 로딩 스피너 숨김
+                                                    if (!response.isSuccessful()) {
+                                                        // (1) 상태 코드 찍어보기
+                                                        Log.e("GEO API 호출", "서버 오류 코드: " + response.code());
+
+                                                        // (2) errorBody에 실제 서버가 내려준 텍스트(에러 메시지 등)가 있으면 찍어보기
+                                                        if (response.errorBody() != null) {
+                                                            try {
+                                                                String errorText = response.errorBody().string();
+                                                                Log.e("GEO API 호출", "서버 에러 상세 내용: " + errorText);
+                                                            } catch (IOException e) {
+                                                                Log.e("GEO API 호출", "errorBody 읽기 중 IOException", e);
+                                                            }
+                                                        }
+                                                        return;
+                                                    }
+                                                    try {
+                                                        String html = response.body().string();
+                                                        Log.i("GEO API 호출", "받은 HTML 전체:\n" + html);
+                                                        // → 이후 html 변수를 mGeoAssistHtml에 저장해 두고,
+                                                        //    두 번째 버튼 터치 시 showWebViewDialog(html) 호출
+                                                        mGeoAssistHtml = html;
+                                                        mGeoAssistReady = true;
+                                                        // Task 버튼 아이콘을 “확인” 모드로 바꾸기
+                                                        mTaskKey.setImageResource(R.drawable.ic_arrow_up);
+                                                        Toast.makeText(getContext(), "지도 결과가 준비되었습니다", Toast.LENGTH_SHORT).show();
+                                                    } catch (IOException e) {
+                                                        Log.e("GEO API 호출", "response.body().string() 읽기 실패", e);
+                                                        Toast.makeText(getContext(),
+                                                                "응답 처리 중 오류", Toast.LENGTH_SHORT).show();
+                                                        restoreButtonsAfterLoading();
+                                                        return;
+                                                    }
+
+                                                    // (7) 이제 “확인 상태”로 변경: 다음 클릭 시 WebView를 띄울 수 있도록 준비
+                                                    mGeoAssistReady = true;
+
+                                                    // 예를 들면 “확인” 아이콘으로 교체하거나, 버튼 배경을 바꿔줍니다.
+                                                    mTaskKey.setImageResource(R.drawable.ic_arrow_up);      // 임시
+                                                    // (ic_confirm 은 “확인” 아이콘으로 대체하세요)
+
+                                                    // 맵 버튼을 다시 눌렀을 때 WebView를 띄울 수 있도록,
+                                                    // 나머지 버튼들만 원래처럼 보이게 해 줍니다.
+                                                    restoreButtonsAfterLoading();
+                                                }
+
+                                                @Override
+                                                public void onFailure(Call<ResponseBody> call, Throwable t) {
+                                                    mLoadingSpinner.setVisibility(GONE);
+                                                    Toast.makeText(getContext(),
+                                                            "네트워크 오류: " + t.getMessage(),
+                                                            Toast.LENGTH_SHORT).show();
+                                                    restoreButtonsAfterLoading();
+                                                }
+                                            });
+                                })
+                                .addOnFailureListener(e -> {
+                                    // 위치 획득 자체가 실패했을 때
+                                    Toast.makeText(getContext(),
+                                            "위치 정보를 가져오는 중 오류",
+                                            Toast.LENGTH_SHORT).show();
+                                    mLoadingSpinner.setVisibility(GONE);
+                                    restoreButtonsAfterLoading();
+                                });
+                        return;
+                    }
+
+                    // 2) 이미 mGeoAssistReady == true (서버 응답 완료)된 상태라면 → “두 번째 클릭” 플로우
+                    showWebViewDialog(mGeoAssistHtml);
+
+                    // (3) WebView를 띄운 뒤, 필요하다면 Task 버튼과 상태를 초기화
+                    resetTaskAfterConfirm();
+                    return;
                 case "opencv":
                     /* opencv 작업 실행 */
                     break;
@@ -1992,6 +2166,186 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
             final SuggestedWordInfo wordInfo = mSuggestedWords.getInfo(index);
             mListener.pickSuggestionManually(wordInfo);
         }
+    }
+
+    private void restoreButtonsAfterLoading() {
+        // ① 음성, 클립보드, FetchClipboardKey 등 원래 보이던 버튼만 다시 보이게
+        mVoiceKey.setVisibility(VISIBLE);
+        mFetchClipboardKey.setVisibility(VISIBLE);
+
+        // ② TaskKey(지도 버튼)를 다시 보여주기
+        mTaskKey.setVisibility(VISIBLE);
+
+        // ③ 검색 버튼도 다시 보여주기 (첫 클릭 때 GONE 처리했으므로 복원해 줘야 함)
+        mSearchKey.setVisibility(VISIBLE);
+
+        // ④ TaskKey 아이콘 리셋: 아직 mGeoAssistReady가 false라면 기본 아이콘(+)으로 돌려둠
+        if (!mGeoAssistReady) {
+            mTaskKey.setImageResource(DEFAULT_TASK_ICON);
+        }
+    }
+
+    private void resetTaskAfterConfirm() {
+        mGeoAssistReady = false;
+        mGeoAssistHtml = null;
+        mMatchedTask = null;
+        mTaskMatched = false;
+
+        // Task 버튼을 원래 아이콘(+)으로 복귀
+        mTaskKey.setImageResource(DEFAULT_TASK_ICON);
+    }
+
+    private Dialog mWebDialog;        // (필요하면 필드로 꺼내놓고)
+    private WebView mDialogWebView;   // (필요하면 WebView도 꺼내서 변수로 둡니다)
+    /**
+     * IME 영역(키보드 높이)만큼 WebView를 띄우는 예시.
+     * BadTokenException(2012) 에러를 없애기 위해,
+     * TYPE_INPUT_METHOD_DIALOG 대신 TYPE_APPLICATION_ATTACHED_DIALOG를 사용합니다.
+     */
+    private void showWebViewDialog(String htmlContent) {
+        // 1) Dialog를 만들 때 Fullscreen 테마 대신 “일반 다이얼로그” 테마를 씁니다.
+        Dialog dialog = new Dialog(getContext(),
+                android.R.style.Theme_DeviceDefault_Light_NoActionBar);
+        // → 풀스크린 테마가 아니므로, 기본적으로 화면 전체를 덮지는 않습니다.
+
+        // 2) WindowManager.LayoutParams를 가져와서 IME용이 아닌 “애플리케이션 어태치드” 타입으로 설정
+        Window window = dialog.getWindow();
+        if (window == null) {
+            // getWindow()가 null이면 안전하게 리턴
+            return;
+        }
+        WindowManager.LayoutParams lp = window.getAttributes();
+        // 아래와 같이 IME에서도 허용되는 타입을 사용해야 합니다.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            lp.type = WindowManager.LayoutParams.TYPE_APPLICATION_ATTACHED_DIALOG;
+        } else {
+            // 구버전 API용: IME가 올라갈 때 허용되는 패널 타입.
+            lp.type = WindowManager.LayoutParams.TYPE_APPLICATION_ATTACHED_DIALOG;
+        }
+
+        // 4) IME 창 위에 뜨더라도 키보드 자체 포커스를 방해하지 않도록 플래그 지정
+        lp.flags |= WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM;
+
+        // 3) IME 내부(키보드 View)의 토큰을 강제로 붙여 줍니다.
+        //    이게 있어야 “이 다이얼로그는 이 IME 창(키보드) 안에만 붙어 있다”고 시스템이 인식합니다.
+        if (mMainKeyboardView != null && mMainKeyboardView.getWindowToken() != null) {
+            lp.token = mMainKeyboardView.getWindowToken();
+        }
+
+        // 5) 속성을 다시 설정
+        window.setAttributes(lp);
+
+        // 6) WebView 생성 및 설정
+        WebView webView = new WebView(getContext());
+        webView.getSettings().setJavaScriptEnabled(true);
+        webView.setWebViewClient(new WebViewClient() {
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                Uri uri = request.getUrl();
+                String scheme = uri.getScheme();
+                String uriStr = uri.toString();
+
+                // 1) "intent://" 형태로 넘어온 URL (예: <a href="intent://...">) 을 처리
+                if (uriStr.startsWith("intent://")) {
+                    try {
+                        // Intent URI 스킴에서 Intent 객체를 파싱
+                        Intent intent = Intent.parseUri(uriStr, Intent.URI_INTENT_SCHEME);
+
+                        // FLAG_ACTIVITY_NEW_TASK 는 IME(=Activity Context가 아닌 ContextWrapper) 환경에서 꼭 필요
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+
+                        // 해당 앱(패키지)이 설치되어 있는지 확인
+                        PackageManager pm = view.getContext().getPackageManager();
+                        if (intent.resolveActivity(pm) != null) {
+                            view.getContext().startActivity(intent);
+                        } else {
+                            // 설치되어 있지 않은 경우, fallback URL(웹 브라우저)로 연결하거나 Play Store로 보낼 수 있음
+                            String fallbackUrl = intent.getStringExtra("browser_fallback_url");
+                            if (fallbackUrl != null) {
+                                Intent fallbackIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(fallbackUrl));
+                                fallbackIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                                view.getContext().startActivity(fallbackIntent);
+                            }
+                        }
+                    } catch (URISyntaxException e) {
+                        // 파싱 실패 시 WebView 내부 로드로 넘길 수도 있고, 그냥 무시해도 됩니다.
+                        e.printStackTrace();
+                    }
+                    return true;
+                }
+
+                // 2) "myapp://" 처럼 앱 전용 커스텀 스킴(예: kakaomap://, youtube:// 등)이 내려왔을 때 처리
+                //    URI 스킴이 등록된 앱이 있으면 바로 startActivity, 없으면 WebView 로드
+                if ("myapp".equalsIgnoreCase(scheme) || "kakaomap".equalsIgnoreCase(scheme)) {
+                    Intent customIntent = new Intent(Intent.ACTION_VIEW, uri);
+                    customIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+
+                    PackageManager pm = view.getContext().getPackageManager();
+                    if (customIntent.resolveActivity(pm) != null) {
+                        view.getContext().startActivity(customIntent);
+                        return true;
+                    }
+                    // 설치된 앱이 없으면 WebView에서 처리하거나, 마켓으로 유도하는 로직을 넣어도 됩니다.
+                    return false;
+                }
+
+                // 3) 그 외—일반적인 http/https 링크(예: 네이버 지도, 혹은 우리가 처리하지 않을 링크)는 WebView 내에서 로드되게
+                return false;
+            }
+        });
+        webView.loadDataWithBaseURL(
+                null,
+                htmlContent,
+                "text/html",
+                "UTF-8",
+                null
+        );
+
+        // 7) Dialog에 WebView 붙이고 우선 show() 호출
+        dialog.setContentView(webView);
+        dialog.show();
+
+        // 8) “키보드 높이”만큼 다이얼로그가 올라오도록 사이즈를 조정
+        //    (mMainKeyboardView.getHeight()를 사용하면, IME가 차지하던 높이와 똑같이 맞출 수 있습니다)
+        //
+        //    단, 이 값을 곧바로 가져오면 아직 0일 수 있으므로 post()로 한 프레임 뒤에 가져오거나,
+        //    dialog.show() 직후에 mMainKeyboardView.getHeight()가 제대로 잡히는지 확인해야 합니다.
+        int keyboardHeight = mMainKeyboardView.getHeight() + 230;
+        if (keyboardHeight > 0) {
+            window.setLayout(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    keyboardHeight
+            );
+        } else {
+            // 레이아웃이 끝난 뒤에 높이가 잡히면 다시 한 번 세팅
+            mMainKeyboardView.post(() -> {
+                int h = mMainKeyboardView.getHeight();
+                if (h > 0) {
+                    window.setLayout(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            h
+                    );
+                }
+            });
+        }
+
+        // 10) 백 키를 다이얼로그가 우선 처리하도록 OnKeyListener를 등록
+        dialog.setOnKeyListener(new DialogInterface.OnKeyListener() {
+            @Override
+            public boolean onKey(DialogInterface dlg, int keyCode, KeyEvent event) {
+                if (keyCode == KeyEvent.KEYCODE_BACK && event.getAction() == KeyEvent.ACTION_UP) {
+                    // 1) WebView에 뒤로 갈 수 있는 기록이 있으면 WebView.goBack()만
+                    if (mDialogWebView != null && mDialogWebView.canGoBack()) {
+                        mDialogWebView.goBack();
+                        return true; // 여기를 true로 리턴하면 시스템이 이 백 키를 더 이상 숨기기(키보드 내리기) 용도로 사용하지 않습니다.
+                    }
+                    // 2) 기록이 없으면 다이얼로그 닫기
+                    dlg.dismiss();
+                    return true;
+                }
+                return false; // 그 외 키 이벤트는 기본 동작
+            }
+        });
     }
 
     private boolean isSearchInputEmpty() {
@@ -2304,16 +2658,16 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         if (v.getTag(R.id.tag_breathing_anim) != null) return;
 
         // 구간별 시간(ms)
-        long upDuration   = 300;
+        long upDuration = 300;
         long downDuration = 300;
         long idleDuration = 2000;
-        long total        = upDuration + downDuration + idleDuration;
+        long total = upDuration + downDuration + idleDuration;
 
         // Keyframe 생성 (fraction, value)
-        Keyframe kf0 = Keyframe.ofFloat(0f,                             1f);   // 시작
-        Keyframe kf1 = Keyframe.ofFloat(upDuration   / (float) total,  1.1f); // 300ms 시점
+        Keyframe kf0 = Keyframe.ofFloat(0f, 1f);   // 시작
+        Keyframe kf1 = Keyframe.ofFloat(upDuration / (float) total, 1.1f); // 300ms 시점
         Keyframe kf2 = Keyframe.ofFloat((upDuration + downDuration) / (float) total, 1f); // 600ms 시점
-        Keyframe kf3 = Keyframe.ofFloat(1f,                             1f);   // 100%
+        Keyframe kf3 = Keyframe.ofFloat(1f, 1f);   // 100%
 
         // 스케일 X/Y PropertyValuesHolder
         PropertyValuesHolder pvhX = PropertyValuesHolder.ofKeyframe("scaleX", kf0, kf1, kf2, kf3);
@@ -2351,7 +2705,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
             return;
         }
 
-        int maxR = Math.max(w,h) / 2;
+        int maxR = Math.max(w, h) / 2;
 
         // 배경으로 ScanWaveDrawable 추가
         mScanWaveDrawable = new ScanWaveDrawable(maxR);
@@ -2369,7 +2723,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         mScanAnimator.addUpdateListener(anim -> {
             float t = (float) anim.getAnimatedValue();
             float r = t * maxR;
-            int   a = (int) ((1 - t) * 120);  // 120 → 0 투명도
+            int a = (int) ((1 - t) * 120);  // 120 → 0 투명도
             mScanWaveDrawable.setWave(r, a);
         });
         mScanAnimator.start();
@@ -2399,7 +2753,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
 
         public void setWave(float r, int a) {
             this.radius = r;
-            this.alpha  = a;
+            this.alpha = a;
             invalidateSelf();
         }
 
@@ -2415,7 +2769,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
             // 실제 그릴 반경: 원래 radius 의 5배
             float drawR = radius * 5f;
 
-            int innerColor = Color.argb(Math.min(alpha * 2, 255),   0, 120, 255);
+            int innerColor = Color.argb(Math.min(alpha * 2, 255), 0, 120, 255);
             int outerColor = Color.argb(0, 0, 120, 255);
 
             Shader shader = new RadialGradient(
@@ -2429,10 +2783,27 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
             mPaint.setShader(null);
         }
 
-        @Override public void setAlpha(int a)    { }
-        @Override public void setColorFilter(ColorFilter cf) { }
-        @Override public int  getOpacity()        { return PixelFormat.TRANSLUCENT; }
-        @Override public int  getIntrinsicWidth()  { return maxRadius*2; }
-        @Override public int  getIntrinsicHeight() { return maxRadius*2; }
+        @Override
+        public void setAlpha(int a) {
+        }
+
+        @Override
+        public void setColorFilter(ColorFilter cf) {
+        }
+
+        @Override
+        public int getOpacity() {
+            return PixelFormat.TRANSLUCENT;
+        }
+
+        @Override
+        public int getIntrinsicWidth() {
+            return maxRadius * 2;
+        }
+
+        @Override
+        public int getIntrinsicHeight() {
+            return maxRadius * 2;
+        }
     }
 }

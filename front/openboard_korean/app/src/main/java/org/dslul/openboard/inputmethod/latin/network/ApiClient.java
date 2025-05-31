@@ -6,7 +6,6 @@ import android.util.Log;
 
 import org.dslul.openboard.inputmethod.latin.BuildConfig;
 import org.dslul.openboard.inputmethod.latin.auth.AuthManager;
-import org.dslul.openboard.inputmethod.latin.data.SecureStorage;
 
 import java.io.IOException;
 import java.util.concurrent.TimeUnit;
@@ -18,6 +17,7 @@ import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Route;
 import okhttp3.logging.HttpLoggingInterceptor;
+import okhttp3.ResponseBody;
 import retrofit2.Retrofit;
 import retrofit2.converter.gson.GsonConverterFactory;
 
@@ -40,6 +40,8 @@ public final class ApiClient {
 
     private static KeywordApi keywordApi;
     private static TaskMatchApi     taskMatchApi;
+
+    private static GeoAssistApi geoAssistApi;
 
     /* ─────────────────────────── 업로드 전용 인스턴스 ─────────────────────────── */
     private static Retrofit        uploadRetrofit;
@@ -109,7 +111,14 @@ public final class ApiClient {
         HttpLoggingInterceptor logger = new HttpLoggingInterceptor();
         logger.setLevel(HttpLoggingInterceptor.Level.BODY);
 
-        /* ✨ 기본 클라이언트용 Dispatcher 추가 */
+        /* “실제 요청 URL”을 찍어 주는 인터셉터 */
+        Interceptor urlLogger = chain -> {
+            Request request = chain.request();
+            Log.d("Retrofit▶", request.method() + "  " + request.url());
+            return chain.proceed(request);
+        };
+
+        /* 기본 클라이언트용 Dispatcher */
         Dispatcher defaultDispatcher = new Dispatcher();
         defaultDispatcher.setMaxRequestsPerHost(10); // ← 호스트당 동시 요청 5 → 10 으로 상향
         // defaultDispatcher.setMaxRequests(64);     // (원래 값 64 그대로라 굳이 지정 안 해도 됨)
@@ -118,6 +127,7 @@ public final class ApiClient {
         OkHttpClient ok = new OkHttpClient.Builder()
                 .dispatcher(defaultDispatcher)
                 .addInterceptor(authInterceptor)
+                .addInterceptor(urlLogger)
                 .addInterceptor(logger)
                 .authenticator(tokenAuthenticator)
                 .connectTimeout(TIMEOUT, TimeUnit.SECONDS)
@@ -139,6 +149,7 @@ public final class ApiClient {
         clipboardService = retrofit.create(ClipboardService.class);
         keywordApi = retrofit.create(KeywordApi.class);
         taskMatchApi     = retrofit.create(TaskMatchApi.class);
+        geoAssistApi     = retrofit.create(GeoAssistApi.class);
 
         Log.d("ApiClient", "★ Retrofit 초기화 완료");
     }
@@ -234,4 +245,6 @@ public final class ApiClient {
 
     public static KeywordApi getKeywordApi() { return keywordApi; }
     public static TaskMatchApi   getTaskMatchApi()   { return taskMatchApi; }
+
+    public static GeoAssistApi getGeoAssistApi() { return geoAssistApi; }
 }
