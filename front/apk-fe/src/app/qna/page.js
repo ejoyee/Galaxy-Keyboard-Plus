@@ -205,7 +205,7 @@ export default function QnaPage() {
                     {isSubmitting ? (
                       <>
                         <div className="animate-spin rounded-full h-7 w-7 border-b-3 border-white"></div>
-                        AI가 답변 중...
+                        관련 정보를 찾고 있어요...
                       </>
                     ) : (
                       '질문하기'
@@ -283,7 +283,7 @@ export default function QnaPage() {
               <div className="text-center">
                 <div className="mb-8">
                   <h2 className="text-2xl md:text-3xl lg:text-4xl font-bold bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent mb-4">
-                    AI 답변
+                    RAG 기반 답변
                   </h2>
                   <div className="w-20 h-1 bg-gradient-to-r from-cyan-500 to-blue-500 mx-auto rounded-full"></div>
                 </div>
