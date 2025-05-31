@@ -93,6 +93,15 @@ spring:
           metadata:
             description: "Search Service"
 
+        - id: mcp-route
+          uri: http://mcp-api:8050
+          predicates:
+            - Path=/mcp/**
+          filters:
+            - StripPrefix=1
+          metadata:
+            description: "MCP Service"
+
       globalcors:
         corsConfigurations:
           '[/**]':
