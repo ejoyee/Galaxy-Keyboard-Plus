@@ -94,14 +94,16 @@
             android:layout_weight="1" />
 
         <!-- ▶▶ 신규 “매칭-태스크” 버튼 : 처음에는 GONE  -->
-        <ImageButton
+        <com.airbnb.lottie.LottieAnimationView
             android:id="@+id/suggestions_strip_task_key"
             style="@style/SuggestionIconStyle"
             android:layout_width="@dimen/icon_btn_size"
             android:layout_height="@dimen/icon_btn_size"
-            android:contentDescription="mcp 서버 유무 확인 버튼"
-            android:scaleType="centerInside"
-            app:tint="@color/phokey_icon_tint" />
+            android:contentDescription="플러스 버튼"
+            app:lottie_fileName="plus.json"
+            app:lottie_autoPlay="true"
+            app:lottie_loop="true"
+             />
 
         <!-- ① 사진 바: 기본적으로 GONE -->
         <HorizontalScrollView

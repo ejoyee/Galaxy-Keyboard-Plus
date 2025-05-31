@@ -41,6 +41,7 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.ColorFilter;
 import android.graphics.Paint;
+import android.graphics.Picture;
 import android.graphics.PixelFormat;
 import android.graphics.Point;
 import android.graphics.PorterDuff;
@@ -121,6 +122,8 @@ import org.dslul.openboard.inputmethod.latin.settings.Settings;
 import org.dslul.openboard.inputmethod.latin.settings.SettingsValues;
 import org.dslul.openboard.inputmethod.latin.suggestions.MoreSuggestionsView.MoreSuggestionsListener;
 
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
@@ -130,6 +133,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.cardview.widget.CardView;
 import androidx.core.content.ContextCompat;
+import androidx.core.content.FileProvider;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.inputmethod.EditorInfoCompat;
 import androidx.core.view.inputmethod.InputConnectionCompat;
@@ -244,7 +248,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
     private final int mDropIconSize;
     private final int mPhotoBarSizePx;
     private final LinearLayout.LayoutParams mPhotoItemLp;
-    private final ImageButton mTaskKey;
+    private final LottieAnimationView mTaskKey;
     private boolean mTaskMatched = false;   // 이미 매칭돼 있으면 true
     private String mMatchedTask = null;
     private String mMatchedWord = null;
@@ -266,6 +270,32 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
     private boolean mGeoAssistReady = false;
 
     private final FusedLocationProviderClient mFusedLocationClient;
+
+    // ── 필드 (다른 필드들과 함께 선언)
+    private boolean mIsLoading = false;
+
+    // ── 헬퍼
+    private void showLoadingSpinner() {
+        if (mIsLoading) return;
+        mIsLoading = true;
+
+        // 스피너
+        mLoadingSpinner.setVisibility(VISIBLE);
+        mLoadingSpinner.bringToFront();
+
+        // strip 내부 모든 interactive view 숨김
+        View[] views = { mSearchKey, mVoiceKey, mClipboardKey,
+                mFetchClipboardKey, mTaskKey,
+                mSuggestionsStrip, mPhotoBar, mSearchAnswer };
+        for (View v : views) if (v != null) v.setVisibility(GONE);
+    }
+
+    private void hideLoadingSpinner() {
+        mIsLoading = false;
+
+        mLoadingSpinner.setVisibility(GONE);
+        // “원래 보여야 하는” 버튼은 호출부에서 다시 켜도록 한다
+    }
 
     // 한 곳에서 쓰기 편하도록
     private boolean isPhotoOnlyLocked() {
@@ -356,7 +386,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         mStripVisibilityGroup = new StripVisibilityGroup(this, mSuggestionsStrip);
 
         mTaskKey = findViewById(R.id.suggestions_strip_task_key);
-        mTaskKey.setImageResource(DEFAULT_TASK_ICON);
+
         mTaskKey.setOnClickListener(this);
         mTaskKey.setVisibility(VISIBLE);
 
@@ -464,7 +494,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
 
         // 로딩 스피너 준비
         mLoadingSpinner = new ImageView(context);
-        mLoadingSpinner.setVisibility(GONE);
+        hideLoadingSpinner();
         mLoadingSpinner.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
 
         // 2) Glide로 GIF 로드
@@ -598,6 +628,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
     /* ▼ EventBus로 HangulCommitEvent 이벤트 구독 --------------------------------------------------- */
     @Subscribe(threadMode = ThreadMode.MAIN)
     public void onHangulCommitEvent(HangulCommitEvent event) {
+        if (mIsLoading) return;
         // 검색키가 X 상태라면 무시
         if (mSearchKey != null) {
             // 1) ❌ 아이콘 상태
@@ -772,18 +803,26 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
             default:
                 return;           // 매칭 안 됨
         }
+        mTaskKey.clearAnimation();
+        mTaskKey.pauseAnimation();
+        mTaskKey.setRepeatCount(0);
         mTaskKey.setImageResource(resId);
         mTaskMatched = true;
         mMatchedTask = task;
         mMatchedWord = triggerWord;
-
     }
 
     public void resetTaskButton() {
         hideTaskActivatedMessage(() -> {
-            mTaskKey.setImageResource(DEFAULT_TASK_ICON);
+            // ① plus.json 파일로 애니메이션 세팅
+            mTaskKey.setImageResource(0);            // 우선 현재 이미지 제거
+            mTaskKey.setAnimation("plus.json");      // 애니 JSON 다시 설정
+            mTaskKey.loop(true);                     // 무한 루프
+            mTaskKey.playAnimation();                // 재생 시작
+
             mTaskMatched = false;
             mMatchedTask = null;
+            mMatchedWord = null;
         });
     }
 
@@ -912,7 +951,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         // 3) 로딩 스피너 보이기
         mLoadingSpinner.setScaleX(0.8f);
         mLoadingSpinner.setScaleY(0.8f);
-        mLoadingSpinner.setVisibility(VISIBLE);
+        showLoadingSpinner();
         mLoadingSpinner.bringToFront();
 
         // 3) 실제 API 호출
@@ -984,7 +1023,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
 
                 post(() -> {
                     // ① **스피너 숨기기**
-                    mLoadingSpinner.setVisibility(View.GONE);
+                    hideLoadingSpinner();
                     mSearchKey.setVisibility(VISIBLE);
 
                     if (body.getType().equals("info_search") || body.getType().equals("conversation"))
@@ -1266,7 +1305,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                 post(() -> {
                     stopKeyboardAnimation();
                     // ① **스피너 숨기기**
-                    mLoadingSpinner.setVisibility(GONE);
+                    hideLoadingSpinner();
 
                     // ② **높이 원복**
                     ViewGroup.LayoutParams lp = getLayoutParams();
@@ -1343,6 +1382,11 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
     }
 
     public void updateVisibility(final boolean shouldBeVisible, final boolean isFullscreenMode) {
+        if (mIsLoading) {          // 스피너만 보여야 함
+            setVisibility(shouldBeVisible ? VISIBLE : (isFullscreenMode ? GONE : INVISIBLE));
+            return;
+        }
+
         final int visibility = shouldBeVisible ? VISIBLE : (isFullscreenMode ? GONE : INVISIBLE);
         setVisibility(visibility);
 
@@ -1445,6 +1489,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
 
     @Override
     public boolean onLongClick(final View view) {
+        if (mIsLoading) return true;
         if (view == mClipboardKey) {
             ClipboardManager clipboardManager = (ClipboardManager) getContext().getSystemService(Context.CLIPBOARD_SERVICE);
             ClipData clipData = clipboardManager.getPrimaryClip();
@@ -1817,6 +1862,9 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
     @Override
     public void onClick(final View view) {
         AudioAndHapticFeedbackManager.getInstance().performHapticAndAudioFeedback(Constants.CODE_UNSPECIFIED, this);
+
+        if (mIsLoading) return;
+
         if (view == mVoiceKey) {
             mListener.onCodeInput(Constants.CODE_SHORTCUT, Constants.SUGGESTION_STRIP_COORDINATE, Constants.SUGGESTION_STRIP_COORDINATE, false /* isKeyRepeat */);
             return;
@@ -2010,7 +2058,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                     // 1) 만약 아직 서버 응답(mGeoAssistReady)이 안 왔다면 → “첫 번째 클릭” 플로우
                     if (!mGeoAssistReady) {
                         // (1) UI: 로딩 스피너 보여주기, 나머지 버튼 숨기기
-                        mLoadingSpinner.setVisibility(VISIBLE);
+                        showLoadingSpinner();
                         mLoadingSpinner.bringToFront();
 
                         mVoiceKey.setVisibility(GONE);
@@ -2036,7 +2084,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                                                 "위치 정보를 가져오지 못했습니다.",
                                                 Toast.LENGTH_SHORT).show();
                                         // UI 복원
-                                        mLoadingSpinner.setVisibility(GONE);
+                                        hideLoadingSpinner();
                                         restoreButtonsAfterLoading();
                                         return;
                                     }
@@ -2061,7 +2109,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                                                 public void onResponse(Call<ResponseBody> call,
                                                                        Response<ResponseBody> response) {
                                                     // (6) 서버 응답이 왔을 때
-                                                    mLoadingSpinner.setVisibility(GONE);      // 로딩 스피너 숨김
+                                                    hideLoadingSpinner();      // 로딩 스피너 숨김
                                                     if (!response.isSuccessful()) {
                                                         // (1) 상태 코드 찍어보기
                                                         Log.e("GEO API 호출", "서버 오류 코드: " + response.code());
@@ -2105,7 +2153,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
 
                                                 @Override
                                                 public void onFailure(Call<ResponseBody> call, Throwable t) {
-                                                    mLoadingSpinner.setVisibility(GONE);
+                                                    hideLoadingSpinner();
                                                     Toast.makeText(getContext(),
                                                             "네트워크 오류: " + t.getMessage(),
                                                             Toast.LENGTH_SHORT).show();
@@ -2118,7 +2166,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                                     Toast.makeText(getContext(),
                                             "위치 정보를 가져오는 중 오류",
                                             Toast.LENGTH_SHORT).show();
-                                    mLoadingSpinner.setVisibility(GONE);
+                                    hideLoadingSpinner();
                                     restoreButtonsAfterLoading();
                                 });
                         return;
@@ -2226,7 +2274,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         }
 
         // 4) IME 창 위에 뜨더라도 키보드 자체 포커스를 방해하지 않도록 플래그 지정
-        lp.flags |= WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM;
+        lp.flags |= WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL;
 
         // 3) IME 내부(키보드 View)의 토큰을 강제로 붙여 줍니다.
         //    이게 있어야 “이 다이얼로그는 이 IME 창(키보드) 안에만 붙어 있다”고 시스템이 인식합니다.
@@ -2314,14 +2362,24 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
 
         // 5) “뒤로가기 버튼” 생성 (ImageButton 예시)
         ImageButton backBtn = new ImageButton(getContext());
-        backBtn.setImageResource(android.R.drawable.ic_media_previous); // 원하는 아이콘으로 교체
+        backBtn.setImageResource(android.R.drawable.ic_media_previous); // 임시
         backBtn.setBackgroundColor(Color.TRANSPARENT);                // 투명 배경
         // 클릭 시 WebView 뒤로가기 혹은 다이얼로그 닫기
         backBtn.setOnClickListener(v -> {
             if (webView.canGoBack()) {
                 webView.goBack();
             } else {
-                dialog.dismiss();
+                // ↓ 슬라이드 아웃 애니메이션
+                int h = container.getHeight();
+                container.animate()
+                        .translationY(h)
+                        .setDuration(300)
+                        .setInterpolator(new AccelerateInterpolator())
+                        .withEndAction(() -> {
+                            // 애니메이션 끝나면 실제 dismiss()
+                            dialog.dismiss();
+                        })
+                        .start();
             }
         });
 
@@ -2336,9 +2394,82 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         btnLp.setMargins(marginPx, marginPx, marginPx, marginPx);
         backBtn.setLayoutParams(btnLp);
 
-        // 7) 컨테이너에 WebView와 버튼을 추가
-        container.addView(webView);
+        // 5) “공유하기 버튼” 생성 (예: 상단 우측, 공유 아이콘)
+        ImageButton shareBtn = new ImageButton(getContext());
+        shareBtn.setImageResource(android.R.drawable.ic_menu_share);
+        shareBtn.setBackgroundColor(Color.TRANSPARENT);
+        shareBtn.setOnClickListener(v -> {
+            // ─── 공유 로직 시작 (비동기 캡처) ───
+            captureWebViewToCache(webView, new OnCaptureListener() {
+                @Override
+                public void onCaptured(@NonNull Uri contentUri) {
+                    // (1) 캡처가 성공하여 Uri가 준비되었을 때 실행
+                    InputConnection ic = mMainKeyboardView.getInputConnection();
+                    if (ic == null || mEditorInfo == null) {
+                        // 입력 연결을 가져올 수 없으면 토스트만 띄우고 종료
+                        Toast.makeText(getContext(), "입력 연결을 가져올 수 없습니다.", Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+
+                    // (2) ClipDescription 작성
+                    String mimeType = "image/png";
+                    ClipDescription desc = new ClipDescription("shared_webview_image", new String[]{ mimeType });
+
+                    // (3) InputContentInfoCompat 생성
+                    InputContentInfoCompat inputContentInfo = new InputContentInfoCompat(
+                            contentUri,   // content:// URI
+                            desc,
+                            null          // linkUri (필요 없으면 null)
+                    );
+
+                    // (4) commitContent 호출 (읽기 권한 부여 플래그 포함)
+                    int flags = InputConnectionCompat.INPUT_CONTENT_GRANT_READ_URI_PERMISSION;
+                    boolean committed = InputConnectionCompat.commitContent(
+                            ic,
+                            mEditorInfo,
+                            inputContentInfo,
+                            flags,
+                            null
+                    );
+                    if (!committed) {
+                        // IME가 commitContent를 지원하지 않는 경우, 클립보드에 복사
+                        ClipboardManager cm = (ClipboardManager) getContext().getSystemService(Context.CLIPBOARD_SERVICE);
+                        if (cm != null) {
+                            cm.setPrimaryClip(ClipData.newUri(getContext().getContentResolver(),
+                                    "shared_webview_image", contentUri));
+                            Toast.makeText(getContext(),
+                                    "클립보드에 복사되었습니다. 붙여넣기 해주세요.",
+                                    Toast.LENGTH_SHORT).show();
+                        }
+                    }
+                }
+
+                @Override
+                public void onError(@NonNull Exception error) {
+                    // (5) 캡처 또는 저장 중 에러가 발생했을 때 실행
+                    Toast.makeText(getContext(),
+                            "웹뷰 캡처 실패: " + error.getMessage(),
+                            Toast.LENGTH_SHORT).show();
+                }
+            });
+            // ─── 공유 로직 끝 ───
+        });
+        // 공유 버튼 위치 (우측 상단, margin 16dp)
+        FrameLayout.LayoutParams shareLp = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        );
+        shareLp.gravity = Gravity.END | Gravity.TOP;
+        shareLp.setMargins(marginPx, marginPx, marginPx, marginPx);
+        shareBtn.setLayoutParams(shareLp);
+
+        // 7) 컨테이너에 WebView, 뒤로가기 버튼, 공유 버튼을 추가
+        container.addView(webView, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+        ));
         container.addView(backBtn);
+        container.addView(shareBtn);
 
         // 7) Dialog에 WebView 붙이고 우선 show() 호출
         dialog.setContentView(container);
@@ -2368,26 +2499,158 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
             });
         }
         mDialogWebView = webView;
-
         dialog.setOnDismissListener(onDismissListener);
 
-        // 10) 백 키를 다이얼로그가 우선 처리하도록 OnKeyListener를 등록
-        dialog.setOnKeyListener(new DialogInterface.OnKeyListener() {
-            @Override
-            public boolean onKey(DialogInterface dlg, int keyCode, KeyEvent event) {
-                if (keyCode == KeyEvent.KEYCODE_BACK && event.getAction() == KeyEvent.ACTION_UP) {
-                    // 1) WebView에 뒤로 갈 수 있는 기록이 있으면 WebView.goBack()만
-                    if (mDialogWebView != null && mDialogWebView.canGoBack()) {
-                        mDialogWebView.goBack();
-                        return true; // 여기를 true로 리턴하면 시스템이 이 백 키를 더 이상 숨기기(키보드 내리기) 용도로 사용하지 않습니다.
+        // 8) “컨테이너”를 화면 아래로 미리 위치시킨 뒤, 부드럽게 위로 올리기
+        container.post(() -> {
+            int containerHeight = container.getHeight();
+            if (containerHeight <= 0) {
+                // 만약 아직 높이가 0이라면, 재측정을 위해 잠시만 딜레이를 주고 다시 실행
+                // (이때 상위 메서드(showWebViewDialog)를 재귀 호출하지 않고 람다 안에서 동일 로직을 재실행)
+                container.postDelayed(new Runnable() {
+                    @Override
+                    public void run() {
+                        int newHeight = container.getHeight();
+                        if (newHeight > 0) {
+                            // 다시 얻어온 높이만큼 translationY를 세팅
+                            container.setTranslationY(newHeight);
+                            container.animate()
+                                    .translationY(0)
+                                    .setDuration(300)
+                                    .setInterpolator(new DecelerateInterpolator())
+                                    .start();
+                        }
                     }
-                    // 2) 기록이 없으면 다이얼로그 닫기
-                    dlg.dismiss();
+                }, 50);
+                return;
+            }
+
+            // 2) 정상적으로 측정된 높이가 있다면, 즉시 아래로 내려놓고 위로 슬라이드 인
+            container.setTranslationY(containerHeight);
+            container.animate()
+                    .translationY(0)
+                    .setDuration(300)
+                    .setInterpolator(new DecelerateInterpolator())
+                    .start();
+        });
+
+        // 10) 백 키를 다이얼로그가 우선 처리하도록 OnKeyListener를 등록
+        dialog.setOnKeyListener((dlg, keyCode, event) -> {
+            if (keyCode == KeyEvent.KEYCODE_BACK && event.getAction() == KeyEvent.ACTION_UP) {
+                if (mDialogWebView != null && mDialogWebView.canGoBack()) {
+                    mDialogWebView.goBack();
                     return true;
                 }
-                return false; // 그 외 키 이벤트는 기본 동작
+                // 슬라이드 아웃 애니메이션
+                int h = container.getHeight();
+                container.animate()
+                        .translationY(h)
+                        .setDuration(300)
+                        .setInterpolator(new AccelerateInterpolator())
+                        .withEndAction(() -> dlg.dismiss())
+                        .start();
+                return true;
+            }
+            return false;
+        });
+    }
+
+    /**
+     * WebView 전체를 비트맵으로 캡처하고, 저장된 PNG 파일의 URI를 콜백으로 알려줍니다.
+     *
+     * @param webView  캡처 대상 WebView
+     * @param listener 캡처가 완료되면 결과 Uri를 받거나, 에러 발생 시에 알림을 받을 리스너
+     */
+    public void captureWebViewToCache(@NonNull final WebView webView,
+                                      @NonNull final OnCaptureListener listener) {
+        // ① WebView 크기와 원래 상태(높이/스크롤 위치)를 미리 저장
+        final int width = webView.getWidth();
+        if (width == 0) {
+            listener.onError(new IllegalStateException("WebView의 너비가 아직 측정되지 않았습니다."));
+            return;
+        }
+        final int origHeight = webView.getHeight();
+        final int origScrollY = webView.getScrollY();
+
+        // ② 전체 콘텐츠 높이(px) 계산
+        float density = webView.getResources().getDisplayMetrics().density;
+        int contentHeightCssPx = webView.getContentHeight();
+        final int fullHeightPx = (int) (contentHeightCssPx * density);
+        if (fullHeightPx == 0) {
+            listener.onError(new IllegalStateException("WebView 콘텐츠 높이를 가져올 수 없습니다."));
+            return;
+        }
+
+        // ③ WebView를 off-screen으로 전체 높이로 measure & layout
+        webView.measure(
+                View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(fullHeightPx, View.MeasureSpec.EXACTLY)
+        );
+        webView.layout(0, 0, width, fullHeightPx);
+
+        // ④ 한 프레임 뒤에 비트맵을 생성하도록 post() 사용
+        webView.post(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    // (A) 비트맵 생성 및 WebView 전체 내용 그리기
+                    Bitmap bitmap = Bitmap.createBitmap(width, fullHeightPx, Bitmap.Config.ARGB_8888);
+                    Canvas canvas = new Canvas(bitmap);
+                    webView.draw(canvas);
+
+                    // (B) 캐시 디렉토리 안에 images/ 폴더 준비
+                    File imagesDir = new File(webView.getContext().getCacheDir(), "images");
+                    if (!imagesDir.exists() && !imagesDir.mkdirs()) {
+                        throw new IOException("임시 폴더(images/) 생성 실패");
+                    }
+
+                    // (C) 파일 이름 생성 후 저장
+                    String fileName = "webview_capture_" + System.currentTimeMillis() + ".png";
+                    File imageFile = new File(imagesDir, fileName);
+                    try (FileOutputStream fos = new FileOutputStream(imageFile)) {
+                        bitmap.compress(Bitmap.CompressFormat.PNG, 100, fos);
+                        fos.flush();
+                    }
+
+                    // (D) WebView를 원래 높이/스크롤 위치로 복원
+                    webView.measure(
+                            View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+                            View.MeasureSpec.makeMeasureSpec(origHeight, View.MeasureSpec.EXACTLY)
+                    );
+                    webView.layout(0, 0, width, origHeight);
+                    webView.scrollTo(0, origScrollY);
+
+                    // (E) FileProvider를 통해 content:// Uri 생성
+                    String authority = webView.getContext().getPackageName() + ".fileprovider";
+                    Uri resultUri = FileProvider.getUriForFile(webView.getContext(), authority, imageFile);
+
+                    // (F) 캡처 성공 콜백 호출
+                    listener.onCaptured(resultUri);
+
+                } catch (Exception e) {
+                    // 저장이나 URI 생성 중 예외 발생 시 onError 호출
+                    listener.onError(e);
+                }
             }
         });
+    }
+
+
+    /**
+     * WebView 캡처 작업이 끝났을 때 결과를 알려주는 콜백 인터페이스
+     */
+    public interface OnCaptureListener {
+        /**
+         * 캡처에 성공하여 파일이 저장되고, 해당 파일의 content:// URI가 준비되었을 때 호출됩니다.
+         * @param uri 저장된 이미지 파일의 content:// URI
+         */
+        void onCaptured(@NonNull Uri uri);
+
+        /**
+         * 캡처 중 오류가 발생했을 때 호출됩니다.
+         * @param error 발생한 예외 정보
+         */
+        void onError(@NonNull Exception error);
     }
 
     private boolean isSearchInputEmpty() {
