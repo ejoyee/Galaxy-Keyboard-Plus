@@ -43,16 +43,18 @@ export default function QnaPage() {
     setDisplayedText('');
     
     try {
-      const response = await fetch('http://k12e201.p.ssafy.io:8090/rag/qa/query', {
-        method: 'POST',
-        headers: {
-          'accept': 'application/json',
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          question: question.trim()
-        })
-      });
+      const response = await fetch('https://k12e201.p.ssafy.io/search/qa/query', {
+  method: 'POST',
+  headers: {
+    'accept': 'application/json',
+    'Content-Type': 'application/json',
+    'X-Bypass-Auth': 'adminadmin'
+  },
+  body: JSON.stringify({
+    question: question.trim()
+  })
+});
+
 
       if (response.ok) {
         const data = await response.json();
