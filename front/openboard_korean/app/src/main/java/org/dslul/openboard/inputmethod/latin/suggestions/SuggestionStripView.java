@@ -746,27 +746,27 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         int resId;
         switch (task) {
             case "maps":
-                resId = R.drawable.ic_search;   // 임시
+                resId = R.drawable.ic_maps;   // 임시 정적 아이콘
                 showTaskActivatedMessage("maps 버튼 활성화(test)");
                 break;
             case "opencv":
-                resId = R.drawable.ic_send;     // 임시
+                resId = R.drawable.ic_opencv;     // 임시 정적 아이콘
                 showTaskActivatedMessage("opencv 버튼 활성화(test)");
                 break;
             case "airbnb":
-                resId = R.drawable.ic_send;     // 임시
+                resId = R.drawable.ic_airbnb;     // 임시 정적 아이콘
                 showTaskActivatedMessage("airbnb 버튼 활성화(test)");
                 break;
             case "web":
-                resId = R.drawable.ic_send;     // 임시
+                resId = R.drawable.ic_send;     // 임시 정적 아이콘
                 showTaskActivatedMessage("web 버튼 활성화(test)");
                 break;
             case "gmail":
-                resId = R.drawable.ic_send;     // 임시
+                resId = R.drawable.ic_gmail;     // 임시 정적 아이콘
                 showTaskActivatedMessage("gmail 버튼 활성화(test)");
                 break;
             case "calendar":
-                resId = R.drawable.ic_send;     // 임시
+                resId = R.drawable.ic_calendar;     // 임시 정적 아이콘
                 showTaskActivatedMessage("calendar 버튼 활성화(test)");
                 break;
             default:
@@ -2084,27 +2084,23 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                                                         //    두 번째 버튼 터치 시 showWebViewDialog(html) 호출
                                                         mGeoAssistHtml = html;
                                                         mGeoAssistReady = true;
+
                                                         // Task 버튼 아이콘을 “확인” 모드로 바꾸기
-                                                        mTaskKey.setImageResource(R.drawable.ic_arrow_up);
+                                                        mTaskKey.setImageResource(R.drawable.ic_maps);
+
+                                                        // → 이 시점에 mTaskKey가 다시 VISIBLE 상태여야 ripple을 붙일 수 있다.
+                                                        // restoreButtonsAfterLoading() 직후에 attachRippleToTaskKey() 호출하도록 한다.
+                                                        restoreButtonsAfterLoading();
+
+                                                        // --- restoreButtonsAfterLoading() 내부에서 mTaskKey.setVisibility(VISIBLE) 처리됨 ---
+
                                                         Toast.makeText(getContext(), "지도 결과가 준비되었습니다", Toast.LENGTH_SHORT).show();
                                                     } catch (IOException e) {
                                                         Log.e("GEO API 호출", "response.body().string() 읽기 실패", e);
                                                         Toast.makeText(getContext(),
                                                                 "응답 처리 중 오류", Toast.LENGTH_SHORT).show();
                                                         restoreButtonsAfterLoading();
-                                                        return;
                                                     }
-
-                                                    // (7) 이제 “확인 상태”로 변경: 다음 클릭 시 WebView를 띄울 수 있도록 준비
-                                                    mGeoAssistReady = true;
-
-                                                    // 예를 들면 “확인” 아이콘으로 교체하거나, 버튼 배경을 바꿔줍니다.
-                                                    mTaskKey.setImageResource(R.drawable.ic_arrow_up);      // 임시
-                                                    // (ic_confirm 은 “확인” 아이콘으로 대체하세요)
-
-                                                    // 맵 버튼을 다시 눌렀을 때 WebView를 띄울 수 있도록,
-                                                    // 나머지 버튼들만 원래처럼 보이게 해 줍니다.
-                                                    restoreButtonsAfterLoading();
                                                 }
 
                                                 @Override
@@ -2128,11 +2124,16 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                         return;
                     }
 
-                    // 2) 이미 mGeoAssistReady == true (서버 응답 완료)된 상태라면 → “두 번째 클릭” 플로우
-                    showWebViewDialog(mGeoAssistHtml);
+                    showWebViewDialog(mGeoAssistHtml, new Dialog.OnDismissListener() {
+                        @Override
+                        public void onDismiss(DialogInterface dialog) {
+                            resetTaskAfterConfirm();
+                        }
+                    });
 
                     // (3) WebView를 띄운 뒤, 필요하다면 Task 버튼과 상태를 초기화
                     resetTaskAfterConfirm();
+
                     return;
                 case "opencv":
                     /* opencv 작업 실행 */
@@ -2179,10 +2180,11 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         // ③ 검색 버튼도 다시 보여주기 (첫 클릭 때 GONE 처리했으므로 복원해 줘야 함)
         mSearchKey.setVisibility(VISIBLE);
 
+        mTaskKey.setTranslationX(0f);
         // ④ TaskKey 아이콘 리셋: 아직 mGeoAssistReady가 false라면 기본 아이콘(+)으로 돌려둠
-        if (!mGeoAssistReady) {
-            mTaskKey.setImageResource(DEFAULT_TASK_ICON);
-        }
+//        if (!mGeoAssistReady) {
+//            mTaskKey.setImageResource(DEFAULT_TASK_ICON);
+//        }
     }
 
     private void resetTaskAfterConfirm() {
@@ -2202,7 +2204,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
      * BadTokenException(2012) 에러를 없애기 위해,
      * TYPE_INPUT_METHOD_DIALOG 대신 TYPE_APPLICATION_ATTACHED_DIALOG를 사용합니다.
      */
-    private void showWebViewDialog(String htmlContent) {
+    private void showWebViewDialog(String htmlContent, Dialog.OnDismissListener onDismissListener) {
         // 1) Dialog를 만들 때 Fullscreen 테마 대신 “일반 다이얼로그” 테마를 씁니다.
         Dialog dialog = new Dialog(getContext(),
                 android.R.style.Theme_DeviceDefault_Light_NoActionBar);
@@ -2366,6 +2368,9 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
             });
         }
         mDialogWebView = webView;
+
+        dialog.setOnDismissListener(onDismissListener);
+
         // 10) 백 키를 다이얼로그가 우선 처리하도록 OnKeyListener를 등록
         dialog.setOnKeyListener(new DialogInterface.OnKeyListener() {
             @Override
