@@ -2,4 +2,5 @@
 <resources>
     <item name="original_background" type="id"/>
     <item name="tag_breathing_anim" type="id"/>
+    <item name="tag_drag_tip_anim" type="id"/>
 </resources>

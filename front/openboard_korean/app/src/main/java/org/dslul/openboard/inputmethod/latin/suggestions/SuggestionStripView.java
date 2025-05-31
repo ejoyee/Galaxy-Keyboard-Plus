@@ -78,6 +78,7 @@ import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.ExtractedText;
 import android.view.inputmethod.ExtractedTextRequest;
 import android.view.inputmethod.InputConnection;
+import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
 import android.widget.ImageButton;
 import android.widget.ImageView;
@@ -235,7 +236,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
     private boolean mPhotoOnlyLocked = false;
     private boolean mScrollTipShown = false;   // 스크롤 툴팁 이미 보여줬는지
     private boolean mDragTipShown = false;      // 드래그 툴팁 이미 보여줬는지
-    private ImageView mDragTipView;
+    private FrameLayout mDragTipView;
     private final Handler mTipHandler = new Handler(Looper.getMainLooper());
     private Runnable mDragTipRunnable;
 
@@ -321,6 +322,11 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         final LayoutInflater inflater = LayoutInflater.from(context);
         inflater.inflate(R.layout.suggestions_strip, this);
         setBackgroundColor(ContextCompat.getColor(context, R.color.phokey_strip_bg));
+
+        /* ▼ 여기쯤에 추가 --------------------------------------- */
+        setClipChildren(false);     // 자식이 View 바깥으로 나가도 잘라내지 않음
+        setClipToPadding(false);    // padding 범위까지 허용
+        /* ------------------------------------------------------ */
 
         mSuggestionsStrip = findViewById(R.id.suggestions_strip);
         mSuggestionsStrip.setVisibility(View.GONE);
@@ -466,7 +472,8 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                     if (event.getClipDescription().hasMimeType(ClipDescription.MIMETYPE_TEXT_URILIST)) {
                         // 1) IME Insets Freeze ON
                         if (mImeService != null) mImeService.setDragging(true);
-                        if (mDragTipRunnable != null) mTipHandler.removeCallbacks(mDragTipRunnable);
+
+                        hideDragTipLoop();
 
                         expandDragArea();
 
@@ -1143,13 +1150,15 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                                 int count = mPhotoBarContainer.getChildCount();
                                 if (count == 0) return;
 
-                                long activeDuration = 1000L;   // 1초 동안만 애니
                                 long upDuration     = 300L;    // ↑ 300ms
                                 long downDuration   = 300L;    // ↓ 300ms
-                                long interDelay     = count > 1
-                                        ? (activeDuration - upDuration - downDuration) / (count - 1)
-                                        : 0L;
-                                long cycleInterval  = 3000L;   // 3초마다 반복
+                                long interDelay     = 10L;    // 카드 간 고정 지연(10ms)
+                                // 한 사이클 전체 길이 계산: (카드 수 - 1) * interDelay + upDuration + downDuration
+                                long waveSpan       = (count - 1) * interDelay + upDuration + downDuration;
+                                // 원래 주기(2초)보다 waveSpan이 길어질 수 있으므로,
+                                // 충분한 휴지(2000ms)를 더해준다.
+                                long cycleInterval  = waveSpan + 1500L;
+                                // ────────────────────
 
                                 // 부드러운 감속/가속용 인터폴레이터
                                 Interpolator upInterp   = new DecelerateInterpolator();
@@ -1503,55 +1512,109 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                 .start();
     }
 
-    // 2) showDragTip() 메서드 추가 (클래스 맨 아래쪽)
+    private GradientDrawable createRippleDrawable() {
+        GradientDrawable d = new GradientDrawable();
+        d.setShape(GradientDrawable.OVAL);
+        d.setColor(Color.WHITE);          // 흰색
+        d.setAlpha((int) (0.8f * 255));   // 알파 0.8
+        return d;
+    }
+
     private void showDragTip() {
-        if (mDragTipShown) return;
-//        mDragTipShown = true;     // 최초 한 번만 보여주기
+        if (mDragTipView != null || mDragTipShown) return;
 
-        ImageView tip = new ImageView(getContext());
-        tip.setImageResource(R.drawable.ic_arrow_up);   // 위쪽 화살표 리소스
+//        mDragTipShown = true;
 
-        int size = dpToPx(56);
-        RelativeLayout.LayoutParams lp = new RelativeLayout.LayoutParams(size, size);
-        lp.addRule(RelativeLayout.CENTER_HORIZONTAL);
-        lp.addRule(RelativeLayout.ALIGN_PARENT_TOP);
-        lp.topMargin = dpToPx(8);  // 최상단에서 살짝 띄워서 표시
-        addView(tip, lp);
+        int size = dpToPx(24);
 
-        tip.bringToFront();
-        tip.setElevation(dpToPx(8));
+        /* ■ 컨테이너(Box) 만들기 ------------------------------------------------ */
+        FrameLayout box = new FrameLayout(getContext());
+        RelativeLayout.LayoutParams lpBox =
+                new RelativeLayout.LayoutParams(size * 3, size * 3);
+        lpBox.addRule(CENTER_IN_PARENT);
+        addView(box, lpBox);          // 부모(RelativeLayout)에 한번만 add
+        box.setElevation(dpToPx(8));  // 전부 띄우기
 
-        mDragTipView = tip;
+        box.setClipChildren(false);         // 자식이 box 밖으로 나가도 자르지 말기
+        setClipChildren(false);             // SuggestionStripView 도 동일
 
-        long appear = 200, bounce = 200, disappear = 200;
-        tip.setAlpha(0f);
-        tip.setTranslationY(-dpToPx(10));  // 위에서 내려오는 모션
+        /* ■ Ripple View -------------------------------------------------------- */
+        View ripple = new View(getContext());
+        ripple.setBackground(createRippleDrawable());
+        ripple.setScaleX(0f); ripple.setScaleY(0f); ripple.setAlpha(0f);
+        box.addView(ripple,
+                new FrameLayout.LayoutParams(
+                        size * 2,
+                        size * 2,
+                        Gravity.CENTER));
 
-        // ① 페이드인 + 자리잡기
-        tip.animate()
-                .alpha(1f).translationY(0f)
-                .setDuration(appear)
-                .withEndAction(() -> {
-                    // ② 위아래 바운스(4회)
-                    ObjectAnimator bounceAnim =
-                            ObjectAnimator.ofFloat(tip, "translationY", 0f, -dpToPx(6));
-                    bounceAnim.setDuration(bounce);
-                    bounceAnim.setInterpolator(new FastOutSlowInInterpolator());
-                    bounceAnim.setRepeatMode(ValueAnimator.REVERSE);
-                    bounceAnim.setRepeatCount(7);
-                    bounceAnim.addListener(new AnimatorListenerAdapter() {
-                        @Override public void onAnimationEnd(Animator animation) {
-                            // ③ 페이드아웃 후 제거
-                            tip.animate()
-                                    .alpha(0f)
-                                    .setDuration(disappear)
-                                    .withEndAction(() -> removeView(tip))
-                                    .start();
-                        }
-                    });
-                    bounceAnim.start();
-                })
-                .start();
+        /* ■ 화살표 ImageView --------------------------------------------------- */
+        ImageView arrow = new ImageView(getContext());
+        arrow.setImageResource(R.drawable.ic_arrow_up);
+        box.addView(arrow,
+                new FrameLayout.LayoutParams(
+                        size,
+                        size,
+                        Gravity.CENTER));
+
+        mDragTipView = box;           // << 컨테이너 전체를 보관
+
+        /* ■ 애니메이션 --------------------------------------------------------- */
+        long fade  = 200, hold = 1000, move = 400;
+        float travelY = -getHeight()/2f + dpToPx(24);
+
+        // ─ 화살표 순차 애니
+        ObjectAnimator fadeIn = ObjectAnimator.ofFloat(arrow, View.ALPHA, 0f, 1f);
+        fadeIn.setDuration(fade);
+
+        ObjectAnimator stay   = ObjectAnimator.ofFloat(arrow, View.ALPHA, 1f, 1f);
+        stay.setDuration(hold);
+
+        ObjectAnimator up     = ObjectAnimator.ofFloat(arrow,
+                View.TRANSLATION_Y, 0f, travelY);
+        up.setDuration(move);
+        up.setInterpolator(new FastOutSlowInInterpolator());
+        up.addListener(new AnimatorListenerAdapter() {
+            @Override public void onAnimationEnd(Animator a) {
+                arrow.setTranslationY(0f);
+            }
+        });
+
+        // ─ Ripple 애니 (hold 구간마다 발생)
+        ObjectAnimator rX = ObjectAnimator.ofFloat(ripple, View.SCALE_X, 0f, 3f);
+        ObjectAnimator rY = ObjectAnimator.ofFloat(ripple, View.SCALE_Y, 0f, 3f);
+        ObjectAnimator rA = ObjectAnimator.ofFloat(ripple, View.ALPHA , 0.8f, 0f);
+
+        AnimatorSet rippleSet = new AnimatorSet();
+        rippleSet.playTogether(rX, rY, rA);
+        rippleSet.setDuration(hold);
+        rippleSet.setInterpolator(new LinearInterpolator());
+        rippleSet.addListener(new AnimatorListenerAdapter() {
+            @Override public void onAnimationEnd(Animator a) {
+                // 다음 싸이클을 위해 원복
+                ripple.setScaleX(0f); ripple.setScaleY(0f); ripple.setAlpha(0f);
+            }
+        });
+
+        // ─ 메인 싸이클
+        AnimatorSet cycle = new AnimatorSet();
+        cycle.playSequentially(fadeIn, stay, up);
+
+        stay.addListener(new AnimatorListenerAdapter() {
+            @Override public void onAnimationStart(Animator a) {
+                rippleSet.start();     // hold 시작과 동시에 파동
+            }
+        });
+
+        cycle.addListener(new AnimatorListenerAdapter() {
+            @Override public void onAnimationEnd(Animator a) {
+                cycle.start();         // 무한 반복
+            }
+        });
+
+        // 태그에 저장(나중 cancel 용)
+        box.setTag(R.id.tag_drag_tip_anim, cycle);
+        cycle.start();
     }
 
     // 클래스 맨 아래쪽에
@@ -1560,7 +1623,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         mDragTipRunnable = new Runnable() {
             @Override public void run() {
                 // 실제 드래깅 전이라면
-                if (!mIsDragging) {
+                if (!mIsDragging && mDragTipView == null) {
                     showDragTip();
                     // 3초 후 다시
                     mTipHandler.postDelayed(this, 3000);
@@ -1578,8 +1641,11 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
             mTipHandler.removeCallbacks(mDragTipRunnable);
             mDragTipRunnable = null;
         }
-        // 이미 떠있는 팁 뷰 제거
+        // 애니메이터 취소 & 뷰 제거
         if (mDragTipView != null) {
+            Animator a = (Animator) mDragTipView.getTag(R.id.tag_drag_tip_anim);
+            if (a != null) a.cancel();                 // 루프 중지
+            mDragTipView.animate().cancel();           // 혹시 남은 페이드-인 취소
             removeView(mDragTipView);
             mDragTipView = null;
         }
