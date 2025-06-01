@@ -21,6 +21,10 @@
 
     <!--  알림 권한  -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
     <!-- ────────── 미디어 읽기 권한 ────────── -->
     <!-- Android 13 (API 33)+ : 모든 이미지(사진) -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
@@ -202,5 +206,17 @@
             android:name=".network.ChatSaveService"
             android:exported="false"
             android:permission="android.permission.BIND_JOB_SERVICE"/>
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+
+            <!-- file_paths.xml 참조 -->
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
 </manifest>
