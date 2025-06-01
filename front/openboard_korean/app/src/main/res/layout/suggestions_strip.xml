@@ -87,12 +87,32 @@
             android:contentDescription="@string/fetch_clipboard"
             android:src="@drawable/ic_smart_clipboard" />
 
+        <!-- ① 가로 공간을 모두 차지하는 더미 뷰 -->
+        <View
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_weight="1" />
+
+        <!-- ▶▶ 신규 “매칭-태스크” 버튼 : 처음에는 GONE  -->
+        <com.airbnb.lottie.LottieAnimationView
+            android:id="@+id/suggestions_strip_task_key"
+            style="@style/SuggestionIconStyle"
+            android:layout_width="@dimen/icon_btn_size"
+            android:layout_height="@dimen/icon_btn_size"
+            android:contentDescription="플러스 버튼"
+            app:lottie_fileName="plus.json"
+            app:lottie_autoPlay="true"
+            app:lottie_loop="true"
+             />
+
         <!-- ① 사진 바: 기본적으로 GONE -->
         <HorizontalScrollView
             android:id="@+id/suggestions_strip_photo_bar"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:padding="4dp"
+            android:padding="0dp"
+            android:clipChildren="false"
+            android:clipToPadding="false"
             android:visibility="gone">
 
             <LinearLayout
@@ -106,7 +126,7 @@
             android:id="@+id/suggestions_strip"
             android:layout_width="wrap_content"
             android:layout_height="match_parent"
-            android:layout_weight="1"
+            android:layout_weight="0"
             android:hapticFeedbackEnabled="false"
             android:maxWidth="100dp"
             android:orientation="horizontal"
