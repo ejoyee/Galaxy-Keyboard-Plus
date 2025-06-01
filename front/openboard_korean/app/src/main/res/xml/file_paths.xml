@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- 앱 내부 캐시 디렉토리 중 “images/” 폴더를 공유 -->
+    <cache-path
+        name="shared_images"
+        path="images/" />
+
+    <!-- 또는 앱 외부 저장소(External) 공유가 필요하면 이렇게도 가능 -->
+    <!--
+    <external-cache-path
+        name="shared_ext_images"
+        path="images/" />
+    -->
+
+</paths>
