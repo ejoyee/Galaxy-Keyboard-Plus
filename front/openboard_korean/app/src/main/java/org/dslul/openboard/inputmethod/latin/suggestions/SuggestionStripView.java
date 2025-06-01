@@ -41,7 +41,6 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.ColorFilter;
 import android.graphics.Paint;
-import android.graphics.Picture;
 import android.graphics.PixelFormat;
 import android.graphics.Point;
 import android.graphics.PorterDuff;
@@ -108,6 +107,7 @@ import org.dslul.openboard.inputmethod.latin.SuggestedWords.SuggestedWordInfo;
 import org.dslul.openboard.inputmethod.latin.auth.AuthManager;
 import org.dslul.openboard.inputmethod.latin.common.Constants;
 import org.dslul.openboard.inputmethod.latin.define.DebugFlags;
+import org.dslul.openboard.inputmethod.latin.network.AirbnbSearchReq;
 import org.dslul.openboard.inputmethod.latin.network.ApiClient;
 import org.dslul.openboard.inputmethod.latin.network.ChatSaveService;
 import org.dslul.openboard.inputmethod.latin.network.ClipBoardResponse;
@@ -266,9 +266,15 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
     private ValueAnimator mScanAnimator;
     private ScanWaveDrawable mScanWaveDrawable;
 
+    // mcp 관련 필드-------------------------------
     private String mGeoAssistHtml;   // 응답 HTML 저장
     private boolean mGeoAssistReady = false;
+    private boolean mAirbnbReady = false;       // Airbnb HTML이 준비되었는지 여부
+    private String mAirbnbHtml = null;          // Airbnb 서버에서 받아온 HTML
 
+
+
+    //------------------------------------------
     private final FusedLocationProviderClient mFusedLocationClient;
 
     // ── 필드 (다른 필드들과 함께 선언)
@@ -2193,8 +2199,85 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                     /* calendar 작업 실행 */
                     break;
                 case "airbnb":
-                    /* airbnb 작업 실행 */
-                    break;
+                    // ── 첫 번째 클릭: 아직 HTML 준비되지 않음 → 서버 호출 ──
+                    if (!mAirbnbReady) {
+                        // 1) 로딩 스피너 보여주기, 나머지 버튼 숨기기
+                        showLoadingSpinner();
+                        mLoadingSpinner.bringToFront();
+
+                        mVoiceKey.setVisibility(GONE);
+                        mSearchKey.setVisibility(GONE);
+                        mTaskKey.setVisibility(GONE);
+                        mTaskLabel.setVisibility(GONE);
+                        mFetchClipboardKey.setVisibility(GONE);
+
+                        // 2) 현재 에디터(입력창) 내용 가져오기
+                        String q = getCurrentInputText();
+
+                        // 3) Retrofit으로 Airbnb 검색 API 호출
+                        AirbnbSearchReq body = new AirbnbSearchReq();
+                        body.query = q;
+                        ApiClient.getAirbnbApi().searchHtml(body)
+                                .enqueue(new Callback<ResponseBody>() {
+                                    @Override
+                                    public void onResponse(Call<ResponseBody> call, Response<ResponseBody> response) {
+                                        // (1) 로딩 스피너 숨김
+                                        hideLoadingSpinner();
+
+                                        if (!response.isSuccessful() || response.body() == null) {
+                                            // 실패 시 토스트 메시지 띄우고 버튼 원복
+                                            Toast.makeText(getContext(),
+                                                    "Airbnb 검색에 실패했습니다. 코드: " + response.code(),
+                                                    Toast.LENGTH_SHORT).show();
+                                            restoreButtonsAfterLoading();
+                                            return;
+                                        }
+                                        try {
+                                            // (2) 받은 HTML 문자열을 저장
+                                            mAirbnbHtml = response.body().string();
+                                            mAirbnbReady = true;
+
+                                            // (3) Task 버튼 아이콘을 Airbnb 아이콘으로 변경 (R.drawable.ic_airbnb가 이미 리소스에 있어야 함)
+                                            mTaskKey.setImageResource(R.drawable.ic_airbnb);
+
+                                            // (4) 버튼 원복
+                                            restoreButtonsAfterLoading();
+
+                                            Toast.makeText(getContext(), "Airbnb 결과가 준비되었습니다", Toast.LENGTH_SHORT).show();
+                                        } catch (IOException e) {
+                                            Toast.makeText(getContext(), "응답 처리 중 오류", Toast.LENGTH_SHORT).show();
+                                            restoreButtonsAfterLoading();
+                                        }
+                                    }
+
+                                    @Override
+                                    public void onFailure(Call<ResponseBody> call, Throwable t) {
+                                        hideLoadingSpinner();
+                                        Toast.makeText(getContext(),
+                                                "네트워크 오류: " + t.getMessage(),
+                                                Toast.LENGTH_SHORT).show();
+                                        restoreButtonsAfterLoading();
+                                    }
+                                });
+                        return;
+                    }
+
+                    // ── 두 번째 클릭: HTML 준비 완료된 상태 → WebView 다이얼로그 띄우기 ──
+                    showWebViewDialog(mAirbnbHtml, new Dialog.OnDismissListener() {
+                        @Override
+                        public void onDismiss(DialogInterface dialog) {
+                            // 다이얼로그 닫힌 뒤 Task 상태 초기화
+                            mAirbnbReady = false;
+                            mAirbnbHtml = null;
+                            mMatchedTask = null;
+                            mTaskMatched = false;
+                            mTaskKey.setImageResource(DEFAULT_TASK_ICON);
+                        }
+                    });
+
+                    // 실행 후 버튼 리셋 (maps처럼 resetTaskButton() 대신 Airbnb 전용으로 할 경우
+                    // mTaskKey 아이콘만 +로 원복하면 되므로 별도 호출하지 않아도 무방합니다.)
+                    return;
                 case "web":
                     /* web 작업 실행 */
                     break;

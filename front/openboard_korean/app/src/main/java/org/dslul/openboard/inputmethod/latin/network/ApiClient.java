@@ -42,6 +42,7 @@ public final class ApiClient {
     private static TaskMatchApi     taskMatchApi;
 
     private static GeoAssistApi geoAssistApi;
+    private static AirbnbApi airbnbApi;
 
     /* ─────────────────────────── 업로드 전용 인스턴스 ─────────────────────────── */
     private static Retrofit        uploadRetrofit;
@@ -150,6 +151,7 @@ public final class ApiClient {
         keywordApi = retrofit.create(KeywordApi.class);
         taskMatchApi     = retrofit.create(TaskMatchApi.class);
         geoAssistApi     = retrofit.create(GeoAssistApi.class);
+        airbnbApi     = retrofit.create(AirbnbApi.class);
 
         Log.d("ApiClient", "★ Retrofit 초기화 완료");
     }
@@ -247,4 +249,5 @@ public final class ApiClient {
     public static TaskMatchApi   getTaskMatchApi()   { return taskMatchApi; }
 
     public static GeoAssistApi getGeoAssistApi() { return geoAssistApi; }
+    public static AirbnbApi getAirbnbApi() { return airbnbApi; }
 }
