@@ -7,32 +7,39 @@ from fastapi.responses import HTMLResponse
 import re
 import asyncio
 
+
 def extract_origin_destination(query: str):
     """쿼리에서 출발지와 도착지를 추출"""
     # 정리: 불필요한 단어 제거
-    cleaned_query = re.sub(r'\s*(가는|방법|경로|길찾기|어떻게|길)\s*$', '', query.strip())
-    
+    cleaned_query = re.sub(
+        r"\s*(가는|방법|경로|길찾기|어떻게|길)\s*$", "", query.strip()
+    )
+
     # 패턴 1: "A에서/부터 B로/까지"
     patterns = [
-        r'(.+?)(에서|부터)\s*(.+?)(으로|까지|로|에)\s*',
-        r'(.+?)(에서|부터)\s*(.+)',
+        r"(.+?)(에서|부터)\s*(.+?)(으로|까지|로|에)\s*",
+        r"(.+?)(에서|부터)\s*(.+)",
     ]
-    
+
     for pattern in patterns:
         match = re.search(pattern, cleaned_query)
         if match:
             origin = match.group(1).strip()
-            destination = match.group(3).strip() if len(match.groups()) >= 3 else match.group(2).strip()
-            
+            destination = (
+                match.group(3).strip()
+                if len(match.groups()) >= 3
+                else match.group(2).strip()
+            )
+
             # 후처리: 접미사 제거
-            destination = re.sub(r'(으로|까지|로|에)$', '', destination).strip()
-            
+            destination = re.sub(r"(으로|까지|로|에)$", "", destination).strip()
+
             return origin, destination
-    
+
     # 패턴 2: 목적지만 있는 경우
     if cleaned_query:
         return None, cleaned_query
-    
+
     return None, None
 
 
@@ -41,19 +48,29 @@ def is_haeundae_attractions_query(query: str) -> bool:
     "해운대 근처 가볼만한 곳" 질문인지 확인하는 함수
     """
     query_lower = query.lower().strip()
-    
+
     # 키워드 조합으로 판단
     keywords = {
-        'location': ['해운대', '부산', 'haeundae'],
-        'attraction': ['가볼만한', '관광', '명소', '여행', '구경', '볼거리', '놀거리', '둘러볼', '방문할'],
-        'place': ['곳', '장소', '곳들', '장소들', '지역', '스팟']
+        "location": ["해운대", "부산", "haeundae"],
+        "attraction": [
+            "가볼만한",
+            "관광",
+            "명소",
+            "여행",
+            "구경",
+            "볼거리",
+            "놀거리",
+            "둘러볼",
+            "방문할",
+        ],
+        "place": ["곳", "장소", "곳들", "장소들", "지역", "스팟"],
     }
-    
+
     # 각 카테고리에서 최소 하나씩 포함되어야 함
-    has_location = any(keyword in query_lower for keyword in keywords['location'])
-    has_attraction = any(keyword in query_lower for keyword in keywords['attraction'])
-    has_place = any(keyword in query_lower for keyword in keywords['place'])
-    
+    has_location = any(keyword in query_lower for keyword in keywords["location"])
+    has_attraction = any(keyword in query_lower for keyword in keywords["attraction"])
+    has_place = any(keyword in query_lower for keyword in keywords["place"])
+
     return has_location and has_attraction and has_place
 
 
@@ -63,7 +80,7 @@ async def get_cached_haeundae_attractions_html() -> str:
     7초 대기 후 고정된 결과 반환
     """
     await asyncio.sleep(7)  # 7초 대기
-    
+
     html_content = """
 <html>
 <head>
@@ -205,14 +222,14 @@ async def get_cached_haeundae_attractions_html() -> str:
 </body>
 </html>
     """
-    
+
     return html_content
 
 
 router = APIRouter()
 log = logging.getLogger(__name__)
 
-MCP_ID = "google-maps"   # mcp_manager 등록 ID
+MCP_ID = "google-maps"  # mcp_manager 등록 ID
 
 
 async def _maps(mcp, name: str, args: dict):
@@ -236,54 +253,72 @@ async def geo_assist(request: Request, body: LocalSearchRequest):
     query = body.query
 
     log.info(f"[geo_assist] 요청 쿼리: {query}")
-    
-    # 특정 질문인지 확인 (해운대 근처 가볼만한 곳)
-    if is_haeundae_attractions_query(query):
-        log.info(f"[geo_assist] 해운대 관광지 타겟 쿼리 감지, 캐싱된 결과 반환")
-        cached_html = await get_cached_haeundae_attractions_html()
-        elapsed = time.perf_counter() - start_time
-        log.info(f"[geo_assist] 캐싱된 결과 반환 완료 (소요 시간: {elapsed:.3f}초)")
-        return HTMLResponse(content=cached_html)
+
+    # 캐싱 기능 임시 비활성화
+    # if is_haeundae_attractions_query(query):
+    #     log.info(f"[geo_assist] 해운대 관광지 타겟 쿼리 감지, 캐싱된 결과 반환")
+    #     cached_html = await get_cached_haeundae_attractions_html()
+    #     elapsed = time.perf_counter() - start_time
+    #     log.info(f"[geo_assist] 캐싱된 결과 반환 완료 (소요 시간: {elapsed:.3f}초)")
+    #     return HTMLResponse(content=cached_html)
 
     mcp = request.app.state.mcp_manager
 
     # 1) 출발지/도착지 추출 및 주소 변환
     current_address = None
     route_keywords = [
-        "가는", "방법", "경로", "길", "어떻게",
-        "까지", "으로", "에서", "부터", "출발", 
-        "교통", "지하철", "버스", "전철",
-        "이동", "갈수", "갈 수", "가나", "가는법",
-        "도착", "도달", "찾아가"
+        "가는",
+        "방법",
+        "경로",
+        "길",
+        "어떻게",
+        "까지",
+        "으로",
+        "에서",
+        "부터",
+        "출발",
+        "교통",
+        "지하철",
+        "버스",
+        "전철",
+        "이동",
+        "갈수",
+        "갈 수",
+        "가나",
+        "가는법",
+        "도착",
+        "도달",
+        "찾아가",
     ]
 
     # 출발지/도착지 추출
     extracted_origin, extracted_destination = extract_origin_destination(query)
     log.info(f"추출된 출발지: '{extracted_origin}', 도착지: '{extracted_destination}'")
 
-
     # 경로 요청이고 출발지가 명시되지 않은 경우에만 현재 위치 주소 변환
     if any(keyword in query for keyword in route_keywords) and not extracted_origin:
         try:
             log.info(f"출발지 미명시로 현재 위치 주소 변환 시도: {lat}, {lon}")
-            reverse_result = await _maps(mcp, "maps_reverse_geocode", {
-                "latitude": lat,
-                "longitude": lon
-            })
-            
+            reverse_result = await _maps(
+                mcp, "maps_reverse_geocode", {"latitude": lat, "longitude": lon}
+            )
+
             log.info(f"Reverse geocode 응답: {reverse_result}")
-            
+
             # MCP 응답 구조에 맞춘 파싱
             if "result" in reverse_result and reverse_result["result"]:
                 result = reverse_result["result"]
-                
+
                 if "content" in result and len(result["content"]) > 0:
                     try:
                         text_content = result["content"][0].get("text", "")
                         if text_content:
                             import json
+
                             geocode_data = json.loads(text_content)
-                            current_address = geocode_data.get("formatted_address", f"{lat},{lon}")
+                            current_address = geocode_data.get(
+                                "formatted_address", f"{lat},{lon}"
+                            )
                             log.info(f"현재 위치 주소 파싱 성공: {current_address}")
                         else:
                             current_address = f"{lat},{lon}"
@@ -294,14 +329,12 @@ async def geo_assist(request: Request, body: LocalSearchRequest):
                     current_address = f"{lat},{lon}"
             else:
                 current_address = f"{lat},{lon}"
-                
+
         except Exception as e:
             log.error(f"주소 변환 실패: {e}")
             current_address = f"{lat},{lon}"
     else:
         log.info("출발지가 명시되어 현재 위치 주소 변환 생략")
-
-
 
     # 2) LLM에게 어떤 Maps 툴을 사용할지 결정 (재시도 로직 포함)
     max_retries = 3
@@ -310,12 +343,12 @@ async def geo_assist(request: Request, body: LocalSearchRequest):
     for attempt in range(max_retries):
         try:
             decision = await glm.choose_tool(
-                query, 
-                lat=lat, 
-                lon=lon, 
+                query,
+                lat=lat,
+                lon=lon,
                 current_address=current_address,
                 extracted_origin=extracted_origin,
-                extracted_destination=extracted_destination
+                extracted_destination=extracted_destination,
             )
             break  # 성공시 루프 탈출
         except Exception as e:
@@ -331,29 +364,34 @@ async def geo_assist(request: Request, body: LocalSearchRequest):
                     else:
                         # 출발지 미명시된 경우 (현재 위치 사용)
                         origin = current_address or f"{lat},{lon}"
-                        destination = extracted_destination or query.replace("가는", "").replace("방법", "").strip()
-                    
+                        destination = (
+                            extracted_destination
+                            or query.replace("가는", "").replace("방법", "").strip()
+                        )
+
                     decision = {
                         "tool": "maps_directions",
                         "arguments": {
                             "origin": origin,
                             "destination": destination,
-                            "mode": "transit"
-                        }
+                            "mode": "transit",
+                        },
                     }
-                    log.info(f"Claude API 실패로 fallback 경로 처리: {origin} → {destination}")
+                    log.info(
+                        f"Claude API 실패로 fallback 경로 처리: {origin} → {destination}"
+                    )
                 else:
                     # 장소 검색으로 직접 처리
                     decision = {
-                        "tool": "maps_search_places", 
+                        "tool": "maps_search_places",
                         "arguments": {
                             "query": query,
-                            "location": {"latitude": lat, "longitude": lon}
-                        }
+                            "location": {"latitude": lat, "longitude": lon},
+                        },
                     }
                     log.info(f"Claude API 실패로 fallback 장소 검색: {decision}")
                 break
-            await asyncio.sleep(2 ** attempt)  # 지수 백오프
+            await asyncio.sleep(2**attempt)  # 지수 백오프
 
     if not decision:
         # 최악의 경우 에러 응답
@@ -378,11 +416,11 @@ async def geo_assist(request: Request, body: LocalSearchRequest):
             arguments.setdefault("origin", current_address)
         else:
             arguments.setdefault("origin", f"{lat},{lon}")
-        
+
         # 도착지 설정
         if extracted_destination:
             arguments.setdefault("destination", extracted_destination)
-        
+
         arguments.setdefault("mode", "transit")
         html_kind = "route"
 
@@ -391,12 +429,9 @@ async def geo_assist(request: Request, body: LocalSearchRequest):
 
     # 5) HTML 변환 (원본 query와 출발지 정보도 함께 전달)
     html = await glm.to_html(
-        raw, 
-        query, 
+        raw,
+        query,
         kind=html_kind,
-        origin_info={
-            "address": current_address,
-            "coordinates": f"{lat},{lon}"
-        }
+        origin_info={"address": current_address, "coordinates": f"{lat},{lon}"},
     )
     return HTMLResponse(content=html)

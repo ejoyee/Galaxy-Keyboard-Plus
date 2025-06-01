@@ -16,21 +16,23 @@ def is_target_query(query: str) -> bool:
     "다음주 해운대 근처 성인 10명 묵을 수 있는 숙소 알려줘"와 유사한 질문을 감지
     """
     query_lower = query.lower().strip()
-    
+
     # 키워드 조합으로 판단
     keywords = {
-        'location': ['해운대', '부산', 'haeundae'],
-        'people': ['10명', '10인', '성인 10', '10 명', '십명', '10명'],
-        'accommodation': ['숙소', '민박', '펜션', '호텔', '에어비앤비', 'airbnb'],
-        'request': ['알려줘', '추천', '찾아줘', '검색', '보여줘']
+        "location": ["해운대", "부산", "haeundae"],
+        "people": ["10명", "10인", "성인 10", "10 명", "십명", "10명"],
+        "accommodation": ["숙소", "민박", "펜션", "호텔", "에어비앤비", "airbnb"],
+        "request": ["알려줘", "추천", "찾아줘", "검색", "보여줘"],
     }
-    
+
     # 각 카테고리에서 최소 하나씩 포함되어야 함
-    has_location = any(keyword in query_lower for keyword in keywords['location'])
-    has_people = any(keyword in query_lower for keyword in keywords['people'])
-    has_accommodation = any(keyword in query_lower for keyword in keywords['accommodation'])
-    has_request = any(keyword in query_lower for keyword in keywords['request'])
-    
+    has_location = any(keyword in query_lower for keyword in keywords["location"])
+    has_people = any(keyword in query_lower for keyword in keywords["people"])
+    has_accommodation = any(
+        keyword in query_lower for keyword in keywords["accommodation"]
+    )
+    has_request = any(keyword in query_lower for keyword in keywords["request"])
+
     return has_location and has_people and has_accommodation and has_request
 
 
@@ -40,7 +42,7 @@ async def get_cached_airbnb_html() -> str:
     7초 대기 후 고정된 결과 반환
     """
     await asyncio.sleep(7)  # 7초 대기
-    
+
     html_content = """
 <!DOCTYPE html>
 <html lang="ko">
@@ -158,7 +160,7 @@ async def get_cached_airbnb_html() -> str:
 </body>
 </html>
     """
-    
+
     return html_content
 
 
@@ -601,14 +603,16 @@ async def airbnb_search_html_endpoint(request: Request, body: AirbnbSearchQuery)
     query = body.query
 
     logger.info(f"[airbnb_search_html_endpoint] 요청 쿼리: {query}")
-    
-    # 특정 질문인지 확인
-    if is_target_query(query):
-        logger.info(f"[airbnb_search_html_endpoint] 타겟 쿼리 감지, 캐싱된 결과 반환")
-        cached_html = await get_cached_airbnb_html()
-        elapsed = time.perf_counter() - start
-        logger.info(f"[airbnb_search_html_endpoint] 캐싱된 결과 반환 완료 (소요 시간: {elapsed:.3f}초)")
-        return HTMLResponse(content=cached_html, status_code=200)
+
+    # 캐싱 기능 임시 비활성화
+    # if is_target_query(query):
+    #     logger.info(f"[airbnb_search_html_endpoint] 타겟 쿼리 감지, 캐싱된 결과 반환")
+    #     cached_html = await get_cached_airbnb_html()
+    #     elapsed = time.perf_counter() - start
+    #     logger.info(
+    #         f"[airbnb_search_html_endpoint] 캐싱된 결과 반환 완료 (소요 시간: {elapsed:.3f}초)"
+    #     )
+    #     return HTMLResponse(content=cached_html, status_code=200)
 
     mcp_manager = request.app.state.mcp_manager
 
