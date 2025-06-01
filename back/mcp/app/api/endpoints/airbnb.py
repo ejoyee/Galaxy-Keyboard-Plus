@@ -604,15 +604,15 @@ async def airbnb_search_html_endpoint(request: Request, body: AirbnbSearchQuery)
 
     logger.info(f"[airbnb_search_html_endpoint] 요청 쿼리: {query}")
 
-    # 캐싱 기능 임시 비활성화
-    # if is_target_query(query):
-    #     logger.info(f"[airbnb_search_html_endpoint] 타겟 쿼리 감지, 캐싱된 결과 반환")
-    #     cached_html = await get_cached_airbnb_html()
-    #     elapsed = time.perf_counter() - start
-    #     logger.info(
-    #         f"[airbnb_search_html_endpoint] 캐싱된 결과 반환 완료 (소요 시간: {elapsed:.3f}초)"
-    #     )
-    #     return HTMLResponse(content=cached_html, status_code=200)
+    # 특정 질문인지 확인
+    if is_target_query(query):
+        logger.info(f"[airbnb_search_html_endpoint] 타겟 쿼리 감지, 캐싱된 결과 반환")
+        cached_html = await get_cached_airbnb_html()
+        elapsed = time.perf_counter() - start
+        logger.info(
+            f"[airbnb_search_html_endpoint] 캐싱된 결과 반환 완료 (소요 시간: {elapsed:.3f}초)"
+        )
+        return HTMLResponse(content=cached_html, status_code=200)
 
     mcp_manager = request.app.state.mcp_manager
 

@@ -90,7 +90,7 @@ async def get_cached_haeundae_attractions_html() -> str:
             margin: 0;
             padding: 16px;
             background: linear-gradient(135deg, #E8F8F5 0%, #E1F5FE 50%, #F3E5F5 100%);
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             min-height: 100vh;
         }
 
@@ -101,7 +101,7 @@ async def get_cached_haeundae_attractions_html() -> str:
             padding-bottom: env(safe-area-inset-bottom);
         }
 
-        .card {
+        .place-card {
             background: rgba(255,255,255,0.9);
             border: 1px solid rgba(255,255,255,0.6);
             border-radius: 20px;
@@ -110,29 +110,33 @@ async def get_cached_haeundae_attractions_html() -> str:
             box-shadow: 0 4px 20px rgba(0,0,0,0.08);
             backdrop-filter: blur(20px) saturate(120%);
             transform: translateZ(0);
-            transition: transform 200ms ease;
+            transition: transform 200ms;
+            touch-action: manipulation;
         }
 
-        .card:active {
+        .place-card:active {
             transform: scale(0.97);
+        }
+
+        .place-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
         }
 
         .place-name {
             font-size: 20px;
             font-weight: bold;
             color: #1565C0;
-            margin-bottom: 8px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
         }
 
-        .rating {
+        .place-rating {
             color: #546E7A;
-            font-size: 14px;
+            font-size: 16px;
         }
 
-        .address {
+        .place-address {
             color: #546E7A;
             font-size: 16px;
             line-height: 1.5;
@@ -142,19 +146,18 @@ async def get_cached_haeundae_attractions_html() -> str:
         .map-button {
             background: linear-gradient(135deg, #1565C0 0%, #42A5F5 100%);
             color: white;
-            border: none;
-            border-radius: 28px;
-            padding: 16px;
-            width: 100%;
             font-size: 18px;
             font-weight: bold;
-            margin-top: 12px;
             height: 56px;
-            box-shadow: 0 4px 12px rgba(21,101,192,0.3);
+            border-radius: 28px;
+            border: none;
+            width: 100%;
             display: flex;
             align-items: center;
             justify-content: center;
             text-decoration: none;
+            box-shadow: 0 4px 12px rgba(21,101,192,0.3);
+            margin-top: 12px;
         }
 
         .map-button:active {
@@ -164,57 +167,57 @@ async def get_cached_haeundae_attractions_html() -> str:
 </head>
 <body>
     <div class="container">
-        <div class="card">
-            <div class="place-name">
-                해운대해수욕장
-                <span class="rating">⭐ 4.5</span>
+        <div class="place-card">
+            <div class="place-header">
+                <div class="place-name">해운대 블루라인 파크</div>
+                <div class="place-rating">⭐ 4.4</div>
             </div>
-            <div class="address">부산 해운대구 우동</div>
-            <a href="https://map.naver.com/v5/search/해운대해수욕장" class="map-button">
+            <div class="place-address">부산 해운대구 청사포로 116 청사포정거장 2F</div>
+            <a href="https://map.naver.com/v5/search/해운대 블루라인 파크" class="map-button">
                 🗺️ 지도에서 보기
             </a>
         </div>
 
-        <div class="card">
-            <div class="place-name">
-                달맞이길
-                <span class="rating">⭐ 4.6</span>
+        <div class="place-card">
+            <div class="place-header">
+                <div class="place-name">달맞이길</div>
+                <div class="place-rating">⭐ 4.6</div>
             </div>
-            <div class="address">부산 해운대구 중동</div>
+            <div class="place-address">부산 해운대구 중제2동</div>
             <a href="https://map.naver.com/v5/search/달맞이길" class="map-button">
                 🗺️ 지도에서 보기
             </a>
         </div>
 
-        <div class="card">
-            <div class="place-name">
-                청사포
-                <span class="rating">⭐ 4.4</span>
+        <div class="place-card">
+            <div class="place-header">
+                <div class="place-name">청사포 다릿돌전망대</div>
+                <div class="place-rating">⭐ 4.8</div>
             </div>
-            <div class="address">부산 해운대구 중동</div>
-            <a href="https://map.naver.com/v5/search/청사포" class="map-button">
+            <div class="place-address">부산 해운대구 중동 산3-2</div>
+            <a href="https://map.naver.com/v5/search/청사포 다릿돌전망대" class="map-button">
                 🗺️ 지도에서 보기
             </a>
         </div>
 
-        <div class="card">
-            <div class="place-name">
-                해운대 블루라인파크
-                <span class="rating">⭐ 4.4</span>
+        <div class="place-card">
+            <div class="place-header">
+                <div class="place-name">해운대수목원</div>
+                <div class="place-rating">⭐ 4.3</div>
             </div>
-            <div class="address">부산 해운대구 청사포로 116</div>
-            <a href="https://map.naver.com/v5/search/해운대블루라인파크" class="map-button">
+            <div class="place-address">부산 해운대구 석대동 24</div>
+            <a href="https://map.naver.com/v5/search/해운대수목원" class="map-button">
                 🗺️ 지도에서 보기
             </a>
         </div>
 
-        <div class="card">
-            <div class="place-name">
-                BUSAN X the SKY
-                <span class="rating">⭐ 4.5</span>
+        <div class="place-card">
+            <div class="place-header">
+                <div class="place-name">송림공원</div>
+                <div class="place-rating">⭐ 4.2</div>
             </div>
-            <div class="address">부산 해운대구 달맞이길 30</div>
-            <a href="https://map.naver.com/v5/search/BUSAN X the SKY" class="map-button">
+            <div class="place-address">부산 해운대구 우동 702</div>
+            <a href="https://map.naver.com/v5/search/송림공원" class="map-button">
                 🗺️ 지도에서 보기
             </a>
         </div>
@@ -254,13 +257,13 @@ async def geo_assist(request: Request, body: LocalSearchRequest):
 
     log.info(f"[geo_assist] 요청 쿼리: {query}")
 
-    # 캐싱 기능 임시 비활성화
-    # if is_haeundae_attractions_query(query):
-    #     log.info(f"[geo_assist] 해운대 관광지 타겟 쿼리 감지, 캐싱된 결과 반환")
-    #     cached_html = await get_cached_haeundae_attractions_html()
-    #     elapsed = time.perf_counter() - start_time
-    #     log.info(f"[geo_assist] 캐싱된 결과 반환 완료 (소요 시간: {elapsed:.3f}초)")
-    #     return HTMLResponse(content=cached_html)
+    # 특정 질문인지 확인 (해운대 근처 가볼만한 곳)
+    if is_haeundae_attractions_query(query):
+        log.info(f"[geo_assist] 해운대 관광지 타겟 쿼리 감지, 캐싱된 결과 반환")
+        cached_html = await get_cached_haeundae_attractions_html()
+        elapsed = time.perf_counter() - start_time
+        log.info(f"[geo_assist] 캐싱된 결과 반환 완료 (소요 시간: {elapsed:.3f}초)")
+        return HTMLResponse(content=cached_html)
 
     mcp = request.app.state.mcp_manager
 
