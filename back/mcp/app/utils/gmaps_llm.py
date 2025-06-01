@@ -88,40 +88,102 @@ HTML_ONLY_PROMPT = """
 PLACES_PROMPT = """
 - 절대 JSON 문자열처럼 HTML을 주지 마. 순수 HTML 코드만 출력해.
 
-안드로이드 웹뷰 전용 장소 검색 결과 UI를 만들어줘.
+📱 모바일 최적화 Galaxy Keyboard 라이트 테마 × 민트-블루 그라디언트 장소 검색 UI를 만들어줘.
 
-📱 안드로이드 웹뷰 최적화:
-- 터치 최적화: 카드는 최소 56dp(약 56px) 높이
-- 스와이프 스크롤: smooth scrolling 적용
-- 네이티브 느낌: Material Design 3 가이드라인 준수
-- 성능: 하드웨어 가속 활용 (transform3d, will-change)
+🌊 갤럭시 키보드 라이트 테마 색상:
+- 전체 배경: linear-gradient(135deg, #E8F8F5 0%, #E1F5FE 50%, #F3E5F5 100%) (민트-블루-라벤더)
+- 장소 카드: rgba(255,255,255,0.9) (반투명 화이트)
+- 카드 테두리: 1px solid rgba(255,255,255,0.6) (부드러운 화이트 테두리)
+- 카드 모서리: border-radius: 20px (갤럭시 키보드 키 스타일)
+- 그림자: 0 4px 20px rgba(0,0,0,0.08) (부드러운 그림자)
+- 백드롭: backdrop-filter: blur(20px) saturate(120%) (갤럭시 블러)
 
-🎨 디자인 가이드:
-- 카드 기반 레이아웃 (elevation 2-4dp)
-- 라운드 코너: 12px (안드로이드 스타일)
-- 색상: #1976D2(Primary), #FFC107(Rating), #4CAF50(Open)
-- 타이포그래피: 16sp(제목), 14sp(본문), 12sp(보조)
+🎨 갤럭시 키보드 컬러 팔레트:
+- Primary: linear-gradient(135deg, #1565C0 0%, #42A5F5 50%, #81D4FA 100%) (갤럭시 블루)
+- Accent: linear-gradient(45deg, #26C6DA, #4FC3F7, #81D4FA) (민트-스카이블루)
+- Highlight: linear-gradient(90deg, #00BCD4, #4DD0E1) (갤럭시 키보드 액센트)
+- Text: #1565C0 (갤럭시 딥블루)
+- Subtext: #546E7A (갤럭시 그레이)
+- Card bg: rgba(255,255,255,0.9) (키보드 키 화이트)
 
-🏪 장소 카드 구성:
-- 헤더: 이름 + 평점 + 영업상태
-- 본문: 주소 + 카테고리 + 거리
-- 액션: 네이버지도 링크 버튼만 제공
-- 아이콘: 📍🌟🗺️⏰
+📱 모바일 최적화 레이아웃:
+- 뷰포트: width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no
+- 컨테이너: max-width: 100vw, padding: 16px
+- 카드 width: 100% (전체 너비 활용)
+- 세이프 에어리어: padding-top: env(safe-area-inset-top), padding-bottom: env(safe-area-inset-bottom)
+- 좌우 마진: 16px (엄지손가락 도달 범위)
 
-🔗 링크 처리:
-- 네이버지도: https://map.naver.com/v5/search/장소명 형식으로 링크
-- 장소명에 특수문자가 있으면 URL 인코딩 적용
-- 버튼 텍스트: "네이버지도에서 보기" 또는 "지도보기"
+🏪 모바일 카드 디자인:
+- 헤더: 장소명 (20px, bold, #1565C0) + 평점 (우측 정렬)
+- 본문: 주소 + 카테고리 (2줄 구성, 18px line-height)
+- 카드 높이: 최소 88px (모바일 터치 타겟)
+- 패딩: 20px (충분한 터치 영역)
+- 내부 간격: 12px (가독성 향상)
 
-💡 안드로이드 웹뷰 특화:
-- JavaScript 최소화
-- CSS transform으로 부드러운 애니메이션
-- touch-action: manipulation으로 300ms 지연 제거
+🔗 모바일 네이버지도 버튼:
+- 배경: linear-gradient(135deg, #1565C0 0%, #42A5F5 100%)
+- 텍스트: #FFFFFF (18px, bold) (모바일 가독성)
+- 스타일: height: 56px, border-radius: 28px, width: 100%
+- 텍스트: "🗺️ 지도에서 보기"
+- 링크: https://map.naver.com/v5/search/장소명
+- 그림자: 0 4px 12px rgba(21,101,192,0.3)
+- 터치 영역: 최소 44px × 44px
+
+⚡ 모바일 터치 인터랙션:
+- 카드 터치: scale(0.97) + 빠른 피드백 (200ms)
+- 버튼 터치: active 상태 시각 피드백 + 햅틱 느낌
+- 터치 지연 제거: touch-action: manipulation
+- 스크롤: -webkit-overflow-scrolling: touch (부드러운 스크롤)
+- 제스처: 스와이프 스크롤 최적화
+
+📐 모바일 타이포그래피:
+- 제목: 20px (모바일에서 읽기 쉬운 크기)
+- 본문: 16px (최소 가독성 크기)
+- 보조 텍스트: 14px
+- line-height: 1.5 (모바일 가독성)
+- font-weight: 400-700 범위 (너무 얇지 않게)
+
+🎯 모바일 UX 최적화:
+- 카드 간격: 12px (스크롤 시 구분 명확)
+- 스크롤 인디케이터: 우측에 얇은 스크롤바
+- 로딩 상태: 스켈레톤 UI 패턴
+- 빈 상태: 중앙 정렬 안내 메시지
+- 오류 상태: 재시도 버튼 포함
+
+✨ 모바일 성능 최적화:
+- 하드웨어 가속: transform3d(0,0,0), will-change: transform
+- 이미지 최적화: lazy loading 적용
+- 애니메이션: 60fps 보장 (transform, opacity만 사용)
+- 메모리: 불필요한 DOM 요소 최소화
+- 배터리: GPU 과부하 방지
+
+🌟 모바일 접근성:
+- 터치 타겟: 최소 44px × 44px (WCAG 가이드라인)
+- 색상 대비: 4.5:1 이상 유지
+- 포커스: 키보드 네비게이션 지원
+- 스크린 리더: semantic HTML 사용
+- 확대: 최대 200% 확대 지원
+
+🔧 모바일 브라우저 호환성:
+- iOS Safari: -webkit- 접두사 포함
+- Android Chrome: 최신 CSS 기능 활용
+- 구형 기기: fallback 색상 제공
+- PWA 지원: manifest.json 준비
+- 오프라인: 기본 캐싱 전략
 
 ⚠️ 제외 요소:
 - 전화번호 링크 및 전화 관련 기능 제거
 - 📞 아이콘 사용하지 않음
 - tel: 링크 사용하지 않음
+- 데스크톱 전용 호버 효과 제거
+
+💡 모바일 특화 요구사항:
+- 한 손 조작 최적화 (엄지손가락 도달 범위)
+- 세로 모드 중심 설계 (가로 모드 대응)
+- 빠른 로딩과 반응속도 (3G 환경 고려)
+- 네이티브 앱 같은 부드러운 UX
+- 배터리 효율성 고려한 애니메이션
+- 다양한 화면 크기 대응 (320px ~ 428px)
 """
 
 
@@ -219,7 +281,7 @@ async def to_html(
 
     rsp = await client.messages.create(
         model=HTML_MODEL,
-        max_tokens=1500,  # 전체 경로 표시를 위해 토큰 수 증가
+        max_tokens=3000,  # 전체 경로 표시를 위해 토큰 수 증가
         temperature=0.4,
         system=sys_prompt,
         messages=[
