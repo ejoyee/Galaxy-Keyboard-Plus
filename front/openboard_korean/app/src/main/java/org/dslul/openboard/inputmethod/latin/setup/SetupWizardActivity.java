@@ -63,6 +63,7 @@ import org.dslul.openboard.inputmethod.latin.utils.UncachedInputMethodManagerUti
 
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.List;
 
 import javax.annotation.Nonnull;
 
@@ -101,16 +102,43 @@ public final class SetupWizardActivity extends Activity {
         updateSetupStepView();
     }
 
+    /**
+     * 알림 권한 + 위치 권한(FINE, COARSE) 함께 요청
+     */
     private void ensureNotificationPermission() {
+        // Android 13(API 33) 이상에서는 POST_NOTIFICATIONS 권한 필요
+        // 모든 버전에서 ACCESS_FINE_LOCATION, ACCESS_COARSE_LOCATION 권한이 필요
+        List<String> permsToRequest = new ArrayList<>();
+
+        // 1) 알림 권한 (API 33+)
         if (Build.VERSION.SDK_INT >= 33) {
-            String[] perms = new String[]{Manifest.permission.POST_NOTIFICATIONS};
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+            if (ContextCompat.checkSelfPermission(this,
+                    Manifest.permission.POST_NOTIFICATIONS)
                     != PackageManager.PERMISSION_GRANTED) {
-                ActivityCompat.requestPermissions(this, perms, REQ_NOTIF_PERMS);
-                return;
+                permsToRequest.add(Manifest.permission.POST_NOTIFICATIONS);
             }
         }
-        //이미 권한이 있을 경우 다음 단계로
+
+        // 2) 위치 권한 (FINE, COARSE) : 모든 API 레벨에서 요청해도 무방 (Manifest에 선언되어 있으므로)
+        if (ContextCompat.checkSelfPermission(this,
+                Manifest.permission.ACCESS_FINE_LOCATION)
+                != PackageManager.PERMISSION_GRANTED) {
+            permsToRequest.add(Manifest.permission.ACCESS_FINE_LOCATION);
+        }
+        if (ContextCompat.checkSelfPermission(this,
+                Manifest.permission.ACCESS_COARSE_LOCATION)
+                != PackageManager.PERMISSION_GRANTED) {
+            permsToRequest.add(Manifest.permission.ACCESS_COARSE_LOCATION);
+        }
+
+        if (!permsToRequest.isEmpty()) {
+            // 요청할 권한이 하나라도 있으면 한 번에 묶어서 요청
+            String[] array = permsToRequest.toArray(new String[0]);
+            ActivityCompat.requestPermissions(this, array, REQ_NOTIF_PERMS);
+            return;
+        }
+
+        // 이미 알림+위치 권한이 모두 허용된 경우 다음 단계로
         mStepNumber = STEP_7;
         updateSetupStepView();
     }
@@ -121,6 +149,7 @@ public final class SetupWizardActivity extends Activity {
                                            @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
 
+        // ──────────  사진 권한 요청 결과 ──────────
         if (requestCode == REQ_MEDIA_PERMS) {
             boolean granted = false;
             for (int g : grantResults) {
@@ -140,17 +169,53 @@ public final class SetupWizardActivity extends Activity {
             }
             return;
         }
+        // ──────────  알림 + 위치 권한 요청 결과 ──────────
         if (requestCode == REQ_NOTIF_PERMS) {
-            boolean granted = grantResults.length > 0
-                    && grantResults[0] == PackageManager.PERMISSION_GRANTED;
-            if (granted) {
-                // 알림 권한 허용 → 7단계(백업)로 이동
+            boolean notifGranted = true;
+            boolean fineGranted  = true;
+            boolean coarseGranted= true;
+
+            // permissions[] 배열에 요청한 순서대로 grantResults 에 값이 들어옴
+            for (int i = 0; i < permissions.length; i++) {
+                String p = permissions[i];
+                int    g = (i < grantResults.length) ? grantResults[i] : PackageManager.PERMISSION_DENIED;
+
+                if (Manifest.permission.POST_NOTIFICATIONS.equals(p)) {
+                    if (g != PackageManager.PERMISSION_GRANTED) {
+                        notifGranted = false;
+                    }
+                } else if (Manifest.permission.ACCESS_FINE_LOCATION.equals(p)) {
+                    if (g != PackageManager.PERMISSION_GRANTED) {
+                        fineGranted = false;
+                    }
+                } else if (Manifest.permission.ACCESS_COARSE_LOCATION.equals(p)) {
+                    if (g != PackageManager.PERMISSION_GRANTED) {
+                        coarseGranted = false;
+                    }
+                }
+            }
+
+            // 모든 권한이 허용됐는지 확인
+            if (notifGranted && fineGranted && coarseGranted) {
+                // STEP_7(백업 실행) 단계로 이동
                 mStepNumber = STEP_7;
                 updateSetupStepView();
             } else {
-                Toast.makeText(this,
-                        "알림 권한이 없으면 진행 상황을 볼 수 없습니다.",
-                        Toast.LENGTH_LONG).show();
+                // 하나라도 거부된 경우, 어떤 권한이 실패했는지 알려줌
+                StringBuilder sb = new StringBuilder();
+                if (!notifGranted) {
+                    sb.append("알림 권한");
+                }
+                if (!fineGranted) {
+                    if (sb.length() > 0) sb.append(", ");
+                    sb.append("정밀 위치 권한");
+                }
+                if (!coarseGranted) {
+                    if (sb.length() > 0) sb.append(", ");
+                    sb.append("대략 위치 권한");
+                }
+                sb.append("이 거부되었습니다. 기능을 사용하려면 권한을 허용해 주세요.");
+                Toast.makeText(this, sb.toString(), Toast.LENGTH_LONG).show();
             }
             return;
         }
@@ -184,7 +249,7 @@ public final class SetupWizardActivity extends Activity {
     private static final int STEP_3 = 3;
     private static final int STEP_4 = 4; // 카카오 로그인
     private static final int STEP_5 = 5; // 사진 권한
-    private static final int STEP_6 = 6; // 알림 권한
+    private static final int STEP_6 = 6; // 알림 권한 + 위치 권한
     private static final int STEP_7 = 7; // 백업 실행
     private static final long STEP_7_DELAY_MS = 5_000L;      // 5초 딜레이
 
