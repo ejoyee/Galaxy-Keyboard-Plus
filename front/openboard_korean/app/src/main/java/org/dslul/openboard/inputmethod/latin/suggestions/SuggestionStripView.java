@@ -2307,30 +2307,26 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                 // 1) "intent://" 형태로 넘어온 URL (예: <a href="intent://...">) 을 처리
                 if (uriStr.startsWith("intent://")) {
                     try {
-                        // Intent URI 스킴에서 Intent 객체를 파싱
-                        Intent intent = Intent.parseUri(uriStr, Intent.URI_INTENT_SCHEME);
+                        // a) Intent 객체로 파싱해서
+                        Intent parsedIntent = Intent.parseUri(uriStr, Intent.URI_INTENT_SCHEME);
 
-                        // FLAG_ACTIVITY_NEW_TASK 는 IME(=Activity Context가 아닌 ContextWrapper) 환경에서 꼭 필요
-                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-
-                        // 해당 앱(패키지)이 설치되어 있는지 확인
-                        PackageManager pm = view.getContext().getPackageManager();
-                        if (intent.resolveActivity(pm) != null) {
-                            view.getContext().startActivity(intent);
-                        } else {
-                            // 설치되어 있지 않은 경우, fallback URL(웹 브라우저)로 연결하거나 Play Store로 보낼 수 있음
-                            String fallbackUrl = intent.getStringExtra("browser_fallback_url");
-                            if (fallbackUrl != null) {
-                                Intent fallbackIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(fallbackUrl));
-                                fallbackIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                                view.getContext().startActivity(fallbackIntent);
-                            }
+                        // b) Fallback URL이 있으면 그 주소를 꺼내서 WebView에 로드
+                        String fallbackUrl = parsedIntent.getStringExtra("browser_fallback_url");
+                        if (fallbackUrl != null) {
+                            view.loadUrl(fallbackUrl);
+                            return true; // “내부 로드”를 위해 true 리턴
                         }
+
+                        // c) fallback이 없다면, intent:// 뒤에 붙은 http/https 주소를 직접 변환해서 로드할 수도 있다.
+                        //    예를 들어 intent://example.com/path → https://example.com/path
+                        String replaced = uriStr.replaceFirst("^intent://", "https://");
+                        view.loadUrl(replaced);
+                        return true;
+
                     } catch (URISyntaxException e) {
-                        // 파싱 실패 시 WebView 내부 로드로 넘길 수도 있고, 그냥 무시해도 됩니다.
-                        e.printStackTrace();
+                        // 파싱 실패 시 그냥 무시하고 WebView로 처리해보거나
+                        return true;
                     }
-                    return true;
                 }
 
                 // 2) "myapp://" 처럼 앱 전용 커스텀 스킴(예: kakaomap://, youtube:// 등)이 내려왔을 때 처리
@@ -2345,7 +2341,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
                         return true;
                     }
                     // 설치된 앱이 없으면 WebView에서 처리하거나, 마켓으로 유도하는 로직을 넣어도 됩니다.
-                    return false;
+                    return true;
                 }
 
                 // 3) 그 외—일반적인 http/https 링크(예: 네이버 지도, 혹은 우리가 처리하지 않을 링크)는 WebView 내에서 로드되게
@@ -2792,6 +2788,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         hideDragTipLoop();
     }
 
+    // 드래그 앤 드롭 영역 그리기
     @Override
     public void draw(Canvas canvas) {
         if (mIsDragging && mDragExtra > 0) {
@@ -3062,6 +3059,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
             invalidateSelf();
         }
 
+        // 키보드 스캔(동심원) 애니메이션 그리기
         @Override
         public void draw(Canvas canvas) {
             if (radius <= 1f) return;
@@ -3074,8 +3072,8 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
             // 실제 그릴 반경: 원래 radius 의 5배
             float drawR = radius * 5f;
 
-            int innerColor = Color.argb(Math.min(alpha * 2, 255), 0, 120, 255);
-            int outerColor = Color.argb(0, 0, 120, 255);
+            int innerColor = Color.argb(Math.min(alpha * 2, 255), 20, 0, 255);
+            int outerColor = Color.argb(0, 20, 0, 255);
 
             Shader shader = new RadialGradient(
                     cx, cy, drawR,
