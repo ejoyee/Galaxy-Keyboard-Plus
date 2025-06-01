@@ -5,6 +5,9 @@ router = APIRouter()
 # 키워드 사전 정의
 TASK_KEYWORDS = {
     "maps": {
+        "관광지",
+        "곳",
+        "근처",
         "거리",
         "지도",
         "위치",
