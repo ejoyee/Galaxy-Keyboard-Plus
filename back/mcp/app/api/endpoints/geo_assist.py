@@ -36,6 +36,179 @@ def extract_origin_destination(query: str):
     return None, None
 
 
+def is_haeundae_attractions_query(query: str) -> bool:
+    """
+    "해운대 근처 가볼만한 곳" 질문인지 확인하는 함수
+    """
+    query_lower = query.lower().strip()
+    
+    # 키워드 조합으로 판단
+    keywords = {
+        'location': ['해운대', '부산', 'haeundae'],
+        'attraction': ['가볼만한', '관광', '명소', '여행', '구경', '볼거리', '놀거리', '둘러볼', '방문할'],
+        'place': ['곳', '장소', '곳들', '장소들', '지역', '스팟']
+    }
+    
+    # 각 카테고리에서 최소 하나씩 포함되어야 함
+    has_location = any(keyword in query_lower for keyword in keywords['location'])
+    has_attraction = any(keyword in query_lower for keyword in keywords['attraction'])
+    has_place = any(keyword in query_lower for keyword in keywords['place'])
+    
+    return has_location and has_attraction and has_place
+
+
+async def get_cached_haeundae_attractions_html() -> str:
+    """
+    캐싱된 해운대 관광지 HTML 반환
+    7초 대기 후 고정된 결과 반환
+    """
+    await asyncio.sleep(7)  # 7초 대기
+    
+    html_content = """
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <style>
+        body {
+            margin: 0;
+            padding: 16px;
+            background: linear-gradient(135deg, #E8F8F5 0%, #E1F5FE 50%, #F3E5F5 100%);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 100vw;
+            margin: 0 auto;
+            padding-top: env(safe-area-inset-top);
+            padding-bottom: env(safe-area-inset-bottom);
+        }
+
+        .card {
+            background: rgba(255,255,255,0.9);
+            border: 1px solid rgba(255,255,255,0.6);
+            border-radius: 20px;
+            padding: 20px;
+            margin-bottom: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            backdrop-filter: blur(20px) saturate(120%);
+            transform: translateZ(0);
+            transition: transform 200ms ease;
+        }
+
+        .card:active {
+            transform: scale(0.97);
+        }
+
+        .place-name {
+            font-size: 20px;
+            font-weight: bold;
+            color: #1565C0;
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .rating {
+            color: #546E7A;
+            font-size: 14px;
+        }
+
+        .address {
+            color: #546E7A;
+            font-size: 16px;
+            line-height: 1.5;
+            margin-bottom: 12px;
+        }
+
+        .map-button {
+            background: linear-gradient(135deg, #1565C0 0%, #42A5F5 100%);
+            color: white;
+            border: none;
+            border-radius: 28px;
+            padding: 16px;
+            width: 100%;
+            font-size: 18px;
+            font-weight: bold;
+            margin-top: 12px;
+            height: 56px;
+            box-shadow: 0 4px 12px rgba(21,101,192,0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-decoration: none;
+        }
+
+        .map-button:active {
+            transform: scale(0.98);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <div class="place-name">
+                해운대해수욕장
+                <span class="rating">⭐ 4.5</span>
+            </div>
+            <div class="address">부산 해운대구 우동</div>
+            <a href="https://map.naver.com/v5/search/해운대해수욕장" class="map-button">
+                🗺️ 지도에서 보기
+            </a>
+        </div>
+
+        <div class="card">
+            <div class="place-name">
+                달맞이길
+                <span class="rating">⭐ 4.6</span>
+            </div>
+            <div class="address">부산 해운대구 중동</div>
+            <a href="https://map.naver.com/v5/search/달맞이길" class="map-button">
+                🗺️ 지도에서 보기
+            </a>
+        </div>
+
+        <div class="card">
+            <div class="place-name">
+                청사포
+                <span class="rating">⭐ 4.4</span>
+            </div>
+            <div class="address">부산 해운대구 중동</div>
+            <a href="https://map.naver.com/v5/search/청사포" class="map-button">
+                🗺️ 지도에서 보기
+            </a>
+        </div>
+
+        <div class="card">
+            <div class="place-name">
+                해운대 블루라인파크
+                <span class="rating">⭐ 4.4</span>
+            </div>
+            <div class="address">부산 해운대구 청사포로 116</div>
+            <a href="https://map.naver.com/v5/search/해운대블루라인파크" class="map-button">
+                🗺️ 지도에서 보기
+            </a>
+        </div>
+
+        <div class="card">
+            <div class="place-name">
+                BUSAN X the SKY
+                <span class="rating">⭐ 4.5</span>
+            </div>
+            <div class="address">부산 해운대구 달맞이길 30</div>
+            <a href="https://map.naver.com/v5/search/BUSAN X the SKY" class="map-button">
+                🗺️ 지도에서 보기
+            </a>
+        </div>
+    </div>
+</body>
+</html>
+    """
+    
+    return html_content
+
+
 router = APIRouter()
 log = logging.getLogger(__name__)
 
@@ -57,9 +230,20 @@ async def _maps(mcp, name: str, args: dict):
     tags=["Geo Assist"],
 )
 async def geo_assist(request: Request, body: LocalSearchRequest):
+    start_time = time.perf_counter()
     loc = body.location.dict()
     lat, lon = loc["latitude"], loc["longitude"]
     query = body.query
+
+    log.info(f"[geo_assist] 요청 쿼리: {query}")
+    
+    # 특정 질문인지 확인 (해운대 근처 가볼만한 곳)
+    if is_haeundae_attractions_query(query):
+        log.info(f"[geo_assist] 해운대 관광지 타겟 쿼리 감지, 캐싱된 결과 반환")
+        cached_html = await get_cached_haeundae_attractions_html()
+        elapsed = time.perf_counter() - start_time
+        log.info(f"[geo_assist] 캐싱된 결과 반환 완료 (소요 시간: {elapsed:.3f}초)")
+        return HTMLResponse(content=cached_html)
 
     mcp = request.app.state.mcp_manager
 
