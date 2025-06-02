@@ -3,11 +3,12 @@ from fastapi.responses import JSONResponse
 import os
 import uuid
 from datetime import datetime
-from typing import List
+from typing import List, Dict
 from dotenv import load_dotenv
 from pinecone import Pinecone
 from openai import OpenAI
 import logging
+import re
 
 from app.models.qa_models import (
     QAStoreRequest,
@@ -30,6 +31,10 @@ QA_NAMESPACE = "qa_system"
 
 openai_client = OpenAI(api_key=OPENAI_API_KEY)
 
+# 개선된 설정값들
+MIN_SIMILARITY_THRESHOLD = 0.3  # 더 관대한 임계값
+MAX_CONTEXT_RESULTS = 8  # 더 많은 컨텍스트 활용
+
 
 def get_pinecone_index():
     try:
@@ -51,30 +56,67 @@ def generate_embedding(text: str) -> List[float]:
         raise HTTPException(status_code=500, detail="임베딩 생성에 실패했습니다.")
 
 
+def extract_keywords(text: str) -> List[str]:
+    """질문에서 핵심 키워드 추출"""
+    stopwords = {'은', '는', '이', '가', '을', '를', '에', '에서', '로', '으로', '와', '과', '도', '만', '부터', '까지', '의', '에게', '께', '한테'}
+    words = re.findall(r'[가-힣a-zA-Z0-9]+', text)
+    keywords = [word for word in words if word not in stopwords and len(word) > 1]
+    return keywords
+
+
+def filter_relevant_results(question: str, search_results: List[QAResult]) -> List[QAResult]:
+    """관련성 있는 결과만 필터링"""
+    if not search_results:
+        return []
+    
+    question_keywords = set(extract_keywords(question))
+    filtered_results = []
+    
+    for result in search_results:
+        # 유사도 기본 필터링
+        if result.similarity_score >= MIN_SIMILARITY_THRESHOLD:
+            filtered_results.append(result)
+            continue
+            
+        # 키워드 매칭으로 추가 검증
+        result_keywords = set(extract_keywords(result.question + " " + result.answer))
+        if question_keywords.intersection(result_keywords):
+            filtered_results.append(result)
+    
+    return filtered_results[:MAX_CONTEXT_RESULTS]
+
+
 def generate_rag_response(user_question: str, search_results: List[QAResult]) -> str:
     try:
-        if not search_results:
-            return "죄송합니다. 해당 질문에 대한 정보를 찾을 수 없습니다."
-
+        # 관련성 있는 결과 필터링
+        relevant_results = filter_relevant_results(user_question, search_results)
+        
+        if not relevant_results:
+            return "해당 질문에 대한 구체적인 정보가 준비되어 있지 않습니다. 다른 질문이 있으시면 답변드리겠습니다."
+        
+        # 컨텍스트 구성
         context_info = "\n".join(
-            f"참고 {i}. 질문: {r.question}\n답변: {r.answer}"
-            for i, r in enumerate(search_results, 1)
+            f"참고자료 {i+1}:\n질문: {r.question}\n답변: {r.answer}\n"
+            for i, r in enumerate(relevant_results)
         )
-
+        
         prompt = f"""
-당신은 AI 어시스턴트입니다. 아래 제공된 참고 정보만 바탕으로 사용자 질문에 응답하세요.
-참고 정보 외에 추측하거나 새로운 내용을 생성하지 마세요.
+당신은 삼성 청년 소프트웨어 아카데미 프로젝트 발표 Q&A를 담당합니다.
+아래 참고자료의 내용과 말투를 그대로 활용하여 질문에 답변하세요.
 
-[참고 정보]
+[중요 규칙]
+1. 참고자료에 있는 내용만 사용하세요
+2. 참고자료의 담백하고 직접적인 말투를 유지하세요
+3. 추측하거나 새로운 내용을 만들어내지 마세요
+4. 참고자료가 부족하면 "해당 부분에 대한 정보가 부족합니다"라고 하세요
+
+[참고자료]
 {context_info}
 
-[사용자 질문]
+[질문]
 {user_question}
 
-[답변 규칙]
-1. 반드시 참고 정보에 기반해 답변하세요.
-2. 참고 정보가 부족하면 "해당 질문에 대한 정보를 찾을 수 없습니다."라고 답변하세요.
-3. 문장은 자연스럽고 명확한 한국어로 작성하세요.
+참고자료의 답변 스타일을 그대로 따라하여 간결하고 담백하게 답변하세요.
 """
 
         response = openai_client.chat.completions.create(
@@ -83,14 +125,15 @@ def generate_rag_response(user_question: str, search_results: List[QAResult]) ->
                 {
                     "role": "system",
                     "content": (
-                        "당신은 정보 보존에 엄격한 AI 어시스턴트입니다. "
-                        "제공된 참고 정보 외에는 어떤 내용도 추론하거나 생성하지 않습니다. "
-                        "참고 정보가 부족하면 '해당 질문에 대한 정보를 찾을 수 없습니다'라고 응답해야 합니다."
+                        "당신은 정확성을 최우선으로 하는 어시스턴트입니다. "
+                        "제공된 참고자료의 내용과 말투를 정확히 따라하되, "
+                        "참고자료에 없는 내용은 절대 추가하지 않습니다. "
+                        "간결하고 담백한 답변을 제공합니다."
                     ),
                 },
                 {"role": "user", "content": prompt},
             ],
-            temperature=0.0,
+            temperature=0.1,  # 낮은 temperature로 일관성 보장
             max_tokens=800,
         )
 
@@ -98,7 +141,7 @@ def generate_rag_response(user_question: str, search_results: List[QAResult]) ->
 
     except Exception as e:
         logging.error(f"RAG 응답 생성 실패: {str(e)}")
-        return "죄송합니다. 답변 생성 중 오류가 발생했습니다. 다시 시도해 주세요."
+        return "답변 생성 중 오류가 발생했습니다. 다시 시도해 주세요."
 
 
 def generate_qa_id() -> str:
@@ -111,7 +154,8 @@ def generate_qa_id() -> str:
 async def store_qa(request: QAStoreRequest):
     try:
         qa_id = generate_qa_id()
-        question_weighted = f"질문: {request.question} {request.question}"
+        # 질문 가중치 증가로 검색 정확도 향상
+        question_weighted = f"질문: {request.question} {request.question} {request.question}"
         combined_text = f"{question_weighted}\n답변: {request.answer}"
         embedding = generate_embedding(combined_text)
 
@@ -121,6 +165,7 @@ async def store_qa(request: QAStoreRequest):
             "answer": request.answer,
             "created_at": datetime.now().isoformat(),
             "type": "qa_pair",
+            "keywords": " ".join(extract_keywords(request.question)),  # 키워드 저장
         }
 
         index = get_pinecone_index()
@@ -144,14 +189,15 @@ async def store_qa(request: QAStoreRequest):
 @router.post("/qa/query", response_model=QAQueryResponse)
 async def query_qa(request: QAQueryRequest):
     try:
-        search_text = f"질문: {request.question} {request.question}"
+        # 검색 쿼리 최적화
+        search_text = f"질문: {request.question} {request.question} {' '.join(extract_keywords(request.question))}"
         question_embedding = generate_embedding(search_text)
         filter_conditions = {"type": "qa_pair"}
 
         index = get_pinecone_index()
         search_results = index.query(
             vector=question_embedding,
-            top_k=10,
+            top_k=15,  # 더 많은 결과 검색 후 필터링
             include_metadata=True,
             filter=filter_conditions,
             namespace=QA_NAMESPACE,
@@ -169,14 +215,18 @@ async def query_qa(request: QAQueryRequest):
             )
             results.append(result)
 
-        rag_response = generate_rag_response(request.question, results[:3])
+        # 개선된 RAG 응답 생성
+        rag_response = generate_rag_response(request.question, results)
+        
+        # 관련성 있는 결과만 반환
+        relevant_results = filter_relevant_results(request.question, results)
 
         return QAQueryResponse(
             success=True,
             total_found=len(results),
-            results=results[:3],
+            results=relevant_results[:3],  # 상위 3개만 반환
             rag_response=rag_response,
-            message="검색된 결과를 바탕으로 응답을 생성했습니다.",
+            message=f"참고자료 {len(relevant_results)}개를 활용하여 답변을 생성했습니다.",
         )
 
     except HTTPException:
@@ -272,6 +322,10 @@ async def get_qa_stats():
                 "total_qa_count": qa_count,
                 "namespace": QA_NAMESPACE,
                 "index_name": PINECONE_INDEX_NAME,
+                "thresholds": {
+                    "min_similarity": MIN_SIMILARITY_THRESHOLD,
+                    "max_context_results": MAX_CONTEXT_RESULTS
+                }
             },
         )
 
