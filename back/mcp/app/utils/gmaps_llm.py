@@ -299,4 +299,4 @@ async def to_html(
         decoded = json.loads(raw_html_str)
         raw_html_str = decoded if isinstance(decoded, str) else ""
 
-    return raw_html_str
+    return HTML_SHELL_HEAD + raw_html_str + HTML_SHELL_TAIL
