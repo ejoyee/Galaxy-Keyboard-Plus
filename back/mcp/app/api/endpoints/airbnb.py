@@ -47,116 +47,124 @@ async def get_cached_airbnb_html() -> str:
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>해운대 숙소 추천</title>
-    <style>
-        body {
-            font-family: sans-serif;
-            background-color: #f9f9f9;
-            margin: 0;
-            padding: 20px;
-        }
-        .card {
-            display: flex;
-            background-color: #fff;
-            border-radius: 12px;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-            margin-bottom: 20px;
-            overflow: hidden;
-            transition: transform 0.2s;
-        }
-        .card:hover {
-            transform: translateY(-5px);
-        }
-        .image {
-            width: 200px;
-            height: 100%;
-            background: linear-gradient(135deg, #ff5a5f, #faebeb);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            font-size: 50px;
-        }
-        .info {
-            padding: 20px;
-            flex: 1;
-        }
-        .title {
-            font-size: 24px;
-            margin: 0 0 10px 0;
-        }
-        .rating {
-            font-size: 16px;
-            color: #ff5a5f;
-            margin: 0 0 10px 0;
-        }
-        .description {
-            font-size: 14px;
-            color: #555;
-            margin: 0 0 10px 0;
-        }
-        .price {
-            font-size: 20px;
-            color: #ff5a5f;
-            margin: 0 0 10px 0;
-        }
-        .button {
-            background-color: #ff5a5f;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            padding: 10px 15px;
-            cursor: pointer;
-            text-decoration: none;
-            display: inline-block;
-        }
-        @media (max-width: 768px) {
-            .card {
-                flex-direction: column;
-            }
-            .image {
-                width: 100%;
-                height: 200px;
-            }
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>해운대 숙소 추천</title>
+  <style>
+    body {
+      font-family: "Helvetica Neue", "Noto Sans KR", sans-serif;
+      background-color: #fafafa;
+      margin: 0;
+      padding: 32px;
+    }
+
+    .container {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 24px;
+    }
+
+    .card {
+      background-color: #ffffff;
+      border-radius: 16px;
+      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.06);
+      padding: 24px;
+      transition: all 0.3s ease;
+    }
+
+    .card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+    }
+
+    .title {
+      font-size: 22px;
+      font-weight: 600;
+      margin: 0 0 8px;
+    }
+
+    .rating {
+      font-size: 15px;
+      color: #ff5a5f;
+      font-weight: 500;
+      margin-bottom: 8px;
+    }
+
+    .description {
+      font-size: 14px;
+      color: #484848;
+      margin-bottom: 12px;
+    }
+
+    .price {
+      font-size: 18px;
+      font-weight: 700;
+      color: #ff5a5f;
+      margin-bottom: 16px;
+    }
+
+    .button {
+      background-color: #ff5a5f;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 10px 18px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      text-align: center;
+      text-decoration: none;
+      transition: background-color 0.2s ease;
+      display: inline-block;
+    }
+
+    .button:hover {
+      background-color: #e14c4f;
+    }
+  </style>
 </head>
 <body>
-
+  <div class="container">
     <div class="card">
-        <div class="image">🏠</div>
-        <div class="info">
-            <h2 class="title"><a href="https://www.airbnb.com/rooms/667004100371414208">Paledecz [Deluxe Suite]</a></h2>
-            <div class="rating">⭐ 4.8</div>
-            <div class="description">3개의 침실과 2개의 욕실이 있는 55㎡의 아파트입니다. 1분 거리에 위치합니다.</div>
-            <div class="price">₩1,927,000</div>
-            <a href="https://www.airbnb.com/rooms/667004100371414208" class="button">자세히 보기</a>
-        </div>
+      <h2 class="title">Paledecz [Deluxe Suite]</h2>
+      <div class="rating">⭐ 4.8</div>
+      <div class="description">3베드룸, 2욕실, 주방 포함, 1분 거리</div>
+      <div class="price">₩ 1,927,000</div>
+      <a href="https://www.airbnb.com/rooms/667004100371414208" class="button">자세히 보기</a>
     </div>
 
     <div class="card">
-        <div class="image">🏠</div>
-        <div class="info">
-            <h2 class="title"><a href="https://www.airbnb.com/rooms/1038253502358882532">2nd Floor Ocean Market Stay</a></h2>
-            <div class="rating">⭐ 4.7</div>
-            <div class="description">10개의 침대와 2개의 욕실이 있는 숙소로, 해운대 해변에서 3분 거리에 있습니다.</div>
-            <div class="price">₩1,740,295</div>
-            <a href="https://www.airbnb.com/rooms/1038253502358882532" class="button">자세히 보기</a>
-        </div>
+      <h2 class="title">iam house pension</h2>
+      <div class="rating">⭐ 4.7</div>
+      <div class="description">해운대 해변 근처의 단독 주택, 7분 거리</div>
+      <div class="price">₩ 2,738,825</div>
+      <a href="https://www.airbnb.com/rooms/680159722032871088" class="button">자세히 보기</a>
     </div>
 
     <div class="card">
-        <div class="image">🏠</div>
-        <div class="info">
-            <h2 class="title"><a href="https://www.airbnb.com/rooms/680159722032871088">iam house pension</a></h2>
-            <div class="rating">⭐ 4.9</div>
-            <div class="description">해운대 근처의 단독 주택으로, 7분 거리에 위치합니다.</div>
-            <div class="price">₩2,738,825</div>
-            <a href="https://www.airbnb.com/rooms/680159722032871088" class="button">자세히 보기</a>
-        </div>
+      <h2 class="title">2nd Floor Ocean Market Stay</h2>
+      <div class="rating">⭐ 4.9</div>
+      <div class="description">4룸, 10침대, 2욕실, 3분 거리</div>
+      <div class="price">₩ 1,740,295</div>
+      <a href="https://www.airbnb.com/rooms/1038253502358882532" class="button">자세히 보기</a>
     </div>
 
+    <div class="card">
+      <h2 class="title">1min to Beach. BBQ. 16 Bed.</h2>
+      <div class="rating">⭐ 4.6</div>
+      <div class="description">정원 포함, 3분 거리</div>
+      <div class="price">₩ 2,002,766</div>
+      <a href="https://www.airbnb.com/rooms/53352251" class="button">자세히 보기</a>
+    </div>
+
+    <div class="card">
+      <h2 class="title">Pension 56</h2>
+      <div class="rating">⭐ 4.5</div>
+      <div class="description">최대 20명 수용 가능, 6분 거리</div>
+      <div class="price">₩ 3,024,119</div>
+      <a href="https://www.airbnb.com/rooms/749827985499422860" class="button">자세히 보기</a>
+    </div>
+  </div>
 </body>
 </html>
     """
