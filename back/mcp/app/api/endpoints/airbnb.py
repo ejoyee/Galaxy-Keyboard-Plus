@@ -41,7 +41,7 @@ async def get_cached_airbnb_html() -> str:
     캐싱된 Airbnb 검색 결과 HTML 반환
     7초 대기 후 고정된 결과 반환
     """
-    await asyncio.sleep(7)  # 7초 대기
+    await asyncio.sleep(4)  # 7초 대기
 
     html_content = """
 <!DOCTYPE html>
