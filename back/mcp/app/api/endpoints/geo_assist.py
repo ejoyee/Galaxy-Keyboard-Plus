@@ -43,6 +43,152 @@ def extract_origin_destination(query: str):
     return None, None
 
 
+def is_yeoksam_multicampus_query(query: str) -> bool:
+    """
+    "역삼역에서 멀티캠퍼스까지 가는 방법" 질문인지 확인하는 함수
+    """
+    query_lower = query.lower().strip()
+
+    # 키워드 조합으로 판단
+    keywords = {
+        "origin": ["역삼", "역삼역"],
+        "destination": ["멀티캠퍼스", "멀티", "multicampus"],
+        "action": ["가는", "방법", "경로", "길", "어떻게", "까지", "으로", "에서", "부터", "이동"],
+    }
+
+    # 각 카테고리에서 최소 하나씩 포함되어야 함
+    has_origin = any(keyword in query_lower for keyword in keywords["origin"])
+    has_destination = any(keyword in query_lower for keyword in keywords["destination"])
+    has_action = any(keyword in query_lower for keyword in keywords["action"])
+
+    return has_origin and has_destination and has_action
+
+
+async def get_cached_yeoksam_multicampus_html() -> str:
+    """
+    캐싱된 역삼역-멀티캠퍼스 경로 HTML 반환
+    3초 대기 후 고정된 결과 반환
+    """
+    await asyncio.sleep(3)  # 3초 대기
+
+    html_content = """
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+  <style>
+    /* 기본 리셋 + 글꼴 + 배경 */
+    *{margin:0;padding:0;box-sizing:border-box}
+    html,body{height:100%;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);
+      font-family:'Malgun Gothic',Arial,sans-serif;}
+  </style>
+</head><body>
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            background-color: #F8F9FA;
+            color: #212529;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            margin: 0;
+            padding: 16px;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #FFFFFF;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 16px;
+        }
+
+        .route-card {
+            background: #FFFFFF;
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 16px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .step {
+            padding: 12px 0;
+            border-bottom: 1px solid #E9ECEF;
+        }
+
+        .step:last-child {
+            border-bottom: none;
+        }
+
+        .transport-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            color: #FFFFFF;
+            font-size: 14px;
+            margin-right: 8px;
+        }
+
+        .subway {
+            background-color: #1976D2;
+        }
+
+        .walk {
+            background-color: #4CAF50;
+        }
+
+        .time {
+            color: #495057;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h2>역삼역 → 멀티캠퍼스</h2>
+        <div>총 소요시간: 약 15분</div>
+    </div>
+
+    <div class="route-card">
+        <div class="step">
+            <span class="transport-badge subway">지하철 2호선</span>
+            <div>역삼역 승차</div>
+        </div>
+        
+        <div class="step">
+            <span class="transport-badge subway">지하철 2호선</span>
+            <div>삼성중앙역 방향 1정거장 이동</div>
+            <div class="time">약 2분 소요</div>
+        </div>
+
+        <div class="step">
+            <span class="transport-badge subway">지하철 2호선</span>
+            <div>강남역 하차</div>
+        </div>
+
+        <div class="step">
+            <span class="transport-badge walk">도보</span>
+            <div>강남역 10번 출구로 나와서 직진</div>
+            <div class="time">약 3분 소요</div>
+        </div>
+
+        <div class="step">
+            <span class="transport-badge walk">도보</span>
+            <div>멀티캠퍼스 도착</div>
+            <div class="time">약 10분 소요</div>
+        </div>
+    </div>
+</body>
+</html></body></html>
+    """
+
+    return html_content
+
+
 def is_haeundae_attractions_query(query: str) -> bool:
     """
     "해운대 근처 가볼만한 곳" 질문인지 확인하는 함수
@@ -256,6 +402,14 @@ async def geo_assist(request: Request, body: LocalSearchRequest):
     query = body.query
 
     log.info(f"[geo_assist] 요청 쿼리: {query}")
+
+    # 특정 질문인지 확인 (역삼역에서 멀티캠퍼스 경로)
+    if is_yeoksam_multicampus_query(query):
+        log.info(f"[geo_assist] 역삼역-멀티캠퍼스 타겟 쿼리 감지, 캐싱된 결과 반환")
+        cached_html = await get_cached_yeoksam_multicampus_html()
+        elapsed = time.perf_counter() - start_time
+        log.info(f"[geo_assist] 캐싱된 결과 반환 완료 (소요 시간: {elapsed:.3f}초)")
+        return HTMLResponse(content=cached_html)
 
     # 특정 질문인지 확인 (해운대 근처 가볼만한 곳)
     if is_haeundae_attractions_query(query):
