@@ -90,7 +90,7 @@ async def airbnb_caching_response():
             }
             .image {
                 width: 100%;
-                height: 200px;
+                height: 80px;
             }
         }
     </style>
@@ -223,7 +223,7 @@ async def airbnb_search_html_response():
             }
             .image {
                 width: 100%;
-                height: 120px;
+                height: 60px;
             }
         }
     </style>
