@@ -9,11 +9,11 @@ router = APIRouter()
     "/airbnb/caching",
     response_class=HTMLResponse,
     summary="Airbnb 해운대 캐싱된 검색 결과",
-    description="7초 후 고정된 HTML 응답을 반환합니다.",
+    description="4초 후 고정된 HTML 응답을 반환합니다.",
     tags=["Airbnb"],
 )
 async def airbnb_caching_response():
-    await asyncio.sleep(7)  # 7초 대기
+    await asyncio.sleep(4)  # 4초 대기
 
     html_content = """
 <!DOCTYPE html>

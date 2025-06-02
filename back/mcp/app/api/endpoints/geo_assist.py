@@ -79,7 +79,7 @@ async def get_cached_haeundae_attractions_html() -> str:
     캐싱된 해운대 관광지 HTML 반환
     7초 대기 후 고정된 결과 반환
     """
-    await asyncio.sleep(7)  # 7초 대기
+    await asyncio.sleep(3)  # 7초 대기
 
     html_content = """
 <html>
