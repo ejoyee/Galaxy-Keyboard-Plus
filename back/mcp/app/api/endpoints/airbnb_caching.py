@@ -30,7 +30,6 @@ async def airbnb_caching_response():
             padding: 20px;
         }
         .card {
-            display: flex;
             background-color: #fff;
             border-radius: 12px;
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
@@ -41,19 +40,8 @@ async def airbnb_caching_response():
         .card:hover {
             transform: translateY(-5px);
         }
-        .image {
-            width: 50px;
-            height: 100%;
-            background: linear-gradient(135deg, #ff5a5f, #faebeb);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            font-size: 16px;
-            min-height: 60px;
-        }
         .info {
             padding: 20px;
-            flex: 1;
         }
         .title {
             font-size: 24px;
@@ -85,12 +73,8 @@ async def airbnb_caching_response():
             display: inline-block;
         }
         @media (max-width: 768px) {
-            .card {
-                flex-direction: column;
-            }
-            .image {
-                width: 100%;
-                height: 80px;
+            .info {
+                padding: 15px;
             }
         }
     </style>
@@ -98,7 +82,6 @@ async def airbnb_caching_response():
 <body>
 
     <div class="card">
-        <div class="image">🏠</div>
         <div class="info">
             <h2 class="title"><a href="https://www.airbnb.com/rooms/667004100371414208">Paledecz [Deluxe Suite]</a></h2>
             <div class="rating">⭐ 4.8</div>
@@ -109,7 +92,6 @@ async def airbnb_caching_response():
     </div>
 
     <div class="card">
-        <div class="image">🏠</div>
         <div class="info">
             <h2 class="title"><a href="https://www.airbnb.com/rooms/1038253502358882532">2nd Floor Ocean Market Stay</a></h2>
             <div class="rating">⭐ 4.7</div>
@@ -120,7 +102,6 @@ async def airbnb_caching_response():
     </div>
 
     <div class="card">
-        <div class="image">🏠</div>
         <div class="info">
             <h2 class="title"><a href="https://www.airbnb.com/rooms/680159722032871088">iam house pension</a></h2>
             <div class="rating">⭐ 4.9</div>
@@ -162,7 +143,6 @@ async def airbnb_search_html_response():
             padding: 20px;
         }
         .card {
-            display: flex;
             background-color: #fff;
             border-radius: 12px;
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
@@ -173,19 +153,8 @@ async def airbnb_search_html_response():
         .card:hover {
             transform: translateY(-5px);
         }
-        .image {
-            width: 40px;
-            height: 100%;
-            background: linear-gradient(135deg, #ff5a5f, #faebeb);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            font-size: 14px;
-            min-height: 50px;
-        }
         .info {
             padding: 15px;
-            flex: 1;
         }
         .title {
             font-size: 20px;
@@ -218,12 +187,8 @@ async def airbnb_search_html_response():
             font-size: 12px;
         }
         @media (max-width: 768px) {
-            .card {
-                flex-direction: column;
-            }
-            .image {
-                width: 100%;
-                height: 60px;
+            .info {
+                padding: 12px;
             }
         }
     </style>
@@ -232,7 +197,6 @@ async def airbnb_search_html_response():
     <h1>해운대 숙소 추천 (축소된 이미지 버전)</h1>
 
     <div class="card">
-        <div class="image">🏠</div>
         <div class="info">
             <h2 class="title"><a href="https://www.airbnb.com/rooms/667004100371414208">Paledecz [Deluxe Suite]</a></h2>
             <div class="rating">⭐ 4.8</div>
@@ -243,7 +207,6 @@ async def airbnb_search_html_response():
     </div>
 
     <div class="card">
-        <div class="image">🏠</div>
         <div class="info">
             <h2 class="title"><a href="https://www.airbnb.com/rooms/1038253502358882532">2nd Floor Ocean Market Stay</a></h2>
             <div class="rating">⭐ 4.7</div>
@@ -254,7 +217,6 @@ async def airbnb_search_html_response():
     </div>
 
     <div class="card">
-        <div class="image">🏠</div>
         <div class="info">
             <h2 class="title"><a href="https://www.airbnb.com/rooms/680159722032871088">iam house pension</a></h2>
             <div class="rating">⭐ 4.9</div>
