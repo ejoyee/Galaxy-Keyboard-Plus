@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 
 export default function QnaPage() {
   const [question, setQuestion] = useState('');
-  const [submittedQuestions, setSubmittedQuestions] = useState([]);
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [ragResponse, setRagResponse] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -91,18 +91,7 @@ export default function QnaPage() {
         
         console.log('정리된 응답:', cleanResponse);
         
-        // 질문을 목록에 추가
-        const newQuestion = {
-          id: Date.now(),
-          text: question.trim(),
-          timestamp: new Date().toLocaleTimeString('ko-KR', {
-            hour: '2-digit',
-            minute: '2-digit'
-          }),
-          response: cleanResponse
-        };
-        
-        setSubmittedQuestions(prev => [newQuestion, ...prev]);
+
         
         // RAG 응답 표시 및 타이핑 애니메이션 시작
         setRagResponse(cleanResponse);
@@ -219,53 +208,7 @@ export default function QnaPage() {
               </form>
             </div>
 
-            {/* Submitted Questions - 더 컴팩트하게 조정 */}
-            {submittedQuestions.length > 0 && (
-              <div className="max-w-full">
-                <h3 className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-white mb-6 sm:mb-8 text-center">
-                  질문 기록
-                </h3>
-                <div className="space-y-4 sm:space-y-6 max-h-[300px] sm:max-h-[400px] md:max-h-[500px] overflow-y-auto pr-2 sm:pr-4">
-                  {submittedQuestions.map((q, index) => (
-                    <div
-                      key={q.id}
-                      className="group p-4 sm:p-6 md:p-8 bg-white/5 backdrop-blur-xl border-2 border-white/10 rounded-xl sm:rounded-2xl hover:bg-white/10 hover:border-white/20 transition-all duration-300 transform hover:scale-[1.01] sm:hover:scale-[1.02]"
-                      style={{
-                        animationDelay: `${index * 0.1}s`
-                      }}
-                    >
-                      <div className="flex justify-between items-start mb-3 sm:mb-4">
-                        <span className="text-xs sm:text-sm md:text-base text-cyan-400 font-bold">
-                          질문 #{submittedQuestions.length - index}
-                        </span>
-                        <span className="text-xs sm:text-sm text-gray-400 font-medium whitespace-nowrap">
-                          {q.timestamp}
-                        </span>
-                      </div>
-                      <p className="text-white text-sm sm:text-base md:text-lg lg:text-xl leading-relaxed font-medium mb-3 sm:mb-4 break-words">{q.text}</p>
-                      {q.response && (
-                        <div className="mt-3 sm:mt-4 p-3 sm:p-4 bg-gradient-to-r from-cyan-500/10 to-blue-500/10 rounded-lg sm:rounded-xl border border-cyan-400/20">
-                          <p className="text-cyan-300 text-xs sm:text-sm font-bold mb-2">RAG 기반 답변:</p>
-                          <div className="text-white text-xs sm:text-sm md:text-base leading-relaxed whitespace-pre-line break-words">
-                            {q.response.split('. ').map((sentence, idx) => (
-                              <span key={idx}>
-                                {sentence.trim()}
-                                {idx < q.response.split('. ').length - 1 && (
-                                  <>
-                                    .<br /><br />
-                                  </>
-                                )}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                      <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/5 to-blue-500/5 rounded-xl sm:rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"></div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+
           </div>
         </div>
 
