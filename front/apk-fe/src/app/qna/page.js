@@ -162,10 +162,10 @@ export default function QnaPage() {
                   Galaxy Keyboard Plus
                 </h1>
               </div>
-              <h3 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-medium text-white/90 mb-3 sm:mb-4">
+              <h3 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-medium text-white/90 mb-3 sm:mb-4">
                 Q&A Session
               </h3>
-              <p className="text-gray-300 text-sm sm:text-base md:text-lg lg:text-xl max-w-3xl mx-auto leading-relaxed font-medium px-4">
+              <p className="text-gray-300 text-lg sm:text-xl md:text-2xl lg:text-3xl max-w-3xl mx-auto leading-relaxed font-medium px-4">
                 발표에 대한 질문이나 궁금한 점을 자유롭게 남겨주세요
               </p>
             </div>
@@ -179,7 +179,7 @@ export default function QnaPage() {
                     onChange={handleQuestionChange}
                     placeholder="질문을 입력해주세요..."
                     rows={4}
-                    className="w-full px-4 sm:px-6 md:px-8 py-4 sm:py-6 text-base sm:text-lg md:text-xl lg:text-2xl placeholder:text-base sm:placeholder:text-lg md:placeholder:text-xl lg:placeholder:text-2xl bg-white/5 backdrop-blur-xl border-2 border-white/20 rounded-2xl sm:rounded-3xl text-white placeholder-gray-400 focus:outline-none focus:ring-4 focus:ring-cyan-400/50 focus:border-cyan-400/50 transition-all duration-300 resize-none group-hover:bg-white/10 group-hover:border-white/30 font-medium"
+                    className="w-full px-4 sm:px-6 md:px-8 py-4 sm:py-6 text-xl sm:text-2xl md:text-3xl lg:text-4xl placeholder:text-xl sm:placeholder:text-2xl md:placeholder:text-3xl lg:placeholder:text-4xl bg-white/5 backdrop-blur-xl border-2 border-white/20 rounded-2xl sm:rounded-3xl text-white placeholder-gray-400 focus:outline-none focus:ring-4 focus:ring-cyan-400/50 focus:border-cyan-400/50 transition-all duration-300 resize-none group-hover:bg-white/10 group-hover:border-white/30 font-medium"
                     disabled={isSubmitting}
                   />
                   <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/10 to-blue-500/10 rounded-2xl sm:rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"></div>
@@ -189,18 +189,18 @@ export default function QnaPage() {
                   <button
                     type="submit"
                     disabled={isSubmitting || !question.trim()}
-                    className="relative px-8 sm:px-12 md:px-16 py-3 sm:py-4 md:py-5 text-sm sm:text-base md:text-lg lg:text-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 disabled:from-gray-600 disabled:to-gray-700 disabled:cursor-not-allowed text-white font-bold rounded-xl sm:rounded-2xl transition-all duration-300 transform hover:scale-105 hover:shadow-2xl hover:shadow-cyan-500/40 focus:outline-none focus:ring-4 focus:ring-cyan-400 focus:ring-offset-2 focus:ring-offset-transparent overflow-hidden"
+                    className="relative px-8 sm:px-12 md:px-16 py-3 sm:py-4 md:py-5 text-lg sm:text-xl md:text-2xl lg:text-3xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 disabled:from-gray-600 disabled:to-gray-700 disabled:cursor-not-allowed text-white font-bold rounded-xl sm:rounded-2xl transition-all duration-300 transform hover:scale-105 hover:shadow-2xl hover:shadow-cyan-500/40 focus:outline-none focus:ring-4 focus:ring-cyan-400 focus:ring-offset-2 focus:ring-offset-transparent overflow-hidden"
                   >
                     <div className="absolute inset-0 bg-gradient-to-r from-white/20 to-transparent opacity-0 hover:opacity-100 transition-opacity duration-300"></div>
                     <span className="relative flex items-center justify-center gap-2 sm:gap-3 font-bold whitespace-nowrap">
                       {isSubmitting ? (
                         <>
-                          <div className="animate-spin rounded-full h-4 sm:h-5 md:h-6 w-4 sm:w-5 md:w-6 border-b-2 sm:border-b-3 border-white"></div>
-                          <span className="hidden sm:inline">관련 정보를 찾고 있어요...</span>
-                          <span className="sm:hidden">처리중...</span>
+                          <div className="animate-spin rounded-full h-5 sm:h-6 md:h-7 lg:h-8 w-5 sm:w-6 md:w-7 lg:w-8 border-b-2 sm:border-b-3 border-white"></div>
+                          <span className="hidden sm:inline text-lg sm:text-xl md:text-2xl">관련 정보를 찾고 있어요...</span>
+                          <span className="sm:hidden text-lg">처리중...</span>
                         </>
                       ) : (
-                        '질문하기'
+                        <span className="text-lg sm:text-xl md:text-2xl lg:text-3xl">질문하기</span>
                       )}
                     </span>
                   </button>
@@ -215,26 +215,44 @@ export default function QnaPage() {
         {/* Professional Fixed Footer - Always Visible */}
         <footer className="fixed bottom-0 left-0 right-0 z-30 bg-black/80 backdrop-blur-md border-t border-white/10">
           <div className="max-w-7xl mx-auto px-4 py-3">
-            <div className="flex flex-wrap items-center justify-center gap-4 sm:gap-6 text-xs sm:text-sm text-gray-400">
-              <span className="font-medium text-white">Galaxy Keyboard Plus</span>
+            <div className="flex flex-wrap items-center justify-center gap-4 sm:gap-6 text-sm sm:text-base text-gray-400">
+              <span className="font-medium text-white text-base sm:text-lg">Galaxy Keyboard Plus</span>
               <span>•</span>
-              <span>SSAFY 12기 E201</span>
+              <span className="text-sm sm:text-base">SSAFY 12기 E201</span>
               <span>•</span>
               <div className="flex items-center gap-1">
                 <div className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse"></div>
-                <span>RAG 시스템</span>
+                <span className="text-sm sm:text-base">RAG 시스템</span>
               </div>
               <span>•</span>
-              <span>🔍 벡터 검색 기반 응답</span>
+              <span className="text-sm sm:text-base">🔍 벡터 검색 기반 응답</span>
               <span className="hidden sm:inline">•</span>
-              <span className="text-gray-500">© 2025 SSAFY</span>
+              <span className="text-gray-500 text-sm sm:text-base">© 2025 SSAFY</span>
             </div>
           </div>
         </footer>
 
         {/* Full Screen RAG Response Modal */}
         {showResponse && (
-          <div className="fixed inset-0 bg-black/80 backdrop-blur-xl z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-gradient-to-br from-slate-800/90 via-gray-700/90 to-slate-900/90 backdrop-blur-2xl z-50 flex items-center justify-center p-4">
+            {/* Floating particles for visual enhancement */}
+            <div className="absolute inset-0 overflow-hidden">
+              {[...Array(15)].map((_, i) => (
+                <div
+                  key={i}
+                  className="absolute bg-cyan-400/20 rounded-full animate-pulse"
+                  style={{
+                    width: `${Math.random() * 4 + 2}px`,
+                    height: `${Math.random() * 4 + 2}px`,
+                    left: `${Math.random() * 100}%`,
+                    top: `${Math.random() * 100}%`,
+                    opacity: Math.random() * 0.5 + 0.2,
+                    animationDelay: `${Math.random() * 3}s`,
+                    animationDuration: `${2 + Math.random() * 3}s`
+                  }}
+                />
+              ))}
+            </div>
             <div className="w-full max-w-3xl xl:max-w-4xl max-h-[90vh] overflow-y-auto">
               {/* Close Button */}
               <div className="flex justify-end mb-4 sm:mb-6 sticky top-0 z-10">
@@ -249,14 +267,17 @@ export default function QnaPage() {
               {/* Response Content */}
               <div className="text-center">
                 <div className="mb-6 sm:mb-8">
-                  <h2 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent mb-3 sm:mb-4">
+                  <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent mb-3 sm:mb-4">
                     RAG 기반 답변
                   </h2>
                   <div className="w-16 sm:w-20 h-1 bg-gradient-to-r from-cyan-500 to-blue-500 mx-auto rounded-full"></div>
                 </div>
                 
-                <div className="bg-white/5 backdrop-blur-xl border-2 border-white/20 rounded-2xl sm:rounded-3xl p-6 sm:p-8 md:p-12">
-                  <div className="text-white text-sm sm:text-base md:text-lg lg:text-xl xl:text-2xl leading-relaxed font-medium text-left whitespace-pre-line break-words">
+                <div className="bg-gradient-to-br from-white/15 via-slate-100/10 to-white/15 backdrop-blur-2xl border-2 border-cyan-400/40 rounded-2xl sm:rounded-3xl p-6 sm:p-8 md:p-12 shadow-2xl shadow-cyan-400/20 relative overflow-hidden">
+                  {/* Inner glow effect */}
+                  <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/5 via-transparent to-blue-500/5 rounded-2xl sm:rounded-3xl"></div>
+                  <div className="relative z-10">
+                  <div className="text-white text-lg sm:text-xl md:text-2xl lg:text-3xl xl:text-4xl leading-relaxed font-medium text-left whitespace-pre-line break-words">
                     {displayedText.split('. ').map((sentence, index) => (
                       <span key={index}>
                         {sentence.trim()}
@@ -268,8 +289,9 @@ export default function QnaPage() {
                       </span>
                     ))}
                     {isTyping && (
-                      <span className="inline-block w-0.5 h-4 sm:h-5 md:h-6 lg:h-7 xl:h-8 bg-cyan-400 ml-1 animate-pulse"></span>
+                      <span className="inline-block w-0.5 h-5 sm:h-6 md:h-7 lg:h-8 xl:h-9 bg-cyan-400 ml-1 animate-pulse"></span>
                     )}
+                  </div>
                   </div>
                 </div>
                 
@@ -277,7 +299,7 @@ export default function QnaPage() {
                   <div className="mt-6 sm:mt-8">
                     <button
                       onClick={closeResponse}
-                      className="px-6 sm:px-8 py-2 sm:py-3 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold rounded-lg sm:rounded-xl transition-all duration-300 transform hover:scale-105 text-sm sm:text-base"
+                      className="px-6 sm:px-8 py-2 sm:py-3 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold rounded-lg sm:rounded-xl transition-all duration-300 transform hover:scale-105 text-lg sm:text-xl md:text-2xl"
                     >
                       확인
                     </button>
