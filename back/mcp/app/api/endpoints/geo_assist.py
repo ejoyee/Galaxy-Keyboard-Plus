@@ -146,6 +146,224 @@ def is_suseo_yeoksam_prugio_route_query(query: str) -> bool:
 
 
 
+def is_gangnam_restaurant_attractions_query(query: str) -> bool:
+    """
+    "강남역 주변 고깃집 중에 주차 가능한 곳" 및 유사한 질문인지 확인하는 함수
+    """
+    query_lower = query.lower().strip()
+
+    # 키워드 조합으로 판단
+    keywords = {
+        "location": ["강남", "강남역", "gangnam"],
+        "restaurant": [
+            "고기집",
+            "고깃집",
+            "삼겹살",
+            "갈비",
+            "소고기",
+            "돼지고기",
+            "바베큐",
+            "bbq",
+            "구이",
+            "한우",
+            "회식",
+            "고기",
+            "육류",
+            "맛집",
+            "식당",
+            "음식점",
+            "레스토랑",
+        ],
+        "parking": [
+            "주차",
+            "주차장",
+            "주차가능",
+            "주차할수",
+            "주차할 수",
+            "파킹",
+            "parking",
+            "차댈",
+            "차 댈",
+            "차세울",
+            "차 세울",
+        ],
+        "location_words": [
+            "주변",
+            "근처",
+            "인근",
+            "주위",
+            "옆",
+            "근방",
+            "가까운",
+            "부근",
+            "근교",
+            "일대",
+            "지역",
+            "에서",
+        ],
+        "place": ["곳", "장소", "곳들", "장소들", "스팟", "업체", "가게", "점포"],
+        "search_words": [
+            "중에",
+            "중에서",
+            "추천",
+            "찾아",
+            "알려",
+            "소개",
+            "어디",
+            "있나",
+            "있는지",
+            "있어",
+            "좋은",
+            "괜찮은",
+        ],
+    }
+
+    # 각 카테고리에서 최소 하나씩 포함되어야 함
+    has_location = any(keyword in query_lower for keyword in keywords["location"])
+    has_restaurant = any(keyword in query_lower for keyword in keywords["restaurant"])
+    has_parking = any(keyword in query_lower for keyword in keywords["parking"])
+
+    # 위치 관련 단어나 장소 관련 단어 중 하나는 있어야 함
+    has_location_words = any(
+        keyword in query_lower for keyword in keywords["location_words"]
+    )
+    has_place = any(keyword in query_lower for keyword in keywords["place"])
+    has_search_words = any(
+        keyword in query_lower for keyword in keywords["search_words"]
+    )
+
+    # 위치 관련성 체크 (주변, 근처 등의 단어나 장소 단어가 있어야 함)
+    has_location_context = has_location_words or has_place or has_search_words
+
+    # 필수 조건: 강남 + 고깃집/음식점 + 주차 + 위치관련성
+    return has_location and has_restaurant and has_parking and has_location_context
+
+
+def is_suseo_yeoksam_prugio_route_query(query: str) -> bool:
+    """
+    "수서역에서 역삼푸르지오시티오피스텔까지 편하게 가는 방법" 및 유사한 질문인지 확인하는 함수
+    """
+    query_lower = query.lower().strip()
+
+    # 키워드 조합으로 판단
+    keywords = {
+        "origin": ["수서", "수서역", "suseo", "수서동", "수서ic"],
+        "destination": [
+            "역삼푸르지오",
+            "역삼 푸르지오",
+            "푸르지오시티",
+            "푸르지오 시티",
+            "역삼푸르지오시티",
+            "역삼푸르지오시티오피스텔",
+            "푸르지오시티오피스텔",
+            "역삼 푸르지오 시티",
+            "yeoksam prugio",
+            "prugio city",
+            "prugio",
+            "역삼푸르지오오피스텔",
+            "역삼 오피스텔",
+            "역삼동 푸르지오",
+            "역삼 푸르지오시티오피스텔",
+        ],
+        "route_action": [
+            "가는",
+            "방법",
+            "경로",
+            "길",
+            "어떻게",
+            "갈수",
+            "갈 수",
+            "가나",
+            "가는법",
+            "갈까",
+            "갈지",
+            "이동",
+            "출발",
+            "도착",
+            "도달",
+            "찾아가",
+            "가려면",
+            "가기",
+            "갈 때",
+        ],
+        "transport_preference": [
+            "편하게",
+            "편한",
+            "쉽게",
+            "쉬운",
+            "간편한",
+            "간편하게",
+            "빠르게",
+            "빠른",
+            "좋은",
+            "최적",
+            "최선",
+            "추천",
+            "좋을까",
+            "괜찮은",
+        ],
+        "direction_words": [
+            "에서",
+            "부터",
+            "으로",
+            "까지",
+            "로",
+            "에",
+            "향해",
+            "쪽으로",
+        ],
+        "transport_methods": [
+            "교통",
+            "지하철",
+            "버스",
+            "전철",
+            "택시",
+            "대중교통",
+            "승용차",
+            "차",
+            "운전",
+            "도보",
+            "걸어서",
+        ],
+    }
+
+    # 각 카테고리에서 최소 하나씩 포함되어야 함
+    has_origin = any(keyword in query_lower for keyword in keywords["origin"])
+    has_destination = any(keyword in query_lower for keyword in keywords["destination"])
+    has_route_action = any(
+        keyword in query_lower for keyword in keywords["route_action"]
+    )
+
+    # 방향성을 나타내는 단어들 (에서, 까지 등)
+    has_direction_words = any(
+        keyword in query_lower for keyword in keywords["direction_words"]
+    )
+
+    # 선택적 조건들 (있으면 더 확실함)
+    has_transport_preference = any(
+        keyword in query_lower for keyword in keywords["transport_preference"]
+    )
+    has_transport_methods = any(
+        keyword in query_lower for keyword in keywords["transport_methods"]
+    )
+
+    # 기본 조건: 출발지 + 목적지 + 경로관련 단어 + 방향성
+    basic_conditions = (
+        has_origin and has_destination and has_route_action and has_direction_words
+    )
+
+    # 추가 가점 조건들
+    bonus_conditions = has_transport_preference or has_transport_methods
+
+    # 기본 조건을 모두 만족하거나, 기본 조건 대부분 + 추가 조건을 만족해야 함
+    return basic_conditions or (
+        has_origin
+        and has_destination
+        and (has_route_action or has_direction_words)
+        and bonus_conditions
+    )
+
+
 def is_yeoksam_multicampus_query(query: str) -> bool:
     """
     "역삼역에서 멀티캠퍼스까지 가는 방법" 질문인지 확인하는 함수
@@ -156,7 +374,18 @@ def is_yeoksam_multicampus_query(query: str) -> bool:
     keywords = {
         "origin": ["역삼", "역삼역"],
         "destination": ["멀티캠퍼스", "멀티", "multicampus"],
-        "action": ["가는", "방법", "경로", "길", "어떻게", "까지", "으로", "에서", "부터", "이동"],
+        "action": [
+            "가는",
+            "방법",
+            "경로",
+            "길",
+            "어떻게",
+            "까지",
+            "으로",
+            "에서",
+            "부터",
+            "이동",
+        ],
     }
 
     # 각 카테고리에서 최소 하나씩 포함되어야 함
