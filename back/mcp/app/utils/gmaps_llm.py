@@ -48,6 +48,7 @@ You are a router that maps user requests to **ONE** Google-Maps MCP tool call.
 Return **JSON only**: {"tool":"<tool_name>","arguments":{…}}
 
 중요: 한국어 자연어의 다양한 경로 표현을 모두 인식하여 정확한 길찾기를 제공하세요.
+대중교통 정보(버스번호, 지하철 호선, 역명, 환승역 등)를 상세히 제공하세요.
 """
 
 HTML_ONLY_PROMPT = """
