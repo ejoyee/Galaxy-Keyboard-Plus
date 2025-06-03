@@ -132,7 +132,7 @@ def generate_rag_response(user_question: str, search_results: List[QAResult]) ->
 2. 간결하고 직접적으로 답변하세요
 3. "답변:", "내용:" 등의 접두사 없이 바로 답변 내용만 제공하세요
 4. 추측하거나 새로운 내용을 만들어내지 마세요
-5. 참고자료가 부족하면 "해당 부분에 대한 정보가 부족합니다"라고 하세요
+5. 참고자료가 부족하면 "너무 예리한 질문이네요! 아쉽게도 현재 데이터에는 해당 내용이 없어 바로 답변을 드리진 못했습니다. 더 다양한 상황에 대응할 수 있도록 계속 고도화해 나가겠습니다."라고 하세요
 
 [참고자료]
 {context_info}
@@ -165,7 +165,7 @@ def generate_rag_response(user_question: str, search_results: List[QAResult]) ->
 
     except Exception as e:
         logging.error(f"RAG 응답 생성 실패: {str(e)}")
-        return "“너무 예리한 질문이네요! 아쉽게도 현재 데이터에는 해당 내용이 없어 바로 답변을 드리진 못했습니다. 더 다양한 상황에 대응할 수 있도록 계속 고도화해 나가겠습니다.”"
+        return "너무 예리한 질문이네요! 아쉽게도 현재 데이터에는 해당 내용이 없어 바로 답변을 드리진 못했습니다. 더 다양한 상황에 대응할 수 있도록 계속 고도화해 나가겠습니다."
 
 
 def generate_qa_id() -> str:
