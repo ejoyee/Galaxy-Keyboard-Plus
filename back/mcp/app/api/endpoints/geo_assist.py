@@ -8,7 +8,7 @@ import re
 import asyncio
 import app.api.endpoints.html_res as html_res
 
-def extract_origin_desWtination(query: str):
+def extract_origin_destination(query: str):
     """쿼리에서 출발지와 도착지를 추출"""
     # 정리: 불필요한 단어 제거
     cleaned_query = re.sub(
