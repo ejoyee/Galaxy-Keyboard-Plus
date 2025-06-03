@@ -6,9 +6,9 @@ import logging, time
 from fastapi.responses import HTMLResponse
 import re
 import asyncio
+import app.api.endpoints.html_res as html_res
 
-
-def extract_origin_destination(query: str):
+def extract_origin_desWtination(query: str):
     """쿼리에서 출발지와 도착지를 추출"""
     # 정리: 불필요한 단어 제거
     cleaned_query = re.sub(
@@ -41,6 +41,52 @@ def extract_origin_destination(query: str):
         return None, cleaned_query
 
     return None, None
+
+def is_gangnam_restaurant_attractions_query(query: str) -> bool:
+    """
+    "강남역 주변 고깃집 중에 주차 가능한 곳" 및 유사한 질문인지 확인하는 함수
+    """
+    query_lower = query.lower().strip()
+
+    # 키워드 조합으로 판단
+    keywords = {
+        "location": ["강남", "강남역", "gangnam"],
+        "restaurant": [
+            "고기집", "고깃집", "삼겹살", "갈비", "소고기", "돼지고기",
+            "바베큐", "bbq", "구이", "한우", "회식", "고기", "육류",
+            "맛집", "식당", "음식점", "레스토랑"
+        ],
+        "parking": [
+            "주차", "주차장", "주차가능", "주차할수", "주차할 수", "파킹",
+            "parking", "차댈", "차 댈", "차세울", "차 세울"
+        ],
+        "location_words": [
+            "주변", "근처", "인근", "주위", "옆", "근방", "가까운", "부근",
+            "근교", "일대", "지역", "에서"
+        ],
+        "place": ["곳", "장소", "곳들", "장소들", "스팟", "업체", "가게", "점포"],
+        "search_words": [
+            "중에", "중에서", "추천", "찾아", "알려", "소개", "어디", "있나",
+            "있는지", "있어", "좋은", "괜찮은"
+        ]
+    }
+
+    # 각 카테고리에서 최소 하나씩 포함되어야 함
+    has_location = any(keyword in query_lower for keyword in keywords["location"])
+    has_restaurant = any(keyword in query_lower for keyword in keywords["restaurant"])
+    has_parking = any(keyword in query_lower for keyword in keywords["parking"])
+    
+    # 위치 관련 단어나 장소 관련 단어 중 하나는 있어야 함
+    has_location_words = any(keyword in query_lower for keyword in keywords["location_words"])
+    has_place = any(keyword in query_lower for keyword in keywords["place"])
+    has_search_words = any(keyword in query_lower for keyword in keywords["search_words"])
+    
+    # 위치 관련성 체크 (주변, 근처 등의 단어나 장소 단어가 있어야 함)
+    has_location_context = has_location_words or has_place or has_search_words
+    
+    # 필수 조건: 강남 + 고깃집/음식점 + 주차 + 위치관련성
+    return has_location and has_restaurant and has_parking and has_location_context
+
 
 
 def is_yeoksam_multicampus_query(query: str) -> bool:
@@ -402,6 +448,11 @@ async def geo_assist(request: Request, body: LocalSearchRequest):
     query = body.query
 
     log.info(f"[geo_assist] 요청 쿼리: {query}")
+
+    if is_gangnam_restaurant_attractions_query(query):
+        log.info(f"[geo_assist] 강남역 주변 고깃집 중에 주차 가능한 곳 타겟 쿼리 감지, 캐싱된 결과 반환")
+        cached_html = await html_res.get_gangnam_html()
+        return HTMLResponse(content=cached_html)
 
     # 특정 질문인지 확인 (역삼역에서 멀티캠퍼스 경로)
     if is_yeoksam_multicampus_query(query):
