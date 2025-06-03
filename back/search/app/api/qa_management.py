@@ -96,19 +96,20 @@ def generate_rag_response(user_question: str, search_results: List[QAResult]) ->
         
         # 컨텍스트 구성
         context_info = "\n".join(
-            f"참고자료 {i+1}:\n질문: {r.question}\n답변: {r.answer}\n"
+            f"참고자료 {i+1}:\n질문: {r.question}\n내용: {r.answer}\n"
             for i, r in enumerate(relevant_results)
         )
         
         prompt = f"""
 당신은 삼성 청년 소프트웨어 아카데미 프로젝트 발표 Q&A를 담당합니다.
-아래 참고자료의 내용과 말투를 그대로 활용하여 질문에 답변하세요.
+아래 참고자료의 내용을 바탕으로 질문에 답변하세요.
 
 [중요 규칙]
 1. 참고자료에 있는 내용만 사용하세요
-2. 참고자료의 담백하고 직접적인 말투를 유지하세요
-3. 추측하거나 새로운 내용을 만들어내지 마세요
-4. 참고자료가 부족하면 "해당 부분에 대한 정보가 부족합니다"라고 하세요
+2. 간결하고 직접적으로 답변하세요
+3. "답변:", "내용:" 등의 접두사 없이 바로 답변 내용만 제공하세요
+4. 추측하거나 새로운 내용을 만들어내지 마세요
+5. 참고자료가 부족하면 "해당 부분에 대한 정보가 부족합니다"라고 하세요
 
 [참고자료]
 {context_info}
@@ -116,7 +117,7 @@ def generate_rag_response(user_question: str, search_results: List[QAResult]) ->
 [질문]
 {user_question}
 
-참고자료의 답변 스타일을 그대로 따라하여 간결하고 담백하게 답변하세요.
+참고자료를 바탕으로 간결하게 답변하되, "답변:" 같은 접두사 없이 내용만 제공하세요.
 """
 
         response = openai_client.chat.completions.create(
@@ -126,9 +127,9 @@ def generate_rag_response(user_question: str, search_results: List[QAResult]) ->
                     "role": "system",
                     "content": (
                         "당신은 정확성을 최우선으로 하는 어시스턴트입니다. "
-                        "제공된 참고자료의 내용과 말투를 정확히 따라하되, "
+                        "제공된 참고자료의 내용을 기반으로 답변하되, "
                         "참고자료에 없는 내용은 절대 추가하지 않습니다. "
-                        "간결하고 담백한 답변을 제공합니다."
+                        "간결하고 직접적인 답변을 제공하며, '답변:', '내용:' 등의 접두사 없이 내용만 제공합니다."
                     ),
                 },
                 {"role": "user", "content": prompt},
