@@ -137,3 +137,125 @@ async def get_gangnam_html() -> str:
     """
 
     return html_content
+
+
+async def get_suseo_route_html() -> str:
+    """
+    수서역 HTML 반환
+    """
+    await asyncio.sleep(3)  # 3초 대기
+
+    html_content = """
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport"
+        content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+  <style>
+    /* 기본 리셋 + 글꼴 + 배경 */
+    *{margin:0;padding:0;box-sizing:border-box}
+    html,body{height:100%;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);
+      font-family:'Malgun Gothic',Arial,sans-serif;}
+  </style>
+</head><body>
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {
+            background-color: #F8F9FA;
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 16px;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #FFFFFF;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+        }
+        
+        .route-card {
+            background: #FFFFFF;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 16px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .step {
+            border-left: 3px solid #1976D2;
+            padding: 8px 16px;
+            margin: 8px 0;
+        }
+        
+        .transit {
+            color: #FFFFFF;
+            background: #1976D2;
+            padding: 4px 8px;
+            border-radius: 4px;
+            display: inline-block;
+            margin: 4px 0;
+        }
+        
+        .walking {
+            color: #FFFFFF;
+            background: #4CAF50;
+            padding: 4px 8px;
+            border-radius: 4px;
+            display: inline-block;
+            margin: 4px 0;
+        }
+        
+        .summary {
+            font-weight: bold;
+            color: #212529;
+            margin-bottom: 16px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h2>수서역 → 역삼푸르지오시티오피스텔</h2>
+        <div>총 소요시간: 약 27분 | 총 거리: 8.6km</div>
+    </div>
+    
+    <div class="route-card">
+        <div class="summary">
+            🚶‍♂️ 도보 + 🚇 지하철 + 🚌 버스 환승 경로
+        </div>
+        
+        <div class="step">
+            <span class="walking">도보</span>
+            <p>수서역까지 도보 이동 (77m, 약 1분)</p>
+        </div>
+        
+        <div class="step">
+            <span class="transit">지하철</span>
+            <p>수서역 → 선릉역 (분당선, 약 12분)</p>
+        </div>
+        
+        <div class="step">
+            <span class="walking">도보</span>
+            <p>선릉역에서 버스정류장까지 도보 이동 (155m, 약 3분)</p>
+        </div>
+        
+        <div class="step">
+            <span class="transit">버스</span>
+            <p>선릉역 → 강남역.강남역사거리 방면 (1.5km, 약 3분)</p>
+            <p>버스 번호: 146, 242, 341, 360</p>
+        </div>
+        
+        <div class="step">
+            <span class="walking">도보</span>
+            <p>버스정류장에서 역삼푸르지오시티오피스텔까지 도보 (284m, 약 5분)</p>
+        </div>
+    </div>
+</body>
+</html></body></html>
+    """
+
+    return html_content
