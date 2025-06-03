@@ -58,31 +58,54 @@ def generate_embedding(text: str) -> List[float]:
 
 def extract_keywords(text: str) -> List[str]:
     """질문에서 핵심 키워드 추출"""
-    stopwords = {'은', '는', '이', '가', '을', '를', '에', '에서', '로', '으로', '와', '과', '도', '만', '부터', '까지', '의', '에게', '께', '한테'}
-    words = re.findall(r'[가-힣a-zA-Z0-9]+', text)
+    stopwords = {
+        "은",
+        "는",
+        "이",
+        "가",
+        "을",
+        "를",
+        "에",
+        "에서",
+        "로",
+        "으로",
+        "와",
+        "과",
+        "도",
+        "만",
+        "부터",
+        "까지",
+        "의",
+        "에게",
+        "께",
+        "한테",
+    }
+    words = re.findall(r"[가-힣a-zA-Z0-9]+", text)
     keywords = [word for word in words if word not in stopwords and len(word) > 1]
     return keywords
 
 
-def filter_relevant_results(question: str, search_results: List[QAResult]) -> List[QAResult]:
+def filter_relevant_results(
+    question: str, search_results: List[QAResult]
+) -> List[QAResult]:
     """관련성 있는 결과만 필터링"""
     if not search_results:
         return []
-    
+
     question_keywords = set(extract_keywords(question))
     filtered_results = []
-    
+
     for result in search_results:
         # 유사도 기본 필터링
         if result.similarity_score >= MIN_SIMILARITY_THRESHOLD:
             filtered_results.append(result)
             continue
-            
+
         # 키워드 매칭으로 추가 검증
         result_keywords = set(extract_keywords(result.question + " " + result.answer))
         if question_keywords.intersection(result_keywords):
             filtered_results.append(result)
-    
+
     return filtered_results[:MAX_CONTEXT_RESULTS]
 
 
@@ -90,16 +113,16 @@ def generate_rag_response(user_question: str, search_results: List[QAResult]) ->
     try:
         # 관련성 있는 결과 필터링
         relevant_results = filter_relevant_results(user_question, search_results)
-        
+
         if not relevant_results:
             return "해당 질문에 대한 구체적인 정보가 준비되어 있지 않습니다. 다른 질문이 있으시면 답변드리겠습니다."
-        
+
         # 컨텍스트 구성
         context_info = "\n".join(
             f"참고자료 {i+1}:\n질문: {r.question}\n내용: {r.answer}\n"
             for i, r in enumerate(relevant_results)
         )
-        
+
         prompt = f"""
 당신은 삼성 청년 소프트웨어 아카데미 프로젝트 발표 Q&A를 담당합니다.
 아래 참고자료의 내용을 바탕으로 질문에 답변하세요.
@@ -142,7 +165,7 @@ def generate_rag_response(user_question: str, search_results: List[QAResult]) ->
 
     except Exception as e:
         logging.error(f"RAG 응답 생성 실패: {str(e)}")
-        return "답변 생성 중 오류가 발생했습니다. 다시 시도해 주세요."
+        return "“너무 예리한 질문이네요! 아쉽게도 현재 데이터에는 해당 내용이 없어 바로 답변을 드리진 못했습니다. 더 다양한 상황에 대응할 수 있도록 계속 고도화해 나가겠습니다.”"
 
 
 def generate_qa_id() -> str:
@@ -156,7 +179,9 @@ async def store_qa(request: QAStoreRequest):
     try:
         qa_id = generate_qa_id()
         # 질문 가중치 증가로 검색 정확도 향상
-        question_weighted = f"질문: {request.question} {request.question} {request.question}"
+        question_weighted = (
+            f"질문: {request.question} {request.question} {request.question}"
+        )
         combined_text = f"{question_weighted}\n답변: {request.answer}"
         embedding = generate_embedding(combined_text)
 
@@ -218,7 +243,7 @@ async def query_qa(request: QAQueryRequest):
 
         # 개선된 RAG 응답 생성
         rag_response = generate_rag_response(request.question, results)
-        
+
         # 관련성 있는 결과만 반환
         relevant_results = filter_relevant_results(request.question, results)
 
@@ -325,8 +350,8 @@ async def get_qa_stats():
                 "index_name": PINECONE_INDEX_NAME,
                 "thresholds": {
                     "min_similarity": MIN_SIMILARITY_THRESHOLD,
-                    "max_context_results": MAX_CONTEXT_RESULTS
-                }
+                    "max_context_results": MAX_CONTEXT_RESULTS,
+                },
             },
         )
 
