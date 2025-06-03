@@ -6,7 +6,7 @@ async def get_gangnam_html() -> str:
     캐싱된 역삼역-멀티캠퍼스 경로 HTML 반환
     3초 대기 후 고정된 결과 반환
     """
-    await asyncio.sleep(1)  # 3초 대기
+    await asyncio.sleep(2)  # 3초 대기
 
     html_content = """
 <!doctype html>
@@ -143,7 +143,7 @@ async def get_suseo_route_html() -> str:
     """
     수서역 HTML 반환
     """
-    await asyncio.sleep(1)  # 3초 대기
+    await asyncio.sleep(2)  # 3초 대기
 
     html_content = """
 <!doctype html>
