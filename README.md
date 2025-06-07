@@ -87,9 +87,9 @@
 2. 키보드 속 **스마트 검색 버튼** 터치
 3. 결과 사진을 **드래그 앤 드롭**하여 전송
 
-![스마트검색_1](docs/images/keyboard/스마트검색_1.gif){width=300}
-![스마트검색_2](docs/images/keyboard/스마트검색_2.gif){width=300}
-![스마트검색_3](docs/images/keyboard/스마트검색_3.gif){width=300}
+![스마트검색_1](docs/images/keyboard/스마트검색_1.gif){width=280}
+![스마트검색_2](docs/images/keyboard/스마트검색_2.gif){width=280}
+![스마트검색_3](docs/images/keyboard/스마트검색_3.gif){width=280}
 
 
 
@@ -105,9 +105,9 @@
 2. 입력할 앱으로 **이동**
 3. 입력창에서 키보드 속 **AI 스마트 클립 버튼 터치**
 
-![AI스마트클립_1](docs/images/keyboard/AI스마트클립_1.gif){width=300}
-![AI스마트클립_2](docs/images/keyboard/AI스마트클립_2.gif){width=300}
-![AI스마트클립_3](docs/images/keyboard/AI스마트클립_3.gif){width=300}
+![AI스마트클립_1](docs/images/keyboard/AI스마트클립_1.gif){width=280}
+![AI스마트클립_2](docs/images/keyboard/AI스마트클립_2.gif){width=280}
+![AI스마트클립_3](docs/images/keyboard/AI스마트클립_3.gif){width=280}
 
 
 ---
@@ -121,9 +121,9 @@
 2. 플러스 버튼이 **필요한 기능의 모습으로 바뀌면 터치**
 3. 실행부터 **결과까지 키보드에서 확인 **
 
-![플러스버튼_1](docs/images/keyboard/플러스버튼_1.gif){width=300}
-![플러스버튼_2](docs/images/keyboard/플러스버튼_2.gif){width=300}
-![플러스버튼_3](docs/images/keyboard/플러스버튼_3.gif){width=300}
+![플러스버튼_1](docs/images/keyboard/플러스버튼_1.gif){width=280}
+![플러스버튼_2](docs/images/keyboard/플러스버튼_2.gif){width=280}
+![플러스버튼_3](docs/images/keyboard/플러스버튼_3.gif){width=280}
 
 <br />
 
@@ -140,7 +140,9 @@
 
 ## 6. 발표 자료
 > 최신순으로 정렬하여, 결선 발표 자료가 최종 자료입니다
-
+- 🔥 [전국 결선 발표 자료](https://docs.google.com/presentation/d/1xJ4CwHEG2HrKF_ReNNDggrFLE5yuTHZs/edit?usp=sharing&ouid=101406336604846630208&rtpof=true&sd=true)
+- 🍧 [부울경 본선 발표 자료](https://docs.google.com/presentation/d/1OH80iTiKdadgmwIgSFDw1ve8DLxHaxuR/edit?usp=sharing&ouid=101406336604846630208&rtpof=true&sd=true)
+- 💡 [부울경 반 내 최종 발표 자료](https://docs.google.com/presentation/d/1oqV3E1BOy_GyMjVWkDWOpHKxs0L2TLIx/edit?usp=sharing&ouid=101406336604846630208&rtpof=true&sd=true)
 
 
 <br />
@@ -176,7 +178,8 @@
 
 <br />
 ---
-© 2025 Galaxy Keyboard Plus Team – MIT License
+
+> © 2025 Galaxy Keyboard Plus Team – MIT License
 
 
 
