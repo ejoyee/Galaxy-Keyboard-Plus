@@ -22,7 +22,11 @@
 - 이미지 캡셔닝 + RAG, Google Vision API, LangChain 기반 MCP 연동 등의 최신 기술을 통합하여 구현했습니다.
 
 <br />
-
+<br />
+<br />
+<br />
+<br />
+<br />
 ## 2. 팀원 소개
 > Galaxy Keyboard Plus는 6인의 팀원이 기획, 개발, 발표까지 전 과정을 함께 주도한 협업 프로젝트입니다.  
 > 주요 담당 역할은 중심 기여 영역을 기준으로 나열하되, **모든 팀원이 서로의 작업에 적극 참여**하며 함께 완성도를 높였습니다.
@@ -39,6 +43,10 @@
 > 🔄 기획부터 개발, 발표까지 전원이 적극 참여하며 기능별/시기별로 역할을 유연하게 나누고 협업했습니다.
 
 
+<br /><br />
+<br />
+<br />
+<br />
 <br />
 
 ## 3. 기술 스택
@@ -75,6 +83,11 @@
 ![Docker Compose](https://img.shields.io/badge/Docker_Compose-1488C6?style=for-the-badge&logo=docker&logoColor=white)
 ![Jenkins](https://img.shields.io/badge/Jenkins-D24939?style=for-the-badge&logo=jenkins&logoColor=white)
 
+<br />
+<br />
+<br />
+<br />
+<br />
 
 ## 4. 주요 기능 및 이미지
 
@@ -92,7 +105,11 @@
 ![스마트검색_3](docs/images/keyboard/스마트검색_3.gif){width=280}
 
 
-
+<br />
+<br />
+<br />
+<br />
+<br />
 
 ---
 
@@ -109,6 +126,12 @@
 ![AI스마트클립_2](docs/images/keyboard/AI스마트클립_2.gif){width=280}
 ![AI스마트클립_3](docs/images/keyboard/AI스마트클립_3.gif){width=280}
 
+
+<br />
+<br />
+<br />
+<br />
+<br />
 
 ---
 
@@ -128,6 +151,11 @@
 <br />
 
 
+<br />
+<br />
+<br />
+<br />
+<br />
 
 ## 5. 시스템 아키텍처
 
@@ -136,7 +164,11 @@
 - AI 처리와 일반 API 요청을 분리하여 확장성과 응답속도 향상
 
 <br />
-
+<br />
+<br />
+<br />
+<br />
+<br />
 
 ## 6. 발표 자료
 > 최신순으로 정렬하여, 결선 발표 자료가 최종 자료입니다
@@ -145,6 +177,11 @@
 - 💡 [부울경 반 내 최종 발표 자료](https://docs.google.com/presentation/d/1oqV3E1BOy_GyMjVWkDWOpHKxs0L2TLIx/edit?usp=sharing&ouid=101406336604846630208&rtpof=true&sd=true)
 
 
+<br />
+<br />
+<br />
+<br />
+<br />
 <br />
 
 ## 7. 영상 포트폴리오
@@ -155,12 +192,22 @@
 
 
 <br />
+<br />
+<br />
+<br />
+<br />
+<br />
 
 ## 8. 문서 자료
 
 - 🔗 [포팅 메뉴얼](exec/E201_그로밋_자율프로젝트_포팅메뉴얼.pdf)
 - 📄 [시연 시나리오](exec)
 
+<br />
+<br />
+<br />
+<br />
+<br />
 <br />
 
 ## 9. 배포 특이사항
@@ -170,6 +217,11 @@
 
 
 <br />
+<br />
+<br />
+<br />
+<br />
+<br />
 
 
 ## 10. 팀 프로젝트 과정
@@ -177,6 +229,12 @@
 
 
 <br />
+<br />
+<br />
+<br />
+<br />
+<br />
+
 ---
 
 > © 2025 Galaxy Keyboard Plus Team 
