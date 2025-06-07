@@ -179,7 +179,7 @@
 <br />
 ---
 
-> © 2025 Galaxy Keyboard Plus Team – MIT License
+> © 2025 Galaxy Keyboard Plus Team 
 
 
 
